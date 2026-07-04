@@ -527,7 +527,7 @@ const WEATHER_CODE_MAP = {
 };
 
 const CACHE_DURATION = 30 * 60 * 1000;
-const CACHE_VERSION = 6;
+const CACHE_VERSION = 7;
 
 function findCityByQuery(query) {
   for (const prov of WEATHER_PROVINCES) {
@@ -535,6 +535,73 @@ function findCityByQuery(query) {
     if (city) return { province: prov.name, city: city };
   }
   return null;
+}
+
+function parseWttrTime(t) {
+  const n = parseInt(t, 10);
+  return Math.floor(n / 100);
+}
+
+function mapCode(code) {
+  return WEATHER_CODE_MAP[code] || { icon: '🌤️', text: '' };
+}
+
+function buildHourly24(weatherDays) {
+  if (!Array.isArray(weatherDays) || weatherDays.length === 0) return null;
+  const points = [];
+  const now = new Date();
+  const startHour = now.getHours();
+
+  for (let d = 0; d < weatherDays.length && points.length < 12; d++) {
+    const day = weatherDays[d];
+    if (!day || !Array.isArray(day.hourly)) continue;
+    for (const h of day.hourly) {
+      const hour = parseWttrTime(h.time);
+      if (d === 0 && hour < startHour) continue;
+      points.push({
+        hour,
+        dayOffset: d,
+        tempC: parseFloat(h.tempC),
+        chanceofrain: parseFloat(h.chanceofrain || '0'),
+        code: parseInt(h.weatherCode, 10)
+      });
+      if (points.length >= 12) break;
+    }
+  }
+
+  if (points.length < 2) return null;
+
+  const result = [];
+  for (let i = 0; i < 24; i++) {
+    const targetHour = (startHour + i) % 24;
+    const targetDayOffset = Math.floor((startHour + i) / 24);
+    const targetKey = targetDayOffset * 24 + targetHour;
+
+    let prev = points[0];
+    let next = points[points.length - 1];
+    for (let j = 0; j < points.length; j++) {
+      const pKey = points[j].dayOffset * 24 + points[j].hour;
+      if (pKey <= targetKey) prev = points[j];
+      if (pKey >= targetKey) { next = points[j]; break; }
+    }
+    const prevKey = prev.dayOffset * 24 + prev.hour;
+    const nextKey = next.dayOffset * 24 + next.hour;
+    const span = nextKey - prevKey;
+    const ratio = span === 0 ? 0 : (targetKey - prevKey) / span;
+
+    const temp = prev.tempC + (next.tempC - prev.tempC) * ratio;
+    const rain = prev.chanceofrain + (next.chanceofrain - prev.chanceofrain) * ratio;
+    const code = ratio < 0.5 ? prev.code : next.code;
+    const mapped = mapCode(code);
+
+    result.push({
+      hour: targetHour,
+      temp: Math.round(temp),
+      rain: Math.round(rain),
+      icon: mapped.icon
+    });
+  }
+  return result;
 }
 
 const Weather = {
@@ -606,10 +673,18 @@ const Weather = {
         const code = parseInt(current.weatherCode, 10);
         const mapped = WEATHER_CODE_MAP[code] || { icon: '🌤️', text: current.weatherDesc[0].value };
 
+        const hourly = buildHourly24(data.weather);
+        const today = Array.isArray(data.weather) && data.weather[0] ? data.weather[0] : null;
+        const todayHigh = today ? parseInt(today.maxtempC, 10) : null;
+        const todayLow = today ? parseInt(today.mintempC, 10) : null;
+
         return {
           temp: current.temp_C,
           icon: mapped.icon,
           desc: mapped.text,
+          hourly,
+          todayHigh,
+          todayLow,
           timestamp: Date.now(),
           version: CACHE_VERSION
         };
@@ -661,6 +736,44 @@ const Weather = {
       <span class="weather-sep">|</span>
       <span class="weather-desc">${this.cache.desc}</span>
       ${loc}
+      ${this.renderHoverCard()}
+    `;
+  },
+
+  renderHoverCard() {
+    const hourly = this.cache && this.cache.hourly;
+    if (!hourly || hourly.length === 0) return '';
+
+    const display = this.getDisplayCity();
+    const high = this.cache.todayHigh;
+    const low = this.cache.todayLow;
+    const range = (high != null && low != null) ? `今日 ${low}° ~ ${high}°` : '';
+    const header = [display, range].filter(Boolean).join(' &middot; ');
+
+    const bars = hourly.map((h, idx) => {
+      const showLabel = idx === 0 || idx % 3 === 0;
+      const showIcon = idx === 0 || idx % 3 === 0;
+      const heightPct = Math.max(6, h.rain);
+      const opacity = 0.35 + (h.rain / 100) * 0.65;
+      const hourLabel = idx === 0 ? '现在' : String(h.hour).padStart(2, '0');
+      const nowClass = idx === 0 ? ' whc-now' : '';
+      return `
+        <div class="whc-col${nowClass}">
+          <div class="whc-icon">${showIcon ? h.icon : ''}</div>
+          <div class="whc-temp">${showIcon ? h.temp + '°' : ''}</div>
+          <div class="whc-bar-wrap">
+            <div class="whc-bar" style="height:${heightPct}%; opacity:${opacity.toFixed(2)}"></div>
+          </div>
+          <div class="whc-hour">${showLabel ? hourLabel : ''}</div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div class="weather-hover-card" role="tooltip">
+        <div class="whc-header">${header}</div>
+        <div class="whc-grid">${bars}</div>
+      </div>
     `;
   }
 };
