@@ -1,17 +1,15 @@
 const Settings = {
-  currentTab: 'bookmarks',
+  currentTab: 'categories',
   editStates: {},
 
   async init() {
     this.bindEvents();
-    await this.renderBookmarks();
     await this.renderCategories();
     await this.renderWeatherSettings();
   },
 
   open() {
     document.getElementById('settingsOverlay').classList.add('open');
-    this.renderBookmarks();
     this.renderCategories();
   },
 
@@ -30,7 +28,6 @@ const Settings = {
       btn.addEventListener('click', () => this.switchTab(btn.dataset.tab));
     });
 
-    document.getElementById('addBookmarkBtn').addEventListener('click', () => this.showAddBookmarkForm());
     document.getElementById('addCategoryBtn').addEventListener('click', () => this.showAddCategoryForm());
 
     document.addEventListener('keydown', (e) => {
@@ -57,41 +54,10 @@ const Settings = {
   },
 
   clearInlineForms() {
-    const ids = ['bookmarkForm', 'categoryForm', 'itemForm', 'editItemForm'];
+    const ids = ['categoryForm', 'itemForm', 'editItemForm'];
     ids.forEach(id => {
       const el = document.getElementById(id);
       if (el) el.remove();
-    });
-  },
-
-  async renderBookmarks() {
-    const container = document.getElementById('bookmarkList');
-    const bookmarks = await Storage.getBookmarks();
-    bookmarks.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-
-    if (bookmarks.length === 0) {
-      container.innerHTML = '<div class="empty-state">暂无书签，点击上方按钮添加</div>';
-      return;
-    }
-
-    container.innerHTML = bookmarks.map(bm => `
-      <div class="setting-item" data-id="${bm.id}">
-        <div class="setting-item-info">
-          <span class="setting-item-title">${this.escapeHtml(bm.title)}</span>
-          <span class="setting-item-url">${this.escapeHtml(bm.url)}</span>
-        </div>
-        <div class="setting-item-actions">
-          <button class="btn-edit" data-action="edit-bookmark" data-id="${bm.id}">编辑</button>
-          <button class="btn-danger" data-action="delete-bookmark" data-id="${bm.id}">删除</button>
-        </div>
-      </div>
-    `).join('');
-
-    container.querySelectorAll('[data-action="edit-bookmark"]').forEach(btn => {
-      btn.addEventListener('click', () => this.showEditBookmarkForm(btn.dataset.id));
-    });
-    container.querySelectorAll('[data-action="delete-bookmark"]').forEach(btn => {
-      btn.addEventListener('click', () => this.deleteBookmark(btn.dataset.id));
     });
   },
 
@@ -149,80 +115,6 @@ const Settings = {
     container.querySelectorAll('[data-action="delete-item"]').forEach(btn => {
       btn.addEventListener('click', () => this.deleteCategoryItem(btn.dataset.catId, btn.dataset.itemId));
     });
-  },
-
-  showAddBookmarkForm() {
-    const container = document.getElementById('bookmarkList');
-    // 清理旧表单防止 ID 冲突
-    const oldForm = document.getElementById('bookmarkForm');
-    if (oldForm) oldForm.remove();
-    const form = document.createElement('div');
-    form.className = 'inline-form';
-    form.id = 'bookmarkForm';
-    form.innerHTML = `
-      <input type="text" id="bmTitle" placeholder="名称" required>
-      <input type="url" id="bmUrl" placeholder="网址 (https://...)" required>
-      <button class="btn-primary" id="saveBookmark">保存</button>
-      <button class="btn-edit" id="cancelBookmark">取消</button>
-    `;
-    container.prepend(form);
-
-    document.getElementById('saveBookmark').addEventListener('click', async () => {
-      const title = document.getElementById('bmTitle').value.trim();
-      const url = document.getElementById('bmUrl').value.trim();
-      if (!title || !url) return;
-      await Storage.addBookmark({ title, url });
-      form.remove();
-      await this.renderBookmarks();
-      App.renderBookmarks();
-    });
-
-    document.getElementById('cancelBookmark').addEventListener('click', () => form.remove());
-    document.getElementById('bmTitle').focus();
-  },
-
-  showEditBookmarkForm(id) {
-    this.editStates[id] = true;
-    const items = document.querySelectorAll(`#bookmarkList .setting-item[data-id="${id}"]`);
-    const item = items[0];
-    if (!item) return;
-
-    const title = item.querySelector('.setting-item-title').textContent;
-    const url = item.querySelector('.setting-item-url').textContent;
-    const actions = item.querySelector('.setting-item-actions');
-
-    const form = document.createElement('div');
-    form.className = 'inline-form';
-    form.innerHTML = `
-      <input type="text" id="editBmTitle" value="${this.escapeAttr(title)}" required>
-      <input type="url" id="editBmUrl" value="${this.escapeAttr(url)}" required>
-      <button class="btn-primary" id="saveEditBookmark">保存</button>
-      <button class="btn-edit" id="cancelEditBookmark">取消</button>
-    `;
-    actions.replaceWith(form);
-
-    document.getElementById('saveEditBookmark').addEventListener('click', async () => {
-      const newTitle = document.getElementById('editBmTitle').value.trim();
-      const newUrl = document.getElementById('editBmUrl').value.trim();
-      if (!newTitle || !newUrl) return;
-      await Storage.updateBookmark(id, { title: newTitle, url: newUrl });
-      delete this.editStates[id];
-      await this.renderBookmarks();
-      App.renderBookmarks();
-    });
-
-    document.getElementById('cancelEditBookmark').addEventListener('click', () => {
-      delete this.editStates[id];
-      this.renderBookmarks();
-    });
-  },
-
-  async deleteBookmark(id) {
-    const confirmed = await this._confirm('确定删除此书签？');
-    if (!confirmed) return;
-    await Storage.deleteBookmark(id);
-    await this.renderBookmarks();
-    App.renderBookmarks();
   },
 
   showAddCategoryForm() {
