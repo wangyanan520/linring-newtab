@@ -1,94 +1,105 @@
 const WALLPAPERS = [
   {
-    name: '深邃星空',
+    name: '默',
     css: `
-      radial-gradient(ellipse 70% 55% at 15% 20%, rgba(100, 60, 200, 0.40) 0%, transparent 60%),
-      radial-gradient(ellipse 60% 50% at 85% 15%, rgba(40, 100, 220, 0.35) 0%, transparent 55%),
-      radial-gradient(ellipse 80% 60% at 50% 80%, rgba(120, 40, 180, 0.25) 0%, transparent 50%),
-      radial-gradient(ellipse 50% 40% at 50% 50%, rgba(180, 80, 255, 0.10) 0%, transparent 40%),
-      linear-gradient(135deg, #0d0d2b 0%, #1a1050 30%, #0d1a3a 60%, #0a0a1a 100%)
+      radial-gradient(ellipse 130% 70% at 50% 0%, rgba(200, 145, 75, 0.42) 0%, transparent 65%),
+      radial-gradient(ellipse 85% 75% at 88% 92%, rgba(90, 140, 170, 0.30) 0%, transparent 60%),
+      radial-gradient(ellipse 70% 55% at 8% 100%, rgba(180, 120, 80, 0.22) 0%, transparent 55%),
+      #1f1913
     `,
-    colors: {
-      accent: 'rgba(150, 100, 255, 0.8)',
-      accentLight: 'rgba(180, 160, 255, 0.4)',
-      accentGlow: 'rgba(150, 100, 255, 0.15)',
-      accentBorder: 'rgba(150, 100, 255, 0.12)'
-    }
+    accent: '#e0b25c',
+    accentHover: '#ecc072',
+    accentSubtle: 'rgba(224, 178, 92, 0.22)',
+    accentGlow: 'rgba(224, 178, 92, 0.32)',
+    accentCool: '#9cc3d0',
+    accentCoolHover: '#b0d3de',
+    accentCoolSubtle: 'rgba(156, 195, 208, 0.20)',
+    accentCoolGlow: 'rgba(156, 195, 208, 0.24)'
   },
   {
-    name: '极光绿',
+    name: '雾',
     css: `
-      radial-gradient(ellipse 70% 55% at 20% 30%, rgba(0, 180, 120, 0.35) 0%, transparent 60%),
-      radial-gradient(ellipse 60% 50% at 80% 20%, rgba(20, 200, 160, 0.25) 0%, transparent 55%),
-      radial-gradient(ellipse 80% 60% at 50% 80%, rgba(0, 100, 80, 0.20) 0%, transparent 50%),
-      linear-gradient(135deg, #0a1a12 0%, #0d2a1a 30%, #0a1a10 60%, #060d08 100%)
+      radial-gradient(ellipse 130% 65% at 40% 0%, rgba(175, 195, 215, 0.32) 0%, transparent 60%),
+      radial-gradient(ellipse 75% 65% at 92% 78%, rgba(140, 165, 200, 0.26) 0%, transparent 55%),
+      radial-gradient(ellipse 60% 50% at 3% 95%, rgba(120, 140, 175, 0.20) 0%, transparent 55%),
+      #1e2126
     `,
-    colors: {
-      accent: 'rgba(0, 200, 140, 0.8)',
-      accentLight: 'rgba(80, 220, 180, 0.4)',
-      accentGlow: 'rgba(0, 200, 140, 0.15)',
-      accentBorder: 'rgba(0, 200, 140, 0.12)'
-    }
+    accent: '#c8d5dc',
+    accentHover: '#dbe4ea',
+    accentSubtle: 'rgba(200, 213, 220, 0.22)',
+    accentGlow: 'rgba(200, 213, 220, 0.26)',
+    accentCool: '#a5bac6',
+    accentCoolHover: '#b9cbd5',
+    accentCoolSubtle: 'rgba(165, 186, 198, 0.20)',
+    accentCoolGlow: 'rgba(165, 186, 198, 0.22)'
   },
   {
-    name: '落日暖阳',
+    name: '茶',
     css: `
-      radial-gradient(ellipse 70% 55% at 25% 30%, rgba(220, 100, 40, 0.40) 0%, transparent 60%),
-      radial-gradient(ellipse 60% 50% at 75% 20%, rgba(200, 120, 20, 0.30) 0%, transparent 55%),
-      radial-gradient(ellipse 80% 60% at 50% 80%, rgba(180, 60, 30, 0.20) 0%, transparent 50%),
-      linear-gradient(135deg, #1a0d08 0%, #2a1508 30%, #1a0d0a 60%, #0d0806 100%)
+      radial-gradient(ellipse 140% 75% at 50% 5%, rgba(220, 145, 60, 0.46) 0%, transparent 65%),
+      radial-gradient(ellipse 60% 50% at 20% 90%, rgba(185, 115, 70, 0.28) 0%, transparent 55%),
+      radial-gradient(ellipse 50% 45% at 82% 68%, rgba(135, 165, 175, 0.22) 0%, transparent 55%),
+      #221812
     `,
-    colors: {
-      accent: 'rgba(220, 130, 50, 0.8)',
-      accentLight: 'rgba(240, 180, 100, 0.4)',
-      accentGlow: 'rgba(220, 130, 50, 0.15)',
-      accentBorder: 'rgba(220, 130, 50, 0.12)'
-    }
+    accent: '#dfa15a',
+    accentHover: '#ecb372',
+    accentSubtle: 'rgba(223, 161, 90, 0.22)',
+    accentGlow: 'rgba(223, 161, 90, 0.32)',
+    accentCool: '#8fb8ab',
+    accentCoolHover: '#a3c8bd',
+    accentCoolSubtle: 'rgba(143, 184, 171, 0.20)',
+    accentCoolGlow: 'rgba(143, 184, 171, 0.22)'
   },
   {
-    name: '海洋蓝',
+    name: '墨',
     css: `
-      radial-gradient(ellipse 70% 55% at 15% 25%, rgba(20, 120, 200, 0.40) 0%, transparent 60%),
-      radial-gradient(ellipse 60% 50% at 85% 30%, rgba(10, 160, 220, 0.30) 0%, transparent 55%),
-      radial-gradient(ellipse 80% 60% at 50% 75%, rgba(0, 80, 160, 0.25) 0%, transparent 50%),
-      linear-gradient(135deg, #08101a 0%, #0a1a2a 30%, #081520 60%, #060a0d 100%)
+      radial-gradient(ellipse 130% 70% at 50% 0%, rgba(75, 115, 170, 0.42) 0%, transparent 65%),
+      radial-gradient(ellipse 75% 55% at 12% 88%, rgba(60, 95, 150, 0.28) 0%, transparent 55%),
+      radial-gradient(ellipse 55% 45% at 88% 62%, rgba(85, 110, 165, 0.22) 0%, transparent 55%),
+      #141926
     `,
-    colors: {
-      accent: 'rgba(30, 150, 220, 0.8)',
-      accentLight: 'rgba(100, 190, 240, 0.4)',
-      accentGlow: 'rgba(30, 150, 220, 0.15)',
-      accentBorder: 'rgba(30, 150, 220, 0.12)'
-    }
+    accent: '#9ab8e0',
+    accentHover: '#b0c8e8',
+    accentSubtle: 'rgba(154, 184, 224, 0.22)',
+    accentGlow: 'rgba(154, 184, 224, 0.28)',
+    accentCool: '#a5bbd5',
+    accentCoolHover: '#b9ccdf',
+    accentCoolSubtle: 'rgba(165, 187, 213, 0.20)',
+    accentCoolGlow: 'rgba(165, 187, 213, 0.22)'
   },
   {
-    name: '樱花粉',
+    name: '檀',
     css: `
-      radial-gradient(ellipse 70% 55% at 20% 25%, rgba(200, 80, 140, 0.35) 0%, transparent 60%),
-      radial-gradient(ellipse 60% 50% at 80% 30%, rgba(220, 100, 160, 0.25) 0%, transparent 55%),
-      radial-gradient(ellipse 80% 60% at 50% 80%, rgba(160, 60, 120, 0.20) 0%, transparent 50%),
-      linear-gradient(135deg, #1a0a14 0%, #2a1020 30%, #1a0a16 60%, #0d080a 100%)
+      radial-gradient(ellipse 130% 70% at 55% 0%, rgba(220, 125, 95, 0.42) 0%, transparent 60%),
+      radial-gradient(ellipse 65% 55% at 18% 92%, rgba(180, 105, 80, 0.26) 0%, transparent 55%),
+      radial-gradient(ellipse 50% 45% at 88% 55%, rgba(205, 160, 115, 0.22) 0%, transparent 55%),
+      #241713
     `,
-    colors: {
-      accent: 'rgba(210, 90, 150, 0.8)',
-      accentLight: 'rgba(230, 140, 180, 0.4)',
-      accentGlow: 'rgba(210, 90, 150, 0.15)',
-      accentBorder: 'rgba(210, 90, 150, 0.12)'
-    }
+    accent: '#e59872',
+    accentHover: '#f0ab86',
+    accentSubtle: 'rgba(229, 152, 114, 0.22)',
+    accentGlow: 'rgba(229, 152, 114, 0.30)',
+    accentCool: '#a5b3a5',
+    accentCoolHover: '#b8c4b9',
+    accentCoolSubtle: 'rgba(165, 179, 165, 0.20)',
+    accentCoolGlow: 'rgba(165, 179, 165, 0.22)'
   },
   {
-    name: '晨雾灰',
+    name: '砚',
     css: `
-      radial-gradient(ellipse 70% 55% at 20% 30%, rgba(140, 140, 180, 0.25) 0%, transparent 60%),
-      radial-gradient(ellipse 60% 50% at 80% 25%, rgba(100, 120, 160, 0.20) 0%, transparent 55%),
-      radial-gradient(ellipse 80% 60% at 50% 75%, rgba(80, 80, 120, 0.15) 0%, transparent 50%),
-      linear-gradient(135deg, #121216 0%, #1a1a24 30%, #12121a 60%, #0a0a0d 100%)
+      radial-gradient(ellipse 140% 65% at 50% 0%, rgba(125, 145, 175, 0.32) 0%, transparent 65%),
+      radial-gradient(ellipse 60% 50% at 78% 82%, rgba(135, 155, 185, 0.26) 0%, transparent 55%),
+      radial-gradient(ellipse 55% 45% at 8% 62%, rgba(100, 118, 148, 0.20) 0%, transparent 55%),
+      #1a1e26
     `,
-    colors: {
-      accent: 'rgba(140, 140, 180, 0.7)',
-      accentLight: 'rgba(170, 170, 200, 0.4)',
-      accentGlow: 'rgba(140, 140, 180, 0.12)',
-      accentBorder: 'rgba(140, 140, 180, 0.10)'
-    }
+    accent: '#c0c8d5',
+    accentHover: '#d0d8e2',
+    accentSubtle: 'rgba(192, 200, 213, 0.22)',
+    accentGlow: 'rgba(192, 200, 213, 0.26)',
+    accentCool: '#9aacc0',
+    accentCoolHover: '#adbccd',
+    accentCoolSubtle: 'rgba(154, 172, 192, 0.20)',
+    accentCoolGlow: 'rgba(154, 172, 192, 0.22)'
   }
 ];
 
@@ -108,13 +119,16 @@ const Wallpaper = {
     return WALLPAPERS;
   },
 
-  applyColors(index) {
-    const colors = WALLPAPERS[index].colors;
+  applyAccent(wp) {
     const root = document.documentElement;
-    root.style.setProperty('--accent-color', colors.accent);
-    root.style.setProperty('--accent-light', colors.accentLight);
-    root.style.setProperty('--accent-glow', colors.accentGlow);
-    root.style.setProperty('--accent-border', colors.accentBorder);
+    root.style.setProperty('--accent', wp.accent);
+    root.style.setProperty('--accent-hover', wp.accentHover);
+    root.style.setProperty('--accent-subtle', wp.accentSubtle);
+    root.style.setProperty('--accent-glow', wp.accentGlow);
+    root.style.setProperty('--accent-cool', wp.accentCool);
+    root.style.setProperty('--accent-cool-hover', wp.accentCoolHover);
+    root.style.setProperty('--accent-cool-subtle', wp.accentCoolSubtle);
+    root.style.setProperty('--accent-cool-glow', wp.accentCoolGlow);
   },
 
   apply(index) {
@@ -123,7 +137,7 @@ const Wallpaper = {
       bgLayer.style.background = WALLPAPERS[index].css;
     }
     this.currentIndex = index;
-    this.applyColors(index);
+    this.applyAccent(WALLPAPERS[index]);
   },
 
   async set(index) {
