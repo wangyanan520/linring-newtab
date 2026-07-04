@@ -1,0 +1,6 @@
+{"type":"server-started","port":61778,"host":"127.0.0.1","url_host":"localhost","url":"http://localhost:61778","screen_dir":"/Users/wyn/Dev/浏览器导航页/.superpowers/brainstorm/43371-1780215560/content","state_dir":"/Users/wyn/Dev/浏览器导航页/.superpowers/brainstorm/43371-1780215560/state"}
+{"type":"screen-added","file":"/Users/wyn/Dev/浏览器导航页/.superpowers/brainstorm/43371-1780215560/content/layout-design.html"}
+{"type":"screen-updated","file":"/Users/wyn/Dev/浏览器导航页/.superpowers/brainstorm/43371-1780215560/content/layout-design.html"}
+{"type":"screen-added","file":"/Users/wyn/Dev/浏览器导航页/.superpowers/brainstorm/43371-1780215560/content/waiting.html"}
+{"type":"screen-added","file":"/Users/wyn/Dev/浏览器导航页/.superpowers/brainstorm/43371-1780215560/content/completed.html"}
+{"type":"server-stopped","reason":"idle timeout"}

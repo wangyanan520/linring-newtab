@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>凌睿科技导航页</title>
+  <style>
+    customize-chrome-button,
+    cr-customize-button,
+    *[is="customize-chrome-button"] {
+      display: none !important;
+      visibility: hidden !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+      width: 0 !important;
+      height: 0 !important;
+      position: fixed !important;
+      bottom: -9999px !important;
+    }
+  </style>
+  <link rel="stylesheet" href="styles/main.css">
+  <link rel="stylesheet" href="styles/settings.css">
+</head>
+<body>
+  <div class="bg-layer" id="bgLayer"></div>
+  <div class="bg-glow"></div>
+
+  <div class="container" id="app">
+    <header class="top-bar">
+      <div class="datetime" id="datetime"></div>
+      <div class="weather-widget" id="weatherWidget">
+        <span class="weather-loading">获取天气中...</span>
+      </div>
+    </header>
+
+    <main class="main-content">
+      <div class="title-group">
+        <h1 class="site-title">凌睿科技导航</h1>
+        <p class="site-subtitle">探索 · 发现 · 高效</p>
+      </div>
+
+      <div class="search-box">
+        <div class="search-inner">
+          <button class="engine-btn" id="engineBtn" title="切换搜索引擎">Google</button>
+          <span class="search-divider"></span>
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8" />
+            <path d="M21 21l-4.35-4.35" />
+          </svg>
+          <input type="text" id="searchInput" placeholder="搜索或输入网址..." autofocus>
+          <button class="search-clear" id="searchClear">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <section class="quick-links">
+        <div class="links-grid" id="bookmarkContainer"></div>
+      </section>
+
+      <div class="main-grid">
+        <section class="categories" id="categoryContainer"></section>
+        <aside class="todo-card">
+          <div class="todo-header">
+            <span class="todo-title">待办</span>
+            <button class="todo-add-btn" id="todoAddBtn">+ 添加</button>
+          </div>
+          <div id="todoContent"></div>
+        </aside>
+      </div>
+    </main>
+
+    <footer class="bottom-bar">
+      <button class="tool-btn" id="wallpaperBtn" title="切换壁纸">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16">
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <circle cx="8.5" cy="8.5" r="1.5" />
+          <path d="M21 15l-5-5L5 21" />
+        </svg>
+        <span>壁纸</span>
+      </button>
+      <button class="tool-btn" id="settingsBtn" title="设置">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l-.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
+        </svg>
+        <span>设置</span>
+      </button>
+    </footer>
+  </div>
+
+  <div class="settings-overlay" id="settingsOverlay">
+    <div class="settings-panel">
+      <div class="settings-header">
+        <h2>设置</h2>
+        <button class="settings-close" id="settingsClose">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <div class="settings-tabs">
+        <button class="tab-btn active" data-tab="bookmarks">快捷书签</button>
+        <button class="tab-btn" data-tab="categories">分类导航</button>
+        <button class="tab-btn" data-tab="weather">天气</button>
+      </div>
+      <div class="settings-body">
+        <div class="tab-content active" id="tabBookmarks">
+          <div class="tab-toolbar">
+            <button class="btn-primary" id="addBookmarkBtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              <span>添加书签</span>
+            </button>
+          </div>
+          <div class="item-list" id="bookmarkList"></div>
+        </div>
+        <div class="tab-content" id="tabCategories">
+          <div class="tab-toolbar">
+            <button class="btn-primary" id="addCategoryBtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              <span>添加分类</span>
+            </button>
+          </div>
+          <div class="item-list" id="categoryList"></div>
+        </div>
+        <div class="tab-content" id="tabWeather">
+          <div class="setting-section">
+            <div class="setting-section-title">选择省份</div>
+            <p class="setting-section-desc">选择你所在的省份或直辖市</p>
+            <select class="city-select" id="weatherProvinceSelect"></select>
+          </div>
+          <div class="setting-section">
+            <div class="setting-section-title">选择城市</div>
+            <p class="setting-section-desc">选择你所在的城市以获取准确的天气信息。选择"自动定位"将使用浏览器定位功能。</p>
+            <select class="city-select" id="weatherCitySelect"></select>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="scripts/storage.js"></script>
+  <script src="scripts/wallpaper.js"></script>
+  <script src="scripts/weather.js"></script>
+  <script src="scripts/todos.js"></script>
+  <script src="scripts/settings.js"></script>
+  <script src="scripts/main.js"></script>
+</body>
+</html>
