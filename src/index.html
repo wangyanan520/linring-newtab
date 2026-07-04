@@ -36,7 +36,7 @@
     <main class="main-content">
       <div class="title-group">
         <h1 class="site-title">凌睿科技导航</h1>
-        <p class="site-subtitle">探索 · 发现 · 高效</p>
+        <p class="site-subtitle">凌睿科技 · 内部导航</p>
       </div>
 
       <div class="search-box">
@@ -56,20 +56,7 @@
         </div>
       </div>
 
-      <section class="quick-links">
-        <div class="links-grid" id="bookmarkContainer"></div>
-      </section>
-
-      <div class="main-grid">
-        <section class="categories" id="categoryContainer"></section>
-        <aside class="todo-card">
-          <div class="todo-header">
-            <span class="todo-title">待办</span>
-            <button class="todo-add-btn" id="todoAddBtn">+ 添加</button>
-          </div>
-          <div id="todoContent"></div>
-        </aside>
-      </div>
+      <section class="categories" id="categoryContainer"></section>
     </main>
 
     <footer class="bottom-bar">
@@ -102,24 +89,11 @@
         </button>
       </div>
       <div class="settings-tabs">
-        <button class="tab-btn active" data-tab="bookmarks">快捷书签</button>
-        <button class="tab-btn" data-tab="categories">分类导航</button>
+        <button class="tab-btn active" data-tab="categories">分类导航</button>
         <button class="tab-btn" data-tab="weather">天气</button>
       </div>
       <div class="settings-body">
-        <div class="tab-content active" id="tabBookmarks">
-          <div class="tab-toolbar">
-            <button class="btn-primary" id="addBookmarkBtn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              <span>添加书签</span>
-            </button>
-          </div>
-          <div class="item-list" id="bookmarkList"></div>
-        </div>
-        <div class="tab-content" id="tabCategories">
+        <div class="tab-content active" id="tabCategories">
           <div class="tab-toolbar">
             <button class="btn-primary" id="addCategoryBtn">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
@@ -150,7 +124,9 @@
   <script src="scripts/storage.js"></script>
   <script src="scripts/wallpaper.js"></script>
   <script src="scripts/weather.js"></script>
-  <script src="scripts/todos.js"></script>
+  <script src="scripts/lunar.min.js"></script>
+  <script src="scripts/calendar.js"></script>
+
   <script src="scripts/settings.js"></script>
   <script src="scripts/main.js"></script>
 </body>

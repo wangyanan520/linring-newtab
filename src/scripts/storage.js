@@ -1,14 +1,3 @@
-const PRESET_BOOKMARKS = [
-  { id: 'bm_01', title: '百度', url: 'https://www.baidu.com', sortOrder: 1 },
-  { id: 'bm_02', title: '知乎', url: 'https://www.zhihu.com', sortOrder: 2 },
-  { id: 'bm_03', title: 'GitHub', url: 'https://github.com', sortOrder: 3 },
-  { id: 'bm_04', title: 'B站', url: 'https://www.bilibili.com', sortOrder: 4 },
-  { id: 'bm_05', title: '豆瓣', url: 'https://www.douban.com', sortOrder: 5 },
-  { id: 'bm_06', title: '微博', url: 'https://weibo.com', sortOrder: 6 },
-  { id: 'bm_07', title: '淘宝', url: 'https://www.taobao.com', sortOrder: 7 },
-  { id: 'bm_08', title: '抖音', url: 'https://www.douyin.com', sortOrder: 8 }
-];
-
 const PRESET_CATEGORIES = [
   {
     id: 'cat_01', title: '工具导航', sortOrder: 1, collapsed: false,
@@ -70,59 +59,14 @@ const Storage = {
     const result = await chrome.storage.local.get(['settings']);
     if (!result.settings || !result.settings.version) {
       await chrome.storage.local.set({
-        bookmarks: PRESET_BOOKMARKS,
         categories: PRESET_CATEGORIES,
-        settings: DEFAULT_SETTINGS,
-        todos: []
+        settings: DEFAULT_SETTINGS
       });
     }
   },
 
   async getAll() {
-    return await chrome.storage.local.get(['bookmarks', 'categories', 'settings']);
-  },
-
-  async getBookmarks() {
-    try {
-      const result = await chrome.storage.local.get(['bookmarks']);
-      return result.bookmarks || [];
-    } catch (e) {
-      console.error('读取书签失败:', e);
-      return [];
-    }
-  },
-
-  async addBookmark(bookmark) {
-    const { bookmarks = [] } = await chrome.storage.local.get(['bookmarks']);
-    const maxOrder = bookmarks.reduce((max, b) => Math.max(max, b.sortOrder || 0), 0);
-    const newBookmark = {
-      id: generateId(),
-      title: bookmark.title,
-      url: bookmark.url,
-      sortOrder: maxOrder + 1
-    };
-    bookmarks.push(newBookmark);
-    await chrome.storage.local.set({ bookmarks });
-    return newBookmark;
-  },
-
-  async updateBookmark(id, data) {
-    const { bookmarks = [] } = await chrome.storage.local.get(['bookmarks']);
-    const index = bookmarks.findIndex(b => b.id === id);
-    if (index !== -1) {
-      bookmarks[index] = { ...bookmarks[index], ...data };
-      await chrome.storage.local.set({ bookmarks });
-    }
-  },
-
-  async deleteBookmark(id) {
-    try {
-      const { bookmarks = [] } = await chrome.storage.local.get(['bookmarks']);
-      const filtered = bookmarks.filter(b => b.id !== id);
-      await chrome.storage.local.set({ bookmarks: filtered });
-    } catch (e) {
-      console.error('删除书签失败:', e);
-    }
+    return await chrome.storage.local.get(['categories', 'settings']);
   },
 
   async getCategories() {
@@ -206,48 +150,6 @@ const Storage = {
       }
     } catch (e) {
       console.error('删除分类链接失败:', e);
-    }
-  },
-
-  async getTodos() {
-    try {
-      const result = await chrome.storage.local.get(['todos']);
-      return result.todos || [];
-    } catch (e) {
-      console.error('读取待办失败:', e);
-      return [];
-    }
-  },
-
-  async addTodo(text) {
-    const { todos = [] } = await chrome.storage.local.get(['todos']);
-    const newTodo = {
-      id: generateId(),
-      text: text,
-      done: false,
-      createdAt: Date.now()
-    };
-    todos.push(newTodo);
-    await chrome.storage.local.set({ todos });
-    return newTodo;
-  },
-
-  async toggleTodo(id) {
-    const { todos = [] } = await chrome.storage.local.get(['todos']);
-    const todo = todos.find(t => t.id === id);
-    if (todo) {
-      todo.done = !todo.done;
-      await chrome.storage.local.set({ todos });
-    }
-  },
-
-  async deleteTodo(id) {
-    try {
-      const { todos = [] } = await chrome.storage.local.get(['todos']);
-      const filtered = todos.filter(t => t.id !== id);
-      await chrome.storage.local.set({ todos: filtered });
-    } catch (e) {
-      console.error('删除待办失败:', e);
     }
   },
 

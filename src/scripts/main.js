@@ -20,8 +20,7 @@ const App = {
     this.startClock();
     await Wallpaper.init();
     await Weather.init();
-    await Todos.init();
-    await this.renderBookmarks();
+    await Calendar.init();
     await this.renderCategories();
     await Settings.init();
   },
@@ -85,11 +84,6 @@ const App = {
     document.getElementById('wallpaperBtn').addEventListener('click', () => {
       Wallpaper.next();
     });
-
-    const todoAddBtn = document.getElementById('todoAddBtn');
-    if (todoAddBtn) {
-      todoAddBtn.addEventListener('click', () => Todos.toggleForm());
-    }
   },
 
   cycleEngine() {
@@ -112,6 +106,10 @@ const App = {
   },
 
   startClock() {
+    const el = document.getElementById('datetime');
+    let lastMinute = -1;
+    let hoverCardMounted = false;
+
     function update() {
       const now = new Date();
       const options = {
@@ -120,44 +118,25 @@ const App = {
       };
       const dateStr = now.toLocaleDateString('zh-CN', options);
       const timeStr = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-      document.getElementById('datetime').textContent = `${dateStr}  ${timeStr}`;
+      const textEl = el.querySelector('.datetime-text');
+      const target = textEl || el;
+      target.textContent = `${dateStr}  ${timeStr}`;
+
+      if (!hoverCardMounted && typeof Calendar !== 'undefined' && Calendar.loaded) {
+        el.innerHTML = `<span class="datetime-text">${dateStr}  ${timeStr}</span>${Calendar.render()}`;
+        hoverCardMounted = true;
+      } else if (hoverCardMounted && now.getMinutes() !== lastMinute) {
+        const cardEl = el.querySelector('.datetime-hover-card');
+        if (cardEl && Calendar.loaded) {
+          const wrap = document.createElement('div');
+          wrap.innerHTML = Calendar.render();
+          cardEl.replaceWith(wrap.firstElementChild);
+        }
+      }
+      lastMinute = now.getMinutes();
     }
     update();
     setInterval(update, 1000);
-  },
-
-  async renderBookmarks() {
-    const container = document.getElementById('bookmarkContainer');
-    const bookmarks = await Storage.getBookmarks();
-    bookmarks.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-
-    container.innerHTML = bookmarks.map(bm => {
-      const domain = this.extractDomain(bm.url);
-      const firstChar = this.escapeHtml(bm.title.charAt(0));
-      return `
-      <a href="${this.escapeAttr(bm.url)}" class="bookmark-item" title="${this.escapeAttr(bm.title)}" target="_blank">
-        <div class="bookmark-icon">
-          <img src="https://favicon.im/${domain}"
-               alt="${this.escapeAttr(bm.title)}"
-               data-domain="${domain}"
-               data-char="${firstChar}">
-        </div>
-        <span class="bookmark-title">${this.escapeHtml(bm.title)}</span>
-      </a>
-    `}).join('');
-
-    container.querySelectorAll('.bookmark-icon img').forEach(img => {
-      img.addEventListener('error', function handleError() {
-        if (!this.dataset.triedFallback) {
-          this.dataset.triedFallback = '1';
-          this.src = `https://${this.dataset.domain}/favicon.ico`;
-        } else {
-          this.style.display = 'none';
-          this.parentElement.classList.add('fallback');
-          this.parentElement.dataset.char = this.dataset.char;
-        }
-      });
-    });
   },
 
   async renderCategories() {
@@ -191,14 +170,6 @@ const App = {
         }
       });
     });
-  },
-
-  extractDomain(url) {
-    try {
-      return new URL(url).hostname;
-    } catch {
-      return '';
-    }
   },
 
   escapeHtml(str) {
