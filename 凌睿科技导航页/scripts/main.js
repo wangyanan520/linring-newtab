@@ -4,6 +4,24 @@ const SEARCH_ENGINES = [
   { name: 'Bing', url: 'https://www.bing.com/search?q={query}' }
 ];
 
+/* ---- V3 组件注册表：主页区块统一按注册表 + 可见性配置渲染 ----
+   locked=true 表示常驻组件（搜索框），不可关闭。 */
+const COMPONENTS = [
+  { id: 'search', title: '搜索框', selector: '.search-box', locked: true, defaultVisible: true },
+  {
+    id: 'calendar', title: '农历日历', selector: '.datetime', defaultVisible: true,
+    init: async () => {
+      if (typeof Calendar !== 'undefined' && !Calendar.loaded) await Calendar.init();
+      App.startClock();
+    }
+  },
+  { id: 'weather', title: '天气', selector: '.weather-widget', defaultVisible: true, init: () => Weather.init() },
+  { id: 'bookmarks', title: '快捷书签', selector: '.quick-links', defaultVisible: true, init: () => App.renderBookmarks() },
+  { id: 'categories', title: '分类导航', selector: '.categories', defaultVisible: true, init: () => App.renderCategories() },
+  { id: 'todos', title: '待办', selector: '.todo-card', defaultVisible: true, init: () => Todos.init() },
+  { id: 'wallpaper', title: '壁纸按钮', selector: '#wallpaperBtn', defaultVisible: true }
+];
+
 const App = {
   currentEngine: 0,
 
@@ -18,18 +36,9 @@ const App = {
     this.updateEngineBtn();
     this.applySettings(settings);
     this.bindEvents();
-    this.startClock();
 
-    // 并行加载所有独立模块，互不阻塞显著提升首屏速度
-    await Promise.all([
-      Wallpaper.init(),
-      Weather.init(),
-      typeof Calendar !== 'undefined' ? Calendar.init() : Promise.resolve(),
-      Todos.init(),
-      this.renderBookmarks(),
-      this.renderCategories(),
-      Settings.init()
-    ]);
+    // 组件初始化统一由 applyComponentVisibility 按可见性触发（首次可见时执行一次）
+    await Promise.all([Wallpaper.init(), Settings.init()]);
   },
 
   applySettings(settings) {
@@ -39,6 +48,27 @@ const App = {
     }
     // V3 主题：默认深色，浅色时切换
     document.documentElement.dataset.theme = settings.theme === 'light' ? 'light' : 'dark';
+    // V3 组件可见性：按注册表隐藏/显示主页区块
+    this.applyComponentVisibility(settings);
+  },
+
+  isComponentVisible(component, settings) {
+    if (component.locked) return true;
+    return (settings.componentVisibility || {})[component.id] !== false;
+  },
+
+  applyComponentVisibility(settings) {
+    COMPONENTS.forEach(c => {
+      const el = document.querySelector(c.selector);
+      if (!el) return;
+      const visible = this.isComponentVisible(c, settings);
+      el.classList.toggle('component-hidden', !visible);
+      // 从隐藏切换为可见时补初始化（含初始启动）；_initialized 防止重复初始化
+      if (visible && c.init && !c._initialized) {
+        c._initialized = true;
+        c.init();
+      }
+    });
   },
 
   hideChromeUI() {
@@ -128,6 +158,8 @@ const App = {
   },
 
   startClock() {
+    if (this._clockStarted) return;
+    this._clockStarted = true;
     const el = document.getElementById('datetime');
     let hoverCardMounted = false;
 

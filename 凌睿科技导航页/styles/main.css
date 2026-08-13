@@ -125,6 +125,65 @@
   border-color: rgba(25, 28, 45, 0.14);
 }
 
+/* V3 组件可见性：隐藏的组件区块 */
+.component-hidden {
+  display: none !important;
+}
+
+/* V3 浅色主题：悬浮卡片（天气 24h / 农历日历）与待办输入区 */
+[data-theme="light"] .weather-hover-card,
+[data-theme="light"] .datetime-hover-card {
+  background: rgba(250, 250, 255, 0.97);
+  border-color: rgba(25, 28, 45, 0.10);
+  box-shadow: 0 20px 48px rgba(40, 35, 70, 0.18);
+}
+
+[data-theme="light"] .todo-input-wrapper {
+  background: rgba(255, 255, 255, 0.60);
+  border-color: rgba(25, 28, 45, 0.08);
+}
+
+[data-theme="light"] .todo-input-wrapper:focus-within {
+  background: rgba(255, 255, 255, 0.78);
+  border-color: var(--accent-border);
+}
+
+[data-theme="light"] .todo-input::placeholder {
+  color: rgba(25, 28, 45, 0.30);
+}
+
+[data-theme="light"] .todo-text {
+  color: rgba(25, 28, 45, 0.62);
+}
+
+[data-theme="light"] .todo-text.done {
+  color: rgba(25, 28, 45, 0.30);
+}
+
+[data-theme="light"] .todo-checkbox {
+  border-color: rgba(25, 28, 45, 0.30);
+}
+
+[data-theme="light"] .todo-delete-btn {
+  color: rgba(25, 28, 45, 0.25);
+}
+
+[data-theme="light"] .todo-delete-btn:hover {
+  color: rgba(210, 60, 45, 0.75);
+}
+
+[data-theme="light"] .todo-item:hover {
+  background: rgba(25, 28, 45, 0.04);
+}
+
+[data-theme="light"] .feedback-error {
+  color: rgba(205, 55, 45, 0.85);
+}
+
+[data-theme="light"] .feedback-success {
+  color: rgba(35, 160, 100, 0.85);
+}
+
 * {
   margin: 0;
   padding: 0;

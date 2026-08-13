@@ -60,6 +60,7 @@ const DEFAULT_SETTINGS = {
   weatherCity: '',
   weatherCache: null,
   showBottomBar: false,
+  componentVisibility: {},
   version: '1.0.0'
 };
 
@@ -76,6 +77,21 @@ function reorder(items, fromIndex, toIndex) {
   const [moved] = arr.splice(fromIndex, 1);
   arr.splice(toIndex, 0, moved);
   return arr;
+}
+
+/* 存量数据归一化：存在缺失 sortOrder 时，按当前数组顺序重新编号 1..n，
+   返回是否有补值；不改变数组顺序、不丢数据。纯函数（仅修改传入项对象的属性）。 */
+function ensureSortOrder(items) {
+  if (!Array.isArray(items) || items.length === 0) return false;
+  const hasMissing = items.some(item =>
+    item && typeof item === 'object' &&
+    (item.sortOrder === undefined || item.sortOrder === null)
+  );
+  if (!hasMissing) return false;
+  items.forEach((item, i) => {
+    if (item && typeof item === 'object') item.sortOrder = i + 1;
+  });
+  return true;
 }
 
 /* ---- 备份数据校验：纯函数，返回错误列表 ---- */
@@ -96,6 +112,80 @@ function validateBackup(data) {
   }
   if (data.settings !== undefined && (typeof data.settings !== 'object' || data.settings === null || Array.isArray(data.settings))) {
     errors.push('settings 字段必须是对象');
+  }
+
+  // 字段级校验：必填字段、类型、重复 id（每类最多报 8 条，避免错误列表过长）
+  const limit = (list) => { if (list.length >= 8) return true; return false; };
+  if (Array.isArray(data.bookmarks)) {
+    const ids = new Set();
+    for (let i = 0; i < data.bookmarks.length; i++) {
+      if (limit(errors)) break;
+      const bm = data.bookmarks[i];
+      if (!bm || typeof bm !== 'object' || Array.isArray(bm)) {
+        errors.push(`bookmarks[${i}] 不是有效对象`);
+        continue;
+      }
+      if (typeof bm.id !== 'string' || !bm.id) errors.push(`bookmarks[${i}] 缺少 id`);
+      if (typeof bm.title !== 'string' || !bm.title.trim()) errors.push(`bookmarks[${i}] 缺少 title`);
+      if (typeof bm.url !== 'string' || !bm.url.trim()) errors.push(`bookmarks[${i}] 缺少 url`);
+      if (typeof bm.id === 'string' && bm.id) {
+        if (ids.has(bm.id)) errors.push(`书签 id 重复：${bm.id}`);
+        ids.add(bm.id);
+      }
+    }
+  }
+  if (Array.isArray(data.categories)) {
+    const ids = new Set();
+    const itemIds = new Set();
+    for (let i = 0; i < data.categories.length; i++) {
+      if (limit(errors)) break;
+      const cat = data.categories[i];
+      if (!cat || typeof cat !== 'object' || Array.isArray(cat)) {
+        errors.push(`categories[${i}] 不是有效对象`);
+        continue;
+      }
+      if (typeof cat.id !== 'string' || !cat.id) errors.push(`categories[${i}] 缺少 id`);
+      if (typeof cat.title !== 'string' || !cat.title.trim()) errors.push(`categories[${i}] 缺少 title`);
+      if (cat.items !== undefined && !Array.isArray(cat.items)) errors.push(`categories[${i}] 的 items 必须是数组`);
+      if (typeof cat.id === 'string' && cat.id) {
+        if (ids.has(cat.id)) errors.push(`分类 id 重复：${cat.id}`);
+        ids.add(cat.id);
+      }
+      if (Array.isArray(cat.items)) {
+        for (let j = 0; j < cat.items.length; j++) {
+          if (limit(errors)) break;
+          const item = cat.items[j];
+          if (!item || typeof item !== 'object' || Array.isArray(item)) {
+            errors.push(`categories[${i}].items[${j}] 不是有效对象`);
+            continue;
+          }
+          if (typeof item.id !== 'string' || !item.id) errors.push(`categories[${i}].items[${j}] 缺少 id`);
+          if (typeof item.title !== 'string' || !item.title.trim()) errors.push(`categories[${i}].items[${j}] 缺少 title`);
+          if (typeof item.url !== 'string' || !item.url.trim()) errors.push(`categories[${i}].items[${j}] 缺少 url`);
+          if (typeof item.id === 'string' && item.id) {
+            if (itemIds.has(item.id)) errors.push(`分类链接 id 重复：${item.id}`);
+            itemIds.add(item.id);
+          }
+        }
+      }
+    }
+  }
+  if (Array.isArray(data.todos)) {
+    const ids = new Set();
+    for (let i = 0; i < data.todos.length; i++) {
+      if (limit(errors)) break;
+      const todo = data.todos[i];
+      if (!todo || typeof todo !== 'object' || Array.isArray(todo)) {
+        errors.push(`todos[${i}] 不是有效对象`);
+        continue;
+      }
+      if (typeof todo.id !== 'string' || !todo.id) errors.push(`todos[${i}] 缺少 id`);
+      if (typeof todo.text !== 'string' || !todo.text.trim()) errors.push(`todos[${i}] 缺少 text`);
+      if (typeof todo.id === 'string' && todo.id) {
+        if (ids.has(todo.id)) errors.push(`待办 id 重复：${todo.id}`);
+        ids.add(todo.id);
+      }
+    }
   }
   return errors;
 }
@@ -162,7 +252,12 @@ const Storage = {
   async getBookmarks() {
     try {
       const result = await storageGet(['bookmarks']);
-      return result.bookmarks || [];
+      const bookmarks = result.bookmarks || [];
+      // V3 存量数据兼容：缺失 sortOrder 时按当前顺序补值并持久化
+      if (ensureSortOrder(bookmarks)) {
+        await storageSet({ bookmarks });
+      }
+      return bookmarks;
     } catch (e) {
       console.error('读取书签失败:', e);
       return [];
@@ -215,7 +310,18 @@ const Storage = {
   async getCategories() {
     try {
       const result = await storageGet(['categories']);
-      return result.categories || [];
+      const categories = result.categories || [];
+      // V3 存量数据兼容：分类与分类内链接缺失 sortOrder 时按当前顺序补值并持久化
+      let changed = ensureSortOrder(categories);
+      for (const cat of categories) {
+        if (Array.isArray(cat.items) && ensureSortOrder(cat.items)) {
+          changed = true;
+        }
+      }
+      if (changed) {
+        await storageSet({ categories });
+      }
+      return categories;
     } catch (e) {
       console.error('读取分类失败:', e);
       return [];
@@ -366,6 +472,19 @@ const Storage = {
     return merged;
   },
 
+  /* ---- V3 组件可见性：默认全开，持久化于 settings.componentVisibility ---- */
+  async getComponentVisibility() {
+    const settings = await this.getSettings();
+    return settings.componentVisibility || {};
+  },
+
+  async setComponentVisible(id, visible) {
+    const current = await this.getComponentVisibility();
+    const next = { ...current, [id]: !!visible };
+    await this.updateSettings({ componentVisibility: next });
+    return next;
+  },
+
   /* ---- V3 数据备份：导出/导入 ---- */
   async exportData() {
     const result = await storageGet(['bookmarks', 'categories', 'settings', 'todos']);
@@ -399,7 +518,16 @@ const Storage = {
       todos: Array.isArray(data.todos) ? data.todos : (current.todos || []),
       settings: data.settings ? { ...DEFAULT_SETTINGS, ...data.settings } : (current.settings || DEFAULT_SETTINGS)
     };
-    await storageSet(next);
+
+    // 导入前自动备份当前数据（便于回滚与留痕）
+    await storageSet({ lastImportBackup: { ...current, backedUpAt: Date.now() } });
+    try {
+      await storageSet(next);
+    } catch (err) {
+      // 写入失败：回滚到导入前数据
+      await storageSet(current).catch(() => {});
+      throw new Error('写入失败，已恢复原有数据：' + err.message);
+    }
     return next;
   }
 };

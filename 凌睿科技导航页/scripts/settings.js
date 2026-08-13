@@ -60,8 +60,49 @@ const Settings = {
     if (tab === 'data') {
       this.renderDataSettings();
     }
+    if (tab === 'components') {
+      this.renderComponentsSettings();
+    }
     // 清理其他 tab 可能残留的内联表单，防止 ID 冲突
     this.clearInlineForms();
+  },
+
+  /* V3 组件管理：按 COMPONENTS 注册表渲染开关，搜索框常驻不可关闭 */
+  async renderComponentsSettings() {
+    const tab = document.getElementById('tabComponents');
+    if (!tab) return;
+    const settings = await Storage.getSettings();
+    const visibility = settings.componentVisibility || {};
+
+    tab.innerHTML = `
+      <div class="setting-section">
+        <div class="setting-section-title">组件管理</div>
+        <p class="setting-section-desc">选择主页显示哪些区块。搜索框为常驻组件，不可关闭。保存后主页即时生效。</p>
+        ${COMPONENTS.map(c => `
+          <label class="toggle-row">
+            <span>${c.title}${c.locked ? '（常驻）' : ''}</span>
+            <input type="checkbox" data-component-id="${c.id}"
+              ${c.locked ? 'checked disabled' : ''}
+              ${!c.locked && visibility[c.id] !== false ? 'checked' : ''}>
+          </label>
+        `).join('')}
+        <div class="todo-save-feedback" id="componentFeedback" style="margin-top: 10px;"></div>
+      </div>
+    `;
+
+    tab.querySelectorAll('input[type="checkbox"]').forEach(input => {
+      input.addEventListener('change', async () => {
+        const id = input.dataset.componentId;
+        await Storage.setComponentVisible(id, input.checked);
+        const s = await Storage.getSettings();
+        App.applyComponentVisibility(s);
+        const fb = document.getElementById('componentFeedback');
+        if (fb) {
+          fb.textContent = '主页已更新';
+          fb.className = 'todo-save-feedback feedback-success';
+        }
+      });
+    });
   },
 
   clearInlineForms() {
@@ -464,10 +505,16 @@ const Settings = {
           `导入成功：书签 ${(next.bookmarks || []).length} 个、分类 ${(next.categories || []).length} 个、待办 ${(next.todos || []).length} 条`,
           'success'
         );
+        // 全量刷新：书签/分类/待办 + 主题/底部栏/组件可见性 + 天气/壁纸
         await this.renderBookmarks();
         await this.renderCategories();
         App.renderBookmarks();
         App.renderCategories();
+        Todos.render();
+        const s = await Storage.getSettings();
+        App.applySettings(s);
+        if (typeof Weather !== 'undefined') Weather.setCity(s.weatherCity || '');
+        if (typeof Wallpaper !== 'undefined') Wallpaper.init();
       } catch (err) {
         this.showDataFeedback('导入失败：' + err.message + '（现有数据未受影响）', 'error');
       }
