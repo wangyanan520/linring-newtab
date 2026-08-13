@@ -1,6 +1,5 @@
 const Settings = {
   currentTab: 'bookmarks',
-  editStates: {},
 
   async init() {
     this.bindEvents();
@@ -174,7 +173,7 @@ const Settings = {
           </div>
         </div>
         <div class="category-sub-items">
-          ${cat.items.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)).map(item => `
+          ${(cat.items || []).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)).map(item => `
             <div class="sub-item" data-id="${item.id}" data-cat-id="${cat.id}">
               <div class="setting-item-info">
                 <span class="setting-item-title">${escapeHtml(item.title)}</span>
@@ -246,7 +245,7 @@ const Settings = {
 
     document.getElementById('saveBookmark').addEventListener('click', async () => {
       const title = document.getElementById('bmTitle').value.trim();
-      const url = document.getElementById('bmUrl').value.trim();
+      const url = normalizeUrl(document.getElementById('bmUrl').value.trim());
       if (!title || !url) return;
       await Storage.addBookmark({ title, url });
       form.remove();
@@ -259,7 +258,6 @@ const Settings = {
   },
 
   showEditBookmarkForm(id) {
-    this.editStates[id] = true;
     const items = document.querySelectorAll(`#bookmarkList .setting-item[data-id="${id}"]`);
     const item = items[0];
     if (!item) return;
@@ -280,16 +278,14 @@ const Settings = {
 
     document.getElementById('saveEditBookmark').addEventListener('click', async () => {
       const newTitle = document.getElementById('editBmTitle').value.trim();
-      const newUrl = document.getElementById('editBmUrl').value.trim();
+      const newUrl = normalizeUrl(document.getElementById('editBmUrl').value.trim());
       if (!newTitle || !newUrl) return;
       await Storage.updateBookmark(id, { title: newTitle, url: newUrl });
-      delete this.editStates[id];
       await this.renderBookmarks();
       App.renderBookmarks();
     });
 
     document.getElementById('cancelEditBookmark').addEventListener('click', () => {
-      delete this.editStates[id];
       this.renderBookmarks();
     });
   },
@@ -485,9 +481,13 @@ const Settings = {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `lingrui-nav-backup-${new Date().toISOString().slice(0, 10)}.json`;
+        const now = new Date();
+        // 用本地日期命名（toISOString 为 UTC，北京时间凌晨 0-8 点会差一天）
+        const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        a.download = `lingrui-nav-backup-${localDate}.json`;
         a.click();
-        URL.revokeObjectURL(url);
+        // 延迟释放 object URL，避免个别浏览器在下载尚未开始时中断
+        setTimeout(() => URL.revokeObjectURL(url), 0);
         this.showDataFeedback('备份已导出', 'success');
       } catch (err) {
         this.showDataFeedback('导出失败：' + err.message, 'error');
@@ -499,11 +499,34 @@ const Settings = {
       e.target.value = '';
       if (!file) return;
       try {
+        // 导入前记录各类型数量，用于检测备份中空数组导致的"清空"
+        const [beforeBookmarks, beforeCategories, beforeTodos] = await Promise.all([
+          Storage.getBookmarks(),
+          Storage.getCategories(),
+          Storage.getTodos()
+        ]);
+        const before = {
+          bookmarks: beforeBookmarks.length,
+          categories: beforeCategories.length,
+          todos: beforeTodos.length
+        };
         const text = await file.text();
         const next = await Storage.importData(text);
+        const after = {
+          bookmarks: (next.bookmarks || []).length,
+          categories: (next.categories || []).length,
+          todos: (next.todos || []).length
+        };
+        const cleared = [];
+        if (before.bookmarks > 0 && after.bookmarks === 0) cleared.push('书签');
+        if (before.categories > 0 && after.categories === 0) cleared.push('分类');
+        if (before.todos > 0 && after.todos === 0) cleared.push('待办');
+        const clearedTip = cleared.length > 0
+          ? `；注意：${cleared.join('、')}已被清空，如误操作可回滚至导入前备份`
+          : '';
         this.showDataFeedback(
-          `导入成功：书签 ${(next.bookmarks || []).length} 个、分类 ${(next.categories || []).length} 个、待办 ${(next.todos || []).length} 条`,
-          'success'
+          `导入成功：书签 ${after.bookmarks} 个、分类 ${after.categories} 个、待办 ${after.todos} 条${clearedTip}`,
+          cleared.length > 0 ? 'error' : 'success'
         );
         // 全量刷新：书签/分类/待办 + 主题/底部栏/组件可见性 + 天气/壁纸
         await this.renderBookmarks();
@@ -513,6 +536,9 @@ const Settings = {
         Todos.render();
         const s = await Storage.getSettings();
         App.applySettings(s);
+        // 设置面板只渲染一次，导入恢复的主题需同步到主题下拉，避免 UI 与实际主题不一致
+        const themeSelect = document.getElementById('themeSelect');
+        if (themeSelect) themeSelect.value = s.theme || 'dark';
         if (typeof Weather !== 'undefined') Weather.setCity(s.weatherCity || '');
         if (typeof Wallpaper !== 'undefined') Wallpaper.init();
       } catch (err) {
@@ -645,12 +671,13 @@ const Settings = {
   },
 
 
-  // 安全确认：在 Chrome 扩展中 confirm 可能被 CSP 阻止，fallback 静默通过
+  // 安全确认：confirm 异常时按"不确认"处理（宁可不删，避免误删且无恢复手段）
   _confirm(msg) {
     try {
       return confirm(msg);
     } catch (e) {
-      return true;
+      console.warn('安全确认不可用，已取消操作：', e);
+      return false;
     }
   },
   /* escapeHtml/escapeAttr 定义在 storage.js */

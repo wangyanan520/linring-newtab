@@ -116,6 +116,57 @@ assertEqual(
   '重编号后 sortOrder 连续 1..n'
 );
 
+/* ---- PKG-04 备份校验：validateBackup ---- */
+// validateBackup 依赖 SUPPORTED_SCHEMA_VERSION 常量，此处与 storage.js 对齐声明
+const SUPPORTED_SCHEMA_VERSION = 1;
+const validateBackup = eval(`(${extractFunction('validateBackup', storageSrc)})`);
+
+const validBackup = {
+  schemaVersion: 1,
+  bookmarks: [{ id: 'b1', title: 'A', url: 'https://a.com' }],
+  categories: [{ id: 'c1', title: 'C', items: [{ id: 'l1', title: 'L', url: 'https://l.com' }] }],
+  todos: [{ id: 't1', text: 'todo' }],
+  settings: { theme: 'dark' }
+};
+assertTrue(validateBackup(validBackup).length === 0, '合法备份通过校验');
+assertTrue(validateBackup({}).length > 0, '空对象 {} 被拒绝');
+assertTrue(validateBackup({ bookmarks: [] }).length === 0, '缺 schemaVersion 视为 v1 且含数据字段可通过');
+assertTrue(validateBackup({ schemaVersion: '1', bookmarks: [] }).length > 0, 'schemaVersion 非整数被拒绝');
+assertTrue(validateBackup({ schemaVersion: 1.5, bookmarks: [] }).length > 0, 'schemaVersion 小数被拒绝');
+assertTrue(validateBackup({ schemaVersion: 2, bookmarks: [] }).length > 0, '高版本备份被拒绝');
+assertTrue(validateBackup({ bookmarks: 'x' }).length > 0, 'bookmarks 非数组被拒绝');
+assertTrue(validateBackup({
+  bookmarks: [
+    { id: 'b1', title: 'A', url: 'https://a.com' },
+    { id: 'b1', title: 'B', url: 'https://b.com' }
+  ]
+}).length > 0, '书签 id 重复被拒绝');
+assertTrue(validateBackup(null).length > 0, 'null 被拒绝');
+assertTrue(validateBackup({
+  bookmarks: [{ id: 'b1', title: 'A', url: 'javascript:alert(1)' }]
+}).length > 0, 'javascript: 协议 url 被拒绝');
+assertTrue(validateBackup({
+  bookmarks: [{ id: 'b1', title: 'A', url: 'chrome-extension://abc/index.html' }]
+}).length === 0, 'chrome-extension: 协议 url 通过');
+assertTrue(validateBackup({
+  categories: [{ id: 'c1', title: 'C', items: [{ id: 'l1', title: 'L', url: 'data:text/html,x' }] }]
+}).length > 0, '分类链接 data: 协议 url 被拒绝');
+
+/* ---- PKG-04 导入归一化：缺 items 的分类补空数组，保证渲染路径安全 ---- */
+const normalizeCategories = eval(`(${extractFunction('normalizeCategories', storageSrc)})`);
+assertEqual(
+  normalizeCategories([{ id: 'c1', title: '仅标题分类' }]),
+  [{ id: 'c1', title: '仅标题分类', items: [] }],
+  '缺 items 的分类补空数组'
+);
+assertEqual(
+  normalizeCategories([{ id: 'c2', title: '有链接', items: [{ id: 'l1', title: 'L', url: 'https://l.com' }] }]),
+  [{ id: 'c2', title: '有链接', items: [{ id: 'l1', title: 'L', url: 'https://l.com' }] }],
+  '已有 items 的分类保持不变'
+);
+assertEqual(normalizeCategories(null), [], '非数组输入返回空数组');
+assertEqual(normalizeCategories('x'), [], '非数组字符串返回空数组');
+
 /* ---- 汇总 ---- */
 console.log(`\n结果：${passed} 通过，${failed} 失败`);
 if (failed > 0) {

@@ -15,7 +15,7 @@ const COMPONENTS = [
       App.startClock();
     }
   },
-  { id: 'weather', title: '天气', selector: '.weather-widget', defaultVisible: true, init: () => Weather.init() },
+  { id: 'weather', title: '天气', selector: '.weather-widget', defaultVisible: true, init: () => Weather.init(), onShow: () => Weather.startRefresh(), onHide: () => Weather.stopRefresh() },
   { id: 'bookmarks', title: '快捷书签', selector: '.quick-links', defaultVisible: true, init: () => App.renderBookmarks() },
   { id: 'categories', title: '分类导航', selector: '.categories', defaultVisible: true, init: () => App.renderCategories() },
   { id: 'todos', title: '待办', selector: '.todo-card', defaultVisible: true, init: () => Todos.init() },
@@ -38,7 +38,10 @@ const App = {
     this.bindEvents();
 
     // 组件初始化统一由 applyComponentVisibility 按可见性触发（首次可见时执行一次）
-    await Promise.all([Wallpaper.init(), Settings.init()]);
+    // 任一初始化失败不阻塞页面其余功能，仅记录错误
+    await Promise.all([Wallpaper.init(), Settings.init()]).catch(err => {
+      console.error('组件初始化失败:', err);
+    });
   },
 
   applySettings(settings) {
@@ -63,10 +66,19 @@ const App = {
       if (!el) return;
       const visible = this.isComponentVisible(c, settings);
       el.classList.toggle('component-hidden', !visible);
-      // 从隐藏切换为可见时补初始化（含初始启动）；_initialized 防止重复初始化
-      if (visible && c.init && !c._initialized) {
-        c._initialized = true;
-        c.init();
+      if (visible) {
+        // 首次可见时初始化；再次可见时触发 onShow（如重启组件定时器）
+        if (c.init && !c._initialized) {
+          c._initialized = true;
+          c.init();
+        } else if (c.onShow && !c._visible) {
+          c.onShow();
+        }
+        c._visible = true;
+      } else {
+        // 隐藏时触发 onHide（如停止组件后台请求）
+        if (c.onHide && c._visible) c.onHide();
+        c._visible = false;
       }
     });
   },
@@ -88,10 +100,14 @@ const App = {
     });
     observer.observe(document.documentElement, { childList: true, subtree: true });
 
-    // 轮询兜底（Chrome 可能延迟注入），一旦清理成功即停止
+    // 轮询兜底（Chrome 可能延迟注入），一旦清理成功即停止并断开监听
     let attempts = 0;
     const poll = setInterval(() => {
-      if (cleaned) { clearInterval(poll); return; }
+      if (cleaned) {
+        clearInterval(poll);
+        observer.disconnect();
+        return;
+      }
       const targets = document.querySelectorAll(
         'customize-chrome-button, cr-customize-button, ntp-customize-button'
       );
@@ -103,7 +119,10 @@ const App = {
         }
       });
       attempts++;
-      if (attempts > 20) clearInterval(poll);
+      if (attempts > 20) {
+        clearInterval(poll);
+        observer.disconnect();
+      }
     }, 200);
   },
 
@@ -203,7 +222,8 @@ const App = {
 
     container.innerHTML = bookmarks.map(bm => {
       const domain = this.extractDomain(bm.url);
-      const firstChar = escapeHtml(bm.title.charAt(0));
+      // 属性值上下文用 escapeAttr（escapeHtml 不转义引号，标题首字符为 " 时会提前闭合属性）
+      const firstChar = escapeAttr(bm.title.charAt(0));
       return `
       <a href="${escapeAttr(bm.url)}" class="bookmark-item" title="${escapeAttr(bm.title)}" target="_blank" draggable="true" data-id="${escapeAttr(bm.id)}">
         <div class="bookmark-icon">
@@ -228,7 +248,7 @@ const App = {
       });
     });
 
-    this.attachDrag(container, (from, to) => Storage.reorderBookmarks(from, to), () => this.renderBookmarks());
+    this.attachDrag(container, (from, to) => Storage.reorderBookmarks(from, to));
   },
 
   async renderCategories() {
@@ -243,7 +263,7 @@ const App = {
           <span class="category-toggle ${cat.collapsed ? 'collapsed' : ''}">▼</span>
         </div>
         <div class="category-items ${cat.collapsed ? 'collapsed' : ''}">
-          ${cat.items.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)).map(item => `
+          ${[...(cat.items || [])].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)).map(item => `
             <a href="${escapeAttr(item.url)}" class="category-link" target="_blank">${escapeHtml(item.title)}</a>
           `).join('')}
         </div>
@@ -263,11 +283,15 @@ const App = {
       });
     });
 
-    this.attachDrag(container, (from, to) => Storage.reorderCategories(from, to), () => this.renderCategories());
+    this.attachDrag(container, (from, to) => Storage.reorderCategories(from, to));
   },
 
-  /* 通用拖拽排序：HTML5 DnD，调用 reorderFn 持久化后重渲染 */
-  attachDrag(container, reorderFn, rerenderFn) {
+  /* 通用拖拽排序：HTML5 DnD，调用 reorderFn 持久化后移动 DOM（不整块重渲染） */
+  attachDrag(container, reorderFn) {
+    // 容器为静态元素：事件只绑定一次，避免每次重渲染重复累积监听器
+    if (container.dataset.dragBound === '1') return;
+    container.dataset.dragBound = '1';
+
     const items = () => Array.from(container.querySelectorAll('[draggable="true"]'));
     let dragIndex = -1;
 
@@ -291,15 +315,46 @@ const App = {
       e.dataTransfer.dropEffect = 'move';
     });
 
+    // 拖到卡片间隙落空时，按落点坐标推导插入索引（reorder 的 to 语义：插入该索引位）
+    const findDropIndex = (els, x, y) => {
+      let best = -1;
+      let bestDist = Infinity;
+      for (let i = 0; i < els.length; i++) {
+        const r = els[i].getBoundingClientRect();
+        const dx = x - (r.left + r.width / 2);
+        const dy = y - (r.top + r.height / 2);
+        const d = dx * dx + dy * dy;
+        if (d < bestDist) { bestDist = d; best = i; }
+      }
+      if (best === -1) return -1;
+      const r = els[best].getBoundingClientRect();
+      // 落点在最近元素中心之前 → 插其前；否则插其后（末尾收敛到 length-1，兼容 reorder 越界语义）
+      const before = x < r.left + r.width / 2;
+      return before ? best : Math.min(best + 1, els.length - 1);
+    };
+
     container.addEventListener('drop', async (e) => {
       e.preventDefault();
       const els = items();
+      if (dragIndex === -1) return;
       const target = e.target.closest('[draggable="true"]');
-      if (dragIndex === -1 || !target) return;
-      const toIndex = els.indexOf(target);
+      const toIndex = target ? els.indexOf(target) : findDropIndex(els, e.clientX, e.clientY);
       if (toIndex === -1 || toIndex === dragIndex) return;
-      await reorderFn(dragIndex, toIndex);
-      await rerenderFn();
+      try {
+        await reorderFn(dragIndex, toIndex);
+      } catch (err) {
+        // 持久化失败：不移动 DOM，保持现状（下次渲染仍按存储顺序）
+        console.error('保存排序失败:', err);
+        return;
+      }
+      // DOM 移动替代全量重渲染：不重建 <img> 节点，避免 50+ 书签时 favicon 全部重载闪烁
+      const dragEl = els[dragIndex];
+      const targetEl = els[toIndex];
+      if (toIndex < dragIndex) {
+        container.insertBefore(dragEl, targetEl);
+      } else {
+        container.insertBefore(dragEl, targetEl.nextSibling);
+      }
     });
 
     container.addEventListener('dragend', () => {

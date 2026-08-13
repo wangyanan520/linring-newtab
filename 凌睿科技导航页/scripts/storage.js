@@ -94,6 +94,9 @@ function ensureSortOrder(items) {
   return true;
 }
 
+/* 当前支持的备份格式版本（导出时写入 schemaVersion） */
+const SUPPORTED_SCHEMA_VERSION = 1;
+
 /* ---- 备份数据校验：纯函数，返回错误列表 ---- */
 function validateBackup(data) {
   const errors = [];
@@ -114,8 +117,29 @@ function validateBackup(data) {
     errors.push('settings 字段必须是对象');
   }
 
+  // 版本闸门：schemaVersion 缺失视为 v1（兼容旧备份）；存在时必须为整数且不高于当前支持版本
+  if (data.schemaVersion !== undefined) {
+    if (typeof data.schemaVersion !== 'number' || !Number.isInteger(data.schemaVersion)) {
+      errors.push('schemaVersion 必须是整数');
+    } else if (data.schemaVersion > SUPPORTED_SCHEMA_VERSION) {
+      errors.push(`不支持的备份版本：${data.schemaVersion}（当前支持 ${SUPPORTED_SCHEMA_VERSION}）`);
+    }
+  }
+  // 空备份：不含任何数据字段的文件不视为有效备份，避免导入"假成功"
+  if (!('bookmarks' in data) && !('categories' in data) && !('todos' in data) && !('settings' in data)) {
+    errors.push('备份文件中不包含任何数据字段');
+  }
+
   // 字段级校验：必填字段、类型、重复 id（每类最多报 8 条，避免错误列表过长）
   const limit = (list) => { if (list.length >= 8) return true; return false; };
+  // url 协议白名单：仅允许 http/https/chrome-extension，拒绝 javascript: 等可执行协议
+  const urlProtoAllowed = (url) => {
+    try {
+      return ['http:', 'https:', 'chrome-extension:'].includes(new URL(url).protocol);
+    } catch {
+      return false;
+    }
+  };
   if (Array.isArray(data.bookmarks)) {
     const ids = new Set();
     for (let i = 0; i < data.bookmarks.length; i++) {
@@ -128,6 +152,7 @@ function validateBackup(data) {
       if (typeof bm.id !== 'string' || !bm.id) errors.push(`bookmarks[${i}] 缺少 id`);
       if (typeof bm.title !== 'string' || !bm.title.trim()) errors.push(`bookmarks[${i}] 缺少 title`);
       if (typeof bm.url !== 'string' || !bm.url.trim()) errors.push(`bookmarks[${i}] 缺少 url`);
+      else if (!urlProtoAllowed(bm.url.trim())) errors.push(`bookmarks[${i}] url 协议不支持（仅 http/https/chrome-extension）`);
       if (typeof bm.id === 'string' && bm.id) {
         if (ids.has(bm.id)) errors.push(`书签 id 重复：${bm.id}`);
         ids.add(bm.id);
@@ -162,6 +187,7 @@ function validateBackup(data) {
           if (typeof item.id !== 'string' || !item.id) errors.push(`categories[${i}].items[${j}] 缺少 id`);
           if (typeof item.title !== 'string' || !item.title.trim()) errors.push(`categories[${i}].items[${j}] 缺少 title`);
           if (typeof item.url !== 'string' || !item.url.trim()) errors.push(`categories[${i}].items[${j}] 缺少 url`);
+          else if (!urlProtoAllowed(item.url.trim())) errors.push(`categories[${i}].items[${j}] url 协议不支持（仅 http/https/chrome-extension）`);
           if (typeof item.id === 'string' && item.id) {
             if (itemIds.has(item.id)) errors.push(`分类链接 id 重复：${item.id}`);
             itemIds.add(item.id);
@@ -188,6 +214,17 @@ function validateBackup(data) {
     }
   }
   return errors;
+}
+
+/* 导入归一化：分类缺 items 字段时补空数组（validateBackup 允许 items 缺失），
+   保证后续渲染路径 [...cat.items] 安全；返回新数组，不修改入参。 */
+function normalizeCategories(categories) {
+  if (!Array.isArray(categories)) return [];
+  return categories.map(cat =>
+    cat && typeof cat === 'object' && !Array.isArray(cat)
+      ? { ...cat, items: Array.isArray(cat.items) ? cat.items : [] }
+      : cat
+  );
 }
 
 /* ---- 共享工具函数 ---- */
@@ -250,18 +287,20 @@ const Storage = {
   },
 
   async getBookmarks() {
+    let bookmarks;
     try {
       const result = await storageGet(['bookmarks']);
-      const bookmarks = result.bookmarks || [];
+      bookmarks = result.bookmarks || [];
       // V3 存量数据兼容：缺失 sortOrder 时按当前顺序补值并持久化
       if (ensureSortOrder(bookmarks)) {
         await storageSet({ bookmarks });
       }
-      return bookmarks;
     } catch (e) {
+      // 补值写回失败时数据已读取，仍返回本次会话可用，仅告警不置空，
+      // 避免主页误显空数据、后续操作基于空数组覆盖写入导致数据丢失
       console.error('读取书签失败:', e);
-      return [];
     }
+    return Array.isArray(bookmarks) ? bookmarks : [];
   },
 
   async addBookmark(bookmark) {
@@ -308,24 +347,27 @@ const Storage = {
   },
 
   async getCategories() {
+    let categories;
     try {
       const result = await storageGet(['categories']);
-      const categories = result.categories || [];
+      categories = result.categories || [];
       // V3 存量数据兼容：分类与分类内链接缺失 sortOrder 时按当前顺序补值并持久化
       let changed = ensureSortOrder(categories);
       for (const cat of categories) {
-        if (Array.isArray(cat.items) && ensureSortOrder(cat.items)) {
+        // 空值防御：存量脏数据中可能出现 null/非对象元素，跳过而不是整体落入 catch
+        if (cat && typeof cat === 'object' && Array.isArray(cat.items) && ensureSortOrder(cat.items)) {
           changed = true;
         }
       }
       if (changed) {
         await storageSet({ categories });
       }
-      return categories;
     } catch (e) {
+      // 补值写回失败时数据已读取，仍返回本次会话可用，仅告警不置空，
+      // 避免主页误显空数据、后续操作基于空数组覆盖写入导致数据丢失
       console.error('读取分类失败:', e);
-      return [];
     }
+    return Array.isArray(categories) ? categories : [];
   },
 
   async addCategory(category) {
@@ -514,13 +556,20 @@ const Storage = {
     const current = await storageGet(['bookmarks', 'categories', 'settings', 'todos']);
     const next = {
       bookmarks: Array.isArray(data.bookmarks) ? data.bookmarks : (current.bookmarks || []),
-      categories: Array.isArray(data.categories) ? data.categories : (current.categories || []),
+      categories: Array.isArray(data.categories) ? normalizeCategories(data.categories) : (current.categories || []),
       todos: Array.isArray(data.todos) ? data.todos : (current.todos || []),
       settings: data.settings ? { ...DEFAULT_SETTINGS, ...data.settings } : (current.settings || DEFAULT_SETTINGS)
     };
 
-    // 导入前自动备份当前数据（便于回滚与留痕）
-    await storageSet({ lastImportBackup: { ...current, backedUpAt: Date.now() } });
+    // 导入前自动备份当前数据：轮转保留最近 3 份（-1 最新），便于回滚与留痕；
+    // 仅写存在的值，避免 localStorage 回退路径把 undefined 序列化为 "undefined" 脏数据
+    const prevBackups = await storageGet(['lastImportBackup-1', 'lastImportBackup-2']);
+    const backups = {
+      'lastImportBackup-1': { ...current, backedUpAt: Date.now() }
+    };
+    if (prevBackups['lastImportBackup-1']) backups['lastImportBackup-2'] = prevBackups['lastImportBackup-1'];
+    if (prevBackups['lastImportBackup-2']) backups['lastImportBackup-3'] = prevBackups['lastImportBackup-2'];
+    await storageSet(backups);
     try {
       await storageSet(next);
     } catch (err) {

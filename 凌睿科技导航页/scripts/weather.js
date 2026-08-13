@@ -159,8 +159,13 @@ const Weather = {
   cache: null,
   coords: null,
   selectedCityQuery: '',
+  _timerId: null,
+  _inited: false,
 
   async init() {
+    // 守卫：即使注册表路径外出现重复调用，也只在首次执行（防止重复 fetch/建定时器）
+    if (this._inited) return;
+    this._inited = true;
     await loadCityData();
     const settings = await Storage.getSettings();
     this.selectedCityQuery = settings.weatherCity || '';
@@ -170,7 +175,21 @@ const Weather = {
     }
     // 异步启动位置检测 + 天气刷新，不阻塞页面渲染
     this._initAsync().catch(() => {});
-    setInterval(() => this.refresh(), CACHE_DURATION);
+    this.startRefresh();
+  },
+
+  startRefresh() {
+    // 已有定时器不重复创建
+    if (this._timerId) return;
+    this._timerId = setInterval(() => this.refresh(), CACHE_DURATION);
+  },
+
+  stopRefresh() {
+    // 组件隐藏时停止刷新，避免后台持续请求 wttr.in（隐私友好）
+    if (this._timerId) {
+      clearInterval(this._timerId);
+      this._timerId = null;
+    }
   },
 
   async _initAsync() {
