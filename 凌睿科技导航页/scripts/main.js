@@ -16,46 +16,60 @@ const App = {
       if (idx !== -1) this.currentEngine = idx;
     }
     this.updateEngineBtn();
+    this.applySettings(settings);
     this.bindEvents();
     this.startClock();
-    await Wallpaper.init();
-    await Weather.init();
-    await Todos.init();
-    await this.renderBookmarks();
-    await this.renderCategories();
-    await Settings.init();
+
+    // 并行加载所有独立模块，互不阻塞显著提升首屏速度
+    await Promise.all([
+      Wallpaper.init(),
+      Weather.init(),
+      typeof Calendar !== 'undefined' ? Calendar.init() : Promise.resolve(),
+      Todos.init(),
+      this.renderBookmarks(),
+      this.renderCategories(),
+      Settings.init()
+    ]);
+  },
+
+  applySettings(settings) {
+    const bar = document.querySelector('.bottom-bar');
+    if (bar) {
+      bar.classList.toggle('hidden', !settings.showBottomBar);
+    }
   },
 
   hideChromeUI() {
-    const removeIt = () => {
+    // 持续清理动态注入的自定义按钮（inline style 已处理初始隐藏）
+    let cleaned = false;
+    const observer = new MutationObserver(() => {
       const targets = document.querySelectorAll(
-        'customize-chrome-button, [id="customize-chrome-button"], .CustomizeChromeButton'
+        'customize-chrome-button, cr-customize-button, ntp-customize-button, [id*="customize" i], [class*="customize" i]'
       );
       targets.forEach(el => {
         if (el && el.parentNode) {
-          el.parentNode.removeChild(el);
+          el.style.display = 'none';
+          el.remove();
+          cleaned = true;
         }
       });
-    };
-
-    removeIt();
-    const observer = new MutationObserver(() => {
-      const targets = document.querySelectorAll(
-        'customize-chrome-button, [id="customize-chrome-button"], .CustomizeChromeButton'
-      );
-      if (targets.length > 0) {
-        targets.forEach(el => {
-          if (el && el.parentNode) el.parentNode.removeChild(el);
-        });
-      }
     });
-    observer.observe(document.documentElement, {
-      childList: true, subtree: true
-    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
 
+    // 轮询兜底（Chrome 可能延迟注入），一旦清理成功即停止
     let attempts = 0;
     const poll = setInterval(() => {
-      removeIt();
+      if (cleaned) { clearInterval(poll); return; }
+      const targets = document.querySelectorAll(
+        'customize-chrome-button, cr-customize-button, ntp-customize-button'
+      );
+      targets.forEach(el => {
+        if (el && el.parentNode) {
+          el.style.display = 'none';
+          el.remove();
+          cleaned = true;
+        }
+      });
       attempts++;
       if (attempts > 20) clearInterval(poll);
     }, 200);
@@ -112,6 +126,9 @@ const App = {
   },
 
   startClock() {
+    const el = document.getElementById('datetime');
+    let hoverCardMounted = false;
+
     function update() {
       const now = new Date();
       const options = {
@@ -120,10 +137,29 @@ const App = {
       };
       const dateStr = now.toLocaleDateString('zh-CN', options);
       const timeStr = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-      document.getElementById('datetime').textContent = `${dateStr}  ${timeStr}`;
+
+      if (!hoverCardMounted && typeof Calendar !== 'undefined' && Calendar.loaded) {
+        el.innerHTML = `<span class="datetime-text">${dateStr}  ${timeStr}</span>${Calendar.render()}`;
+        hoverCardMounted = true;
+        const card = el.querySelector('.datetime-hover-card');
+        if (card) Calendar.bindCardEvents(card);
+      } else {
+        const textEl = el.querySelector('.datetime-text');
+        const target = textEl || el;
+        target.textContent = `${dateStr}  ${timeStr}`;
+      }
     }
     update();
     setInterval(update, 1000);
+
+    // 点击切换日历卡片
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('.datetime-hover-card')) return;
+      el.classList.toggle('show-card');
+    });
+    document.addEventListener('click', (e) => {
+      if (!el.contains(e.target)) el.classList.remove('show-card');
+    });
   },
 
   async renderBookmarks() {
@@ -133,18 +169,17 @@ const App = {
 
     container.innerHTML = bookmarks.map(bm => {
       const domain = this.extractDomain(bm.url);
-      const firstChar = this.escapeHtml(bm.title.charAt(0));
+      const firstChar = escapeHtml(bm.title.charAt(0));
       return `
-      <a href="${this.escapeAttr(bm.url)}" class="bookmark-item" title="${this.escapeAttr(bm.title)}" target="_blank">
+      <a href="${escapeAttr(bm.url)}" class="bookmark-item" title="${escapeAttr(bm.title)}" target="_blank">
         <div class="bookmark-icon">
           <img src="https://favicon.im/${domain}"
-               alt="${this.escapeAttr(bm.title)}"
+               alt="${escapeAttr(bm.title)}"
                data-domain="${domain}"
                data-char="${firstChar}">
         </div>
-        <span class="bookmark-title">${this.escapeHtml(bm.title)}</span>
-      </a>
-    `}).join('');
+        <span class="bookmark-title">${escapeHtml(bm.title)}</span>
+      </a>`}).join('');
 
     container.querySelectorAll('.bookmark-icon img').forEach(img => {
       img.addEventListener('error', function handleError() {
@@ -168,12 +203,12 @@ const App = {
     container.innerHTML = categories.map(cat => `
       <div class="category-card" data-id="${cat.id}">
         <div class="category-header" data-action="toggle" data-id="${cat.id}">
-          <span class="category-title">${this.escapeHtml(cat.title)}</span>
+          <span class="category-title">${escapeHtml(cat.title)}</span>
           <span class="category-toggle ${cat.collapsed ? 'collapsed' : ''}">▼</span>
         </div>
         <div class="category-items ${cat.collapsed ? 'collapsed' : ''}">
           ${cat.items.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)).map(item => `
-            <a href="${this.escapeAttr(item.url)}" class="category-link" target="_blank">${this.escapeHtml(item.title)}</a>
+            <a href="${escapeAttr(item.url)}" class="category-link" target="_blank">${escapeHtml(item.title)}</a>
           `).join('')}
         </div>
       </div>
@@ -201,15 +236,7 @@ const App = {
     }
   },
 
-  escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  },
-
-  escapeAttr(str) {
-    return String(str).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-  }
+  /* escapeHtml/escapeAttr 定义在 storage.js */
 };
 
 document.addEventListener('DOMContentLoaded', () => App.init());

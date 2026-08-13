@@ -7,7 +7,10 @@
   <style>
     customize-chrome-button,
     cr-customize-button,
-    *[is="customize-chrome-button"] {
+    ntp-customize-button,
+    *[is="customize-chrome-button"],
+    *[id*="customize" i],
+    *[class*="customize" i] {
       display: none !important;
       visibility: hidden !important;
       opacity: 0 !important;
@@ -16,6 +19,8 @@
       height: 0 !important;
       position: fixed !important;
       bottom: -9999px !important;
+      right: -9999px !important;
+      overflow: hidden !important;
     }
   </style>
   <link rel="stylesheet" href="styles/main.css">
@@ -104,6 +109,7 @@
       <div class="settings-tabs">
         <button class="tab-btn active" data-tab="bookmarks">快捷书签</button>
         <button class="tab-btn" data-tab="categories">分类导航</button>
+        <button class="tab-btn" data-tab="wallpaper">壁纸</button>
         <button class="tab-btn" data-tab="weather">天气</button>
       </div>
       <div class="settings-body">
@@ -131,6 +137,7 @@
           </div>
           <div class="item-list" id="categoryList"></div>
         </div>
+        <div class="tab-content" id="tabWallpaper"></div>
         <div class="tab-content" id="tabWeather">
           <div class="setting-section">
             <div class="setting-section-title">选择省份</div>
@@ -150,6 +157,8 @@
   <script src="scripts/storage.js"></script>
   <script src="scripts/wallpaper.js"></script>
   <script src="scripts/weather.js"></script>
+  <script src="scripts/lunar.min.js"></script>
+  <script src="scripts/calendar.js"></script>
   <script src="scripts/todos.js"></script>
   <script src="scripts/settings.js"></script>
   <script src="scripts/main.js"></script>

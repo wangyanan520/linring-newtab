@@ -3,10 +3,10 @@
   --text-primary: #ffffff;
   --text-secondary: rgba(255, 255, 255, 0.78);
   --text-tertiary: rgba(255, 255, 255, 0.45);
-  --glass-bg: rgba(255, 255, 255, 0.06);
-  --glass-bg-hover: rgba(255, 255, 255, 0.12);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-border-hover: rgba(255, 255, 255, 0.16);
+  --glass-bg: rgba(0, 0, 0, 0.18);
+  --glass-bg-hover: rgba(0, 0, 0, 0.28);
+  --glass-border: rgba(255, 255, 255, 0.06);
+  --glass-border-hover: rgba(255, 255, 255, 0.10);
   --shadow-sm: 0 2px 12px rgba(10, 8, 30, 0.25);
   --shadow-md: 0 8px 32px rgba(10, 8, 30, 0.35);
   --shadow-lg: 0 16px 48px rgba(10, 8, 30, 0.45);
@@ -61,7 +61,8 @@ body {
   content: '';
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.15);
+  background: rgba(0, 0, 0, var(--bg-overlay-opacity, 0.15));
+  transition: opacity 0.6s var(--ease-out);
 }
 
 .bg-glow {
@@ -95,17 +96,26 @@ body {
 }
 
 .datetime {
+  position: relative;
   font-size: 13px;
   color: var(--text-tertiary);
   letter-spacing: 0.6px;
   font-weight: 400;
   padding: 5px 16px;
   border-radius: var(--radius-full);
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.2s var(--ease-out);
+}
+
+.datetime-text {
+  display: inline-block;
 }
 
 .weather-widget {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -113,9 +123,10 @@ body {
   color: var(--text-secondary);
   padding: 5px 16px;
   border-radius: var(--radius-full);
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: rgba(0, 0, 0, 0.12);
   transition: all 0.3s var(--ease-out);
+  cursor: default;
 }
 
 .weather-widget:hover {
@@ -169,6 +180,7 @@ body {
   letter-spacing: 10px;
   color: rgba(255, 255, 255, 0.85);
   line-height: 1.3;
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.40);
 }
 
 .site-subtitle {
@@ -177,6 +189,7 @@ body {
   letter-spacing: 8px;
   color: var(--text-tertiary);
   margin-top: 8px;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.35);
 }
 
 /* ===== 搜索框 ===== */
@@ -188,19 +201,19 @@ body {
 .search-inner {
   display: flex;
   align-items: center;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.20);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: var(--radius-xl);
   padding: 4px 4px 4px 20px;
   transition: all 0.35s var(--ease-out);
-  box-shadow: var(--shadow-md), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  box-shadow: var(--shadow-md), 0 0 0 1px rgba(0, 0, 0, 0.06);
 }
 
 .search-inner:focus-within {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.28);
+  border-color: rgba(255, 255, 255, 0.10);
   box-shadow:
     var(--shadow-md),
     0 0 0 1px var(--accent-glow);
@@ -332,7 +345,7 @@ body {
   width: 48px;
   height: 48px;
   border-radius: var(--radius-lg);
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.20);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   display: flex;
@@ -375,6 +388,7 @@ body {
   font-weight: 400;
   letter-spacing: 0.3px;
   line-height: 1.4;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.30);
 }
 
 .bookmark-item:hover .bookmark-title {
@@ -392,7 +406,7 @@ body {
 }
 
 .category-card {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(0, 0, 0, 0.15);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.04);
@@ -402,7 +416,7 @@ body {
 }
 
 .category-card:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(0, 0, 0, 0.25);
   border-color: var(--accent-border);
 }
 
@@ -465,16 +479,16 @@ body {
   font-size: 12px;
   padding: 4px 12px;
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(0, 0, 0, 0.12);
   transition: all 0.2s ease;
-  border: 1px solid transparent;
+  border: 1px solid rgba(0, 0, 0, 0.08);
   font-weight: 400;
 }
 
 .category-link:hover {
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.25);
+  border-color: rgba(0, 0, 0, 0.15);
 }
 
 /* ===== 主内容区域（V2 双栏布局） ===== */
@@ -495,10 +509,10 @@ body {
 
 /* ===== 待办事项 ===== */
 .todo-card {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(0, 0, 0, 0.18);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.04);
   border-radius: var(--radius-md);
   padding: 14px 16px;
   transition: all 0.3s var(--ease-out);
@@ -717,18 +731,7 @@ body {
   padding: 16px 0;
 }
 
-/* ===== 底部工具栏 ===== */
-customize-chrome-button {
-  display: none !important;
-  visibility: hidden !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
-  position: absolute !important;
-  bottom: -9999px !important;
-  height: 0 !important;
-  width: 0 !important;
-  overflow: hidden !important;
-}
+/* Chrome 自定义按钮由 index.html inline style + JS 清理，此处不重复定义 */
 
 .bottom-bar {
   display: flex;
@@ -743,7 +746,7 @@ customize-chrome-button {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(0, 0, 0, 0.15);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.04);
@@ -758,8 +761,8 @@ customize-chrome-button {
 }
 
 .tool-btn:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.25);
+  border-color: rgba(255, 255, 255, 0.06);
   color: var(--text-secondary);
 }
 
@@ -860,4 +863,296 @@ customize-chrome-button {
 .main-content::-webkit-scrollbar-thumb:hover,
 .settings-body::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.14);
+}
+
+/* ===== 天气预报（24h）悬浮卡片 ===== */
+.weather-hover-card {
+  position: absolute;
+  top: calc(100%);
+  right: 0;
+  width: 540px;
+  padding: 18px 22px 16px;
+  background: rgba(30, 30, 50, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity 0.2s var(--ease-out) 0.15s, transform 0.2s var(--ease-out) 0.15s;
+  z-index: 100;
+}
+
+.weather-widget.show-weather-card .weather-hover-card,
+.weather-widget:hover .weather-hover-card {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+  transition-delay: 0.15s;
+}
+
+.whc-header {
+  font-size: 13px;
+  color: var(--text-secondary);
+  letter-spacing: 0.4px;
+  margin-bottom: 14px;
+  font-weight: 500;
+}
+
+.whc-grid {
+  display: grid;
+  grid-template-columns: repeat(24, 1fr);
+  gap: 3px;
+  align-items: end;
+}
+
+.whc-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+
+.whc-icon {
+  font-size: 15px;
+  line-height: 1;
+  height: 17px;
+  margin-bottom: 4px;
+}
+
+.whc-temp {
+  font-size: 12px;
+  color: var(--text-primary);
+  line-height: 1;
+  height: 14px;
+  margin-bottom: 6px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.whc-bar-wrap {
+  width: 100%;
+  height: 56px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.whc-bar {
+  width: 10px;
+  min-height: 4px;
+  background: linear-gradient(to top, rgba(100, 180, 255, 0.6), rgba(140, 200, 255, 0.85));
+  border-radius: 3px 3px 1px 1px;
+  transition: opacity 0.2s var(--ease-out);
+}
+
+.whc-hour {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1;
+  height: 12px;
+  margin-top: 8px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.3px;
+  font-weight: 450;
+}
+
+.whc-col.whc-now .whc-hour {
+  color: var(--accent-color);
+  font-weight: 600;
+}
+
+.whc-col.whc-now .whc-bar {
+  background: linear-gradient(to top, var(--accent-color), var(--accent-light));
+}
+
+/* ===== 农历日历悬浮卡片 ===== */
+.datetime-hover-card {
+  position: absolute;
+  top: calc(100%);
+  left: 0;
+  width: 380px;
+  padding: 18px 20px 16px;
+  background: rgba(30, 30, 50, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity 0.2s var(--ease-out) 0.15s, transform 0.2s var(--ease-out) 0.15s;
+  z-index: 100;
+  font-variant-numeric: tabular-nums;
+}
+
+.datetime.show-card .datetime-hover-card,
+.datetime:hover .datetime-hover-card {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+  transition-delay: 0.15s;
+}
+
+.dhc-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  letter-spacing: 0.4px;
+  margin-bottom: 14px;
+  font-weight: 500;
+}
+
+.dhc-header > :nth-child(2) {
+  flex: 1;
+  text-align: center;
+}
+
+.dhc-nav {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1;
+  transition: color 0.15s var(--ease-out), background 0.15s var(--ease-out);
+}
+
+.dhc-nav:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.dhc-nav-today {
+  font-size: 10px;
+  padding: 2px 5px;
+}
+
+.dhc-week-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  margin-bottom: 6px;
+}
+
+.dhc-week {
+  text-align: center;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.3);
+  padding: 4px 0;
+  letter-spacing: 0.3px;
+  font-weight: 500;
+}
+
+.dhc-week.dhc-weekend {
+  color: rgba(255, 255, 255, 0.15);
+}
+
+.dhc-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.dhc-cell {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 0;
+  border-radius: 8px;
+  transition: background 0.15s var(--ease-out);
+  cursor: default;
+}
+
+.dhc-cell:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.dhc-day {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.1;
+}
+
+.dhc-sub {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.3);
+  line-height: 1.2;
+  margin-top: 2px;
+  letter-spacing: 0.2px;
+}
+
+.dhc-cell.dhc-outside .dhc-day,
+.dhc-cell.dhc-outside .dhc-sub {
+  color: rgba(255, 255, 255, 0.12);
+}
+
+.dhc-cell.dhc-weekend .dhc-day {
+  color: var(--text-secondary);
+}
+
+.dhc-cell.dhc-off .dhc-day {
+  color: var(--accent-color);
+}
+
+.dhc-cell.dhc-off .dhc-sub {
+  color: var(--accent-color);
+  opacity: 0.7;
+}
+
+.dhc-cell.dhc-work .dhc-day {
+  color: rgba(100, 160, 255, 0.8);
+}
+
+.dhc-cell.dhc-work .dhc-sub {
+  color: rgba(100, 160, 255, 0.8);
+  opacity: 0.7;
+}
+
+.dhc-cell.dhc-today {
+  background: linear-gradient(180deg, var(--accent-color) 0%, var(--accent-light) 100%);
+  box-shadow: 0 4px 12px var(--accent-glow);
+}
+
+.dhc-cell.dhc-today .dhc-day,
+.dhc-cell.dhc-today .dhc-sub {
+  color: #fff;
+  font-weight: 600;
+}
+
+.dhc-cell.dhc-today .dhc-sub {
+  opacity: 0.75;
+}
+
+.dhc-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+
+.dhc-badge-off {
+  background: #d97757;
+  box-shadow: 0 0 4px rgba(217, 119, 87, 0.5);
+}
+
+.dhc-badge-work {
+  background: #7a9ec4;
+  box-shadow: 0 0 4px rgba(122, 158, 196, 0.4);
+}
+
+.dhc-cell.dhc-today .dhc-badge {
+  display: none;
 }

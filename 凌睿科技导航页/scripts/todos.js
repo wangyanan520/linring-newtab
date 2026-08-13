@@ -27,7 +27,7 @@ const Todos = {
       : todos.map(t => `
         <div class="todo-item" data-id="${t.id}">
           <input type="checkbox" class="todo-checkbox" ${t.done ? 'checked' : ''}>
-          <span class="todo-text ${t.done ? 'done' : ''}">${this.escapeHtml(t.text)}</span>
+          <span class="todo-text ${t.done ? 'done' : ''}">${escapeHtml(t.text)}</span>
           <button class="todo-delete-btn">×</button>
         </div>
       `).join('');
@@ -110,9 +110,5 @@ const Todos = {
     this.render();
   },
 
-  escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  }
+  /* escapeHtml 定义在 storage.js */
 };

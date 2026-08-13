@@ -9,8 +9,15 @@
   "permissions": [
     "storage"
   ],
+  "host_permissions": [
+    "https://cn.bing.com/*",
+    "https://www.bing.com/*",
+    "https://wttr.in/*",
+    "https://cdn.jsdelivr.net/*",
+    "https://raw.githubusercontent.com/*"
+  ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; img-src 'self' https://*.favicon.im https://www.google.com https:; style-src 'self' 'unsafe-inline';"
+    "extension_pages": "script-src 'self'; connect-src 'self' https://cn.bing.com https://wttr.in https://cdn.jsdelivr.net https://raw.githubusercontent.com; img-src 'self' data: https://*.favicon.im https://www.google.com https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com;"
   },
   "icons": {
     "16": "images/icons/icon-16.png",

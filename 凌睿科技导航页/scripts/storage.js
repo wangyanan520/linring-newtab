@@ -54,10 +54,12 @@ const PRESET_CATEGORIES = [
 
 const DEFAULT_SETTINGS = {
   wallpaperName: '深邃星空',
+  wallpaperApiCache: null,
   searchEngine: 'Google',
   theme: 'light',
   weatherCity: '',
   weatherCache: null,
+  showBottomBar: false,
   version: '1.0.0'
 };
 
@@ -65,26 +67,68 @@ function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
 
+/* ---- 共享工具函数 ---- */
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function escapeAttr(str) {
+  return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/* ---- 存储后端适配：Chrome 扩展 → localStorage 回退 ---- */
+const hasChromeStorage = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local;
+
+async function storageGet(keys) {
+  if (hasChromeStorage) {
+    return new Promise(resolve => chrome.storage.local.get(keys, resolve));
+  }
+  const keyList = Array.isArray(keys) ? keys : [keys];
+  const result = {};
+  for (const k of keyList) {
+    try {
+      const raw = localStorage.getItem(k);
+      result[k] = raw ? JSON.parse(raw) : undefined;
+    } catch { result[k] = undefined; }
+  }
+  return result;
+}
+
+async function storageSet(data) {
+  if (hasChromeStorage) {
+    return new Promise(resolve => chrome.storage.local.set(data, resolve));
+  }
+  for (const [k, v] of Object.entries(data)) {
+    localStorage.setItem(k, JSON.stringify(v));
+  }
+}
+/* -------------------------------------------------------- */
+
 const Storage = {
   async init() {
-    const result = await chrome.storage.local.get(['settings']);
+    const result = await storageGet(['settings']);
     if (!result.settings || !result.settings.version) {
-      await chrome.storage.local.set({
+      await storageSet({
         bookmarks: PRESET_BOOKMARKS,
         categories: PRESET_CATEGORIES,
         settings: DEFAULT_SETTINGS,
         todos: []
       });
+    } else {
+      const merged = { ...DEFAULT_SETTINGS, ...result.settings };
+      await storageSet({ settings: merged });
     }
   },
 
   async getAll() {
-    return await chrome.storage.local.get(['bookmarks', 'categories', 'settings']);
+    return await storageGet(['bookmarks', 'categories', 'settings']);
   },
 
   async getBookmarks() {
     try {
-      const result = await chrome.storage.local.get(['bookmarks']);
+      const result = await storageGet(['bookmarks']);
       return result.bookmarks || [];
     } catch (e) {
       console.error('读取书签失败:', e);
@@ -93,7 +137,7 @@ const Storage = {
   },
 
   async addBookmark(bookmark) {
-    const { bookmarks = [] } = await chrome.storage.local.get(['bookmarks']);
+    const { bookmarks = [] } = await storageGet(['bookmarks']);
     const maxOrder = bookmarks.reduce((max, b) => Math.max(max, b.sortOrder || 0), 0);
     const newBookmark = {
       id: generateId(),
@@ -102,24 +146,24 @@ const Storage = {
       sortOrder: maxOrder + 1
     };
     bookmarks.push(newBookmark);
-    await chrome.storage.local.set({ bookmarks });
+    await storageSet({ bookmarks });
     return newBookmark;
   },
 
   async updateBookmark(id, data) {
-    const { bookmarks = [] } = await chrome.storage.local.get(['bookmarks']);
+    const { bookmarks = [] } = await storageGet(['bookmarks']);
     const index = bookmarks.findIndex(b => b.id === id);
     if (index !== -1) {
       bookmarks[index] = { ...bookmarks[index], ...data };
-      await chrome.storage.local.set({ bookmarks });
+      await storageSet({ bookmarks });
     }
   },
 
   async deleteBookmark(id) {
     try {
-      const { bookmarks = [] } = await chrome.storage.local.get(['bookmarks']);
+      const { bookmarks = [] } = await storageGet(['bookmarks']);
       const filtered = bookmarks.filter(b => b.id !== id);
-      await chrome.storage.local.set({ bookmarks: filtered });
+      await storageSet({ bookmarks: filtered });
     } catch (e) {
       console.error('删除书签失败:', e);
     }
@@ -127,7 +171,7 @@ const Storage = {
 
   async getCategories() {
     try {
-      const result = await chrome.storage.local.get(['categories']);
+      const result = await storageGet(['categories']);
       return result.categories || [];
     } catch (e) {
       console.error('读取分类失败:', e);
@@ -136,7 +180,7 @@ const Storage = {
   },
 
   async addCategory(category) {
-    const { categories = [] } = await chrome.storage.local.get(['categories']);
+    const { categories = [] } = await storageGet(['categories']);
     const maxOrder = categories.reduce((max, c) => Math.max(max, c.sortOrder || 0), 0);
     const newCategory = {
       id: generateId(),
@@ -146,31 +190,31 @@ const Storage = {
       items: []
     };
     categories.push(newCategory);
-    await chrome.storage.local.set({ categories });
+    await storageSet({ categories });
     return newCategory;
   },
 
   async updateCategory(id, data) {
-    const { categories = [] } = await chrome.storage.local.get(['categories']);
+    const { categories = [] } = await storageGet(['categories']);
     const index = categories.findIndex(c => c.id === id);
     if (index !== -1) {
       categories[index] = { ...categories[index], ...data };
-      await chrome.storage.local.set({ categories });
+      await storageSet({ categories });
     }
   },
 
   async deleteCategory(id) {
     try {
-      const { categories = [] } = await chrome.storage.local.get(['categories']);
+      const { categories = [] } = await storageGet(['categories']);
       const filtered = categories.filter(c => c.id !== id);
-      await chrome.storage.local.set({ categories: filtered });
+      await storageSet({ categories: filtered });
     } catch (e) {
       console.error('删除分类失败:', e);
     }
   },
 
   async addCategoryItem(categoryId, item) {
-    const { categories = [] } = await chrome.storage.local.get(['categories']);
+    const { categories = [] } = await storageGet(['categories']);
     const category = categories.find(c => c.id === categoryId);
     if (category) {
       const maxOrder = category.items.reduce((max, i) => Math.max(max, i.sortOrder || 0), 0);
@@ -180,29 +224,29 @@ const Storage = {
         url: item.url,
         sortOrder: maxOrder + 1
       });
-      await chrome.storage.local.set({ categories });
+      await storageSet({ categories });
     }
   },
 
   async updateCategoryItem(categoryId, itemId, data) {
-    const { categories = [] } = await chrome.storage.local.get(['categories']);
+    const { categories = [] } = await storageGet(['categories']);
     const category = categories.find(c => c.id === categoryId);
     if (category) {
       const index = category.items.findIndex(i => i.id === itemId);
       if (index !== -1) {
         category.items[index] = { ...category.items[index], ...data };
-        await chrome.storage.local.set({ categories });
+        await storageSet({ categories });
       }
     }
   },
 
   async deleteCategoryItem(categoryId, itemId) {
     try {
-      const { categories = [] } = await chrome.storage.local.get(['categories']);
+      const { categories = [] } = await storageGet(['categories']);
       const category = categories.find(c => c.id === categoryId);
       if (category) {
         category.items = category.items.filter(i => i.id !== itemId);
-        await chrome.storage.local.set({ categories });
+        await storageSet({ categories });
       }
     } catch (e) {
       console.error('删除分类链接失败:', e);
@@ -211,7 +255,7 @@ const Storage = {
 
   async getTodos() {
     try {
-      const result = await chrome.storage.local.get(['todos']);
+      const result = await storageGet(['todos']);
       return result.todos || [];
     } catch (e) {
       console.error('读取待办失败:', e);
@@ -220,7 +264,7 @@ const Storage = {
   },
 
   async addTodo(text) {
-    const { todos = [] } = await chrome.storage.local.get(['todos']);
+    const { todos = [] } = await storageGet(['todos']);
     const newTodo = {
       id: generateId(),
       text: text,
@@ -228,24 +272,24 @@ const Storage = {
       createdAt: Date.now()
     };
     todos.push(newTodo);
-    await chrome.storage.local.set({ todos });
+    await storageSet({ todos });
     return newTodo;
   },
 
   async toggleTodo(id) {
-    const { todos = [] } = await chrome.storage.local.get(['todos']);
+    const { todos = [] } = await storageGet(['todos']);
     const todo = todos.find(t => t.id === id);
     if (todo) {
       todo.done = !todo.done;
-      await chrome.storage.local.set({ todos });
+      await storageSet({ todos });
     }
   },
 
   async deleteTodo(id) {
     try {
-      const { todos = [] } = await chrome.storage.local.get(['todos']);
+      const { todos = [] } = await storageGet(['todos']);
       const filtered = todos.filter(t => t.id !== id);
-      await chrome.storage.local.set({ todos: filtered });
+      await storageSet({ todos: filtered });
     } catch (e) {
       console.error('删除待办失败:', e);
     }
@@ -253,7 +297,7 @@ const Storage = {
 
   async getSettings() {
     try {
-      const result = await chrome.storage.local.get(['settings']);
+      const result = await storageGet(['settings']);
       const saved = result.settings || {};
       return { ...DEFAULT_SETTINGS, ...saved };
     } catch (e) {
@@ -265,7 +309,7 @@ const Storage = {
   async updateSettings(settings) {
     const current = await this.getSettings();
     const merged = { ...current, ...settings };
-    await chrome.storage.local.set({ settings: merged });
+    await storageSet({ settings: merged });
     return merged;
   }
 };

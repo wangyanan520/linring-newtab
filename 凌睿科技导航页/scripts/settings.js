@@ -6,6 +6,7 @@ const Settings = {
     this.bindEvents();
     await this.renderBookmarks();
     await this.renderCategories();
+    await this.renderWallpaperSettings();
     await this.renderWeatherSettings();
   },
 
@@ -13,6 +14,7 @@ const Settings = {
     document.getElementById('settingsOverlay').classList.add('open');
     this.renderBookmarks();
     this.renderCategories();
+    this.renderWallpaperSettings();
   },
 
   close() {
@@ -52,6 +54,9 @@ const Settings = {
     if (tab === 'weather') {
       this.renderWeatherSettings();
     }
+    if (tab === 'wallpaper') {
+      this.renderWallpaperSettings();
+    }
     // 清理其他 tab 可能残留的内联表单，防止 ID 冲突
     this.clearInlineForms();
   },
@@ -77,8 +82,8 @@ const Settings = {
     container.innerHTML = bookmarks.map(bm => `
       <div class="setting-item" data-id="${bm.id}">
         <div class="setting-item-info">
-          <span class="setting-item-title">${this.escapeHtml(bm.title)}</span>
-          <span class="setting-item-url">${this.escapeHtml(bm.url)}</span>
+          <span class="setting-item-title">${escapeHtml(bm.title)}</span>
+          <span class="setting-item-url">${escapeHtml(bm.url)}</span>
         </div>
         <div class="setting-item-actions">
           <button class="btn-edit" data-action="edit-bookmark" data-id="${bm.id}">编辑</button>
@@ -109,7 +114,7 @@ const Settings = {
       <div class="category-with-items" data-id="${cat.id}">
         <div class="setting-item">
           <div class="setting-item-info">
-            <span class="setting-item-title">${this.escapeHtml(cat.title)}</span>
+            <span class="setting-item-title">${escapeHtml(cat.title)}</span>
           </div>
           <div class="setting-item-actions">
             <button class="btn-primary btn-sm" data-action="add-item" data-id="${cat.id}">+ 添加链接</button>
@@ -121,8 +126,8 @@ const Settings = {
           ${cat.items.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)).map(item => `
             <div class="sub-item" data-id="${item.id}" data-cat-id="${cat.id}">
               <div class="setting-item-info">
-                <span class="setting-item-title">${this.escapeHtml(item.title)}</span>
-                <span class="setting-item-url">${this.escapeHtml(item.url)}</span>
+                <span class="setting-item-title">${escapeHtml(item.title)}</span>
+                <span class="setting-item-url">${escapeHtml(item.url)}</span>
               </div>
               <div class="setting-item-actions">
                 <button class="btn-edit" data-action="edit-item" data-cat-id="${cat.id}" data-item-id="${item.id}">编辑</button>
@@ -194,8 +199,8 @@ const Settings = {
     const form = document.createElement('div');
     form.className = 'inline-form';
     form.innerHTML = `
-      <input type="text" id="editBmTitle" value="${this.escapeAttr(title)}" required>
-      <input type="url" id="editBmUrl" value="${this.escapeAttr(url)}" required>
+      <input type="text" id="editBmTitle" value="${escapeAttr(title)}" required>
+      <input type="url" id="editBmUrl" value="${escapeAttr(url)}" required>
       <button class="btn-primary" id="saveEditBookmark">保存</button>
       <button class="btn-edit" id="cancelEditBookmark">取消</button>
     `;
@@ -219,22 +224,9 @@ const Settings = {
 
   async deleteBookmark(id) {
     if (!this._confirm('确定删除此书签？')) return;
-    // 先从 DOM 移除（即时视觉反馈）
-    const item = document.querySelector('#bookmarkList .setting-item[data-id="' + id + '"]');
-    if (item) item.remove();
-    // 检查列表是否为空
-    const remaining = document.querySelectorAll('#bookmarkList .setting-item');
-    if (remaining.length === 0) {
-      document.getElementById('bookmarkList').innerHTML = '<div class="empty-state">暂无书签，点击上方按钮添加</div>';
-    }
-    // 后台存储并刷新主页
-    const ok = await Storage.deleteBookmark(id);
-    if (!ok) {
-      await this.renderBookmarks();
-      App.renderBookmarks();
-    } else {
-      App.renderBookmarks();
-    }
+    await Storage.deleteBookmark(id);
+    await this.renderBookmarks();
+    App.renderBookmarks();
   },
 
   showAddCategoryForm() {
@@ -277,7 +269,7 @@ const Settings = {
     const form = document.createElement('div');
     form.className = 'inline-form';
     form.innerHTML = `
-      <input type="text" id="editCatTitle" value="${this.escapeAttr(currentTitle)}" required>
+      <input type="text" id="editCatTitle" value="${escapeAttr(currentTitle)}" required>
       <button class="btn-primary" id="saveEditCategory">保存</button>
       <button class="btn-edit" id="cancelEditCategory">取消</button>
     `;
@@ -298,20 +290,9 @@ const Settings = {
 
   async deleteCategory(id) {
     if (!this._confirm('确定删除此分类及其所有链接？')) return;
-    // 先从 DOM 移除
-    const item = document.querySelector('#categoryList .category-with-items[data-id="' + id + '"]');
-    if (item) item.remove();
-    const remaining = document.querySelectorAll('#categoryList .category-with-items');
-    if (remaining.length === 0) {
-      document.getElementById('categoryList').innerHTML = '<div class="empty-state">暂无分类，点击上方按钮添加</div>';
-    }
-    const ok = await Storage.deleteCategory(id);
-    if (!ok) {
-      await this.renderCategories();
-      App.renderCategories();
-    } else {
-      App.renderCategories();
-    }
+    await Storage.deleteCategory(id);
+    await this.renderCategories();
+    App.renderCategories();
   },
 
   showAddItemForm(categoryId) {
@@ -334,7 +315,7 @@ const Settings = {
 
     document.getElementById('saveItem').addEventListener('click', async () => {
       const title = document.getElementById('itemTitle').value.trim();
-      const url = document.getElementById('itemUrl').value.trim();
+      const url = normalizeUrl(document.getElementById('itemUrl').value.trim());
       if (!title || !url) return;
       await Storage.addCategoryItem(categoryId, { title, url });
       form.remove();
@@ -361,8 +342,8 @@ const Settings = {
     form.id = 'editItemForm';
     form.className = 'inline-form-sub';
     form.innerHTML = `
-      <input type="text" id="editItemTitle" value="${this.escapeAttr(title)}" class="input-sm-name" required>
-      <input type="url" id="editItemUrl" value="${this.escapeAttr(url)}" class="input-sm-url" required>
+      <input type="text" id="editItemTitle" value="${escapeAttr(title)}" class="input-sm-name" required>
+      <input type="url" id="editItemUrl" value="${escapeAttr(url)}" class="input-sm-url" required>
       <button class="btn-primary btn-sm" id="saveEditItem">保存</button>
       <button class="btn-edit btn-sm" id="cancelEditItem">取消</button>
     `;
@@ -370,7 +351,7 @@ const Settings = {
 
     document.getElementById('saveEditItem').addEventListener('click', async () => {
       const newTitle = document.getElementById('editItemTitle').value.trim();
-      const newUrl = document.getElementById('editItemUrl').value.trim();
+      const newUrl = normalizeUrl(document.getElementById('editItemUrl').value.trim());
       if (!newTitle || !newUrl) return;
       await Storage.updateCategoryItem(categoryId, itemId, { title: newTitle, url: newUrl });
       await this.renderCategories();
@@ -384,16 +365,9 @@ const Settings = {
 
   async deleteCategoryItem(categoryId, itemId) {
     if (!this._confirm('确定删除此链接？')) return;
-    // 先从 DOM 移除
-    const item = document.querySelector('.sub-item[data-id="' + itemId + '"][data-cat-id="' + categoryId + '"]');
-    if (item) item.remove();
-    const ok = await Storage.deleteCategoryItem(categoryId, itemId);
-    if (!ok) {
-      await this.renderCategories();
-      App.renderCategories();
-    } else {
-      App.renderCategories();
-    }
+    await Storage.deleteCategoryItem(categoryId, itemId);
+    await this.renderCategories();
+    App.renderCategories();
   },
 
   async renderWeatherSettings() {
@@ -413,6 +387,72 @@ const Settings = {
     `).join('');
 
     this.updateCityDropdown(savedProvince, savedCityQuery);
+  },
+
+  async renderWallpaperSettings() {
+    const tab = document.getElementById('tabWallpaper');
+    if (!tab) return;
+
+    // 只渲染一次，后续切换标签时不再重复追加
+    if (tab.dataset.rendered) return;
+    tab.dataset.rendered = '1';
+
+    const settings = await Storage.getSettings();
+    const wallpapers = Wallpaper.getWallpapers();
+    const currentName = settings.wallpaperName || wallpapers[0].name;
+
+    // 底部工具栏开关
+    const bottomBarSection = document.createElement('div');
+    bottomBarSection.className = 'setting-section';
+    bottomBarSection.innerHTML = `
+      <div class="setting-section-title">底部工具栏</div>
+      <p class="setting-section-desc">显示/隐藏底部的壁纸和设置按钮</p>
+      <label class="toggle-row">
+        <span>显示底部工具栏</span>
+        <input type="checkbox" id="showBottomBarToggle" ${settings.showBottomBar ? 'checked' : ''}>
+      </label>
+    `;
+    tab.appendChild(bottomBarSection);
+    bottomBarSection.querySelector('#showBottomBarToggle').addEventListener('change', async (e) => {
+      const val = e.target.checked;
+      await Storage.updateSettings({ showBottomBar: val });
+      const bar = document.querySelector('.bottom-bar');
+      if (bar) bar.classList.toggle('hidden', !val);
+    });
+
+    // 壁纸源选择
+    const section = document.createElement('div');
+    section.className = 'setting-section';
+    section.innerHTML = `
+      <div class="setting-section-title">壁纸源</div>
+      <p class="setting-section-desc">选择壁纸来源。预设为渐变背景，在线壁纸每日自动更新（Bing 每日壁纸）或每次刷新随机获取（随机壁纸）。</p>
+      <select class="city-select" id="wallpaperSourceSelect">
+        ${wallpapers.map(w => `
+          <option value="${escapeAttr(w.name)}" ${w.name === currentName ? 'selected' : ''}>
+            ${w.name}${w.type === 'api' ? ' 🌐' : ''}
+          </option>
+        `).join('')}
+      </select>
+      <div style="margin-top: 8px; display: flex; gap: 8px;">
+        <button class="btn-primary btn-sm" id="refreshWallpaperBtn" style="${currentName && wallpapers.find(w => w.name === currentName)?.type === 'api' ? '' : 'display:none'}">刷新壁纸</button>
+      </div>
+    `;
+    tab.appendChild(section);
+
+    section.querySelector('#wallpaperSourceSelect').addEventListener('change', async (e) => {
+      const name = e.target.value;
+      const idx = wallpapers.findIndex(w => w.name === name);
+      if (idx !== -1) {
+        await Wallpaper.set(idx);
+        const refreshBtn = section.querySelector('#refreshWallpaperBtn');
+        const wp = wallpapers[idx];
+        refreshBtn.style.display = wp.type === 'api' ? '' : 'none';
+      }
+    });
+
+    section.querySelector('#refreshWallpaperBtn').addEventListener('click', async () => {
+      await Wallpaper.refreshCurrent();
+    });
   },
 
   updateCityDropdown(provinceName, selectedQuery) {
@@ -456,13 +496,13 @@ const Settings = {
       return true;
     }
   },
-  escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  },
-
-  escapeAttr(str) {
-    return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-  }
+  /* escapeHtml/escapeAttr 定义在 storage.js */
 };
+
+/* ---- 自动补全网址协议 ---- */
+function normalizeUrl(url) {
+  if (!url) return '';
+  url = url.trim().replace(/^\/+/, '');
+  if (!/:\/\//.test(url)) return 'https://' + url;
+  return url;
+}

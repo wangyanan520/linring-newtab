@@ -46,11 +46,59 @@ const HOLIDAY_FALLBACK = {
 const Calendar = {
   holidays: {},
   loaded: false,
+  viewYear: 0,
+  viewMonth: 0,
 
   async init() {
+    const now = new Date();
+    this.viewYear = now.getFullYear();
+    this.viewMonth = now.getMonth() + 1;
     this.holidays = Object.assign({}, HOLIDAY_FALLBACK);
     await this.loadHolidays();
     this.loaded = true;
+  },
+
+  prevMonth() {
+    if (this.viewMonth === 1) { this.viewMonth = 12; this.viewYear--; }
+    else { this.viewMonth--; }
+    this.rerenderCard();
+  },
+
+  nextMonth() {
+    if (this.viewMonth === 12) { this.viewMonth = 1; this.viewYear++; }
+    else { this.viewMonth++; }
+    this.rerenderCard();
+  },
+
+  resetView() {
+    const now = new Date();
+    this.viewYear = now.getFullYear();
+    this.viewMonth = now.getMonth() + 1;
+    this.rerenderCard();
+  },
+
+  bindCardEvents(card) {
+    card.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      switch (btn.dataset.action) {
+        case 'prev-month': this.prevMonth(); break;
+        case 'next-month': this.nextMonth(); break;
+        case 'reset-view': this.resetView(); break;
+      }
+    });
+  },
+
+  rerenderCard() {
+    const el = document.getElementById('datetime');
+    if (!el) return;
+    const card = el.querySelector('.datetime-hover-card');
+    if (card) {
+      const wrap = document.createElement('div');
+      wrap.innerHTML = this.render();
+      const child = wrap.firstElementChild;
+      if (child) card.innerHTML = child.innerHTML;
+    }
   },
 
   async loadHolidays() {
@@ -171,10 +219,10 @@ const Calendar = {
 
   render() {
     const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
+    const year = this.viewYear;
+    const month = this.viewMonth;
     const today = now.getDate();
-    const todayKey = this.formatDate(year, month, today);
+    const todayKey = this.formatDate(now.getFullYear(), now.getMonth() + 1, today);
 
     const cells = this.getMonthMatrix(year, month);
     const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
@@ -216,10 +264,17 @@ const Calendar = {
 
     return `
       <div class="datetime-hover-card" role="tooltip">
-        <div class="dhc-header">${this.getGanZhiHeader(year, month)}</div>
+        <div class="dhc-header">
+          <button class="dhc-nav" data-action="prev-month">◀</button>
+          ${this.getGanZhiHeader(year, month)}
+          <button class="dhc-nav" data-action="next-month">▶</button>
+          <button class="dhc-nav dhc-nav-today" data-action="reset-view" title="回到今天">●</button>
+        </div>
         <div class="dhc-week-row">${weekRow}</div>
         <div class="dhc-grid">${dayCells}</div>
       </div>
     `;
   }
 };
+
+window.Calendar = Calendar;

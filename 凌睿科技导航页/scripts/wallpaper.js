@@ -1,6 +1,8 @@
+/* ---- 预设渐变壁纸（3 套） ---- */
 const WALLPAPERS = [
   {
     name: '深邃星空',
+    type: 'preset',
     css: `
       radial-gradient(ellipse 70% 55% at 15% 20%, rgba(100, 60, 200, 0.40) 0%, transparent 60%),
       radial-gradient(ellipse 60% 50% at 85% 15%, rgba(40, 100, 220, 0.35) 0%, transparent 55%),
@@ -17,6 +19,7 @@ const WALLPAPERS = [
   },
   {
     name: '极光绿',
+    type: 'preset',
     css: `
       radial-gradient(ellipse 70% 55% at 20% 30%, rgba(0, 180, 120, 0.35) 0%, transparent 60%),
       radial-gradient(ellipse 60% 50% at 80% 20%, rgba(20, 200, 160, 0.25) 0%, transparent 55%),
@@ -32,6 +35,7 @@ const WALLPAPERS = [
   },
   {
     name: '落日暖阳',
+    type: 'preset',
     css: `
       radial-gradient(ellipse 70% 55% at 25% 30%, rgba(220, 100, 40, 0.40) 0%, transparent 60%),
       radial-gradient(ellipse 60% 50% at 75% 20%, rgba(200, 120, 20, 0.30) 0%, transparent 55%),
@@ -45,71 +49,82 @@ const WALLPAPERS = [
       accentBorder: 'rgba(220, 130, 50, 0.12)'
     }
   },
+  /* ---- API 在线壁纸 ---- */
   {
-    name: '海洋蓝',
-    css: `
-      radial-gradient(ellipse 70% 55% at 15% 25%, rgba(20, 120, 200, 0.40) 0%, transparent 60%),
-      radial-gradient(ellipse 60% 50% at 85% 30%, rgba(10, 160, 220, 0.30) 0%, transparent 55%),
-      radial-gradient(ellipse 80% 60% at 50% 75%, rgba(0, 80, 160, 0.25) 0%, transparent 50%),
-      linear-gradient(135deg, #08101a 0%, #0a1a2a 30%, #081520 60%, #060a0d 100%)
-    `,
+    name: 'Bing 每日壁纸',
+    type: 'api',
+    apiType: 'bing',
     colors: {
-      accent: 'rgba(30, 150, 220, 0.8)',
-      accentLight: 'rgba(100, 190, 240, 0.4)',
-      accentGlow: 'rgba(30, 150, 220, 0.15)',
-      accentBorder: 'rgba(30, 150, 220, 0.12)'
+      accent: 'rgba(255, 255, 255, 0.45)',
+      accentLight: 'rgba(255, 255, 255, 0.20)',
+      accentGlow: 'rgba(255, 255, 255, 0.06)',
+      accentBorder: 'rgba(255, 255, 255, 0.05)'
     }
   },
   {
-    name: '樱花粉',
-    css: `
-      radial-gradient(ellipse 70% 55% at 20% 25%, rgba(200, 80, 140, 0.35) 0%, transparent 60%),
-      radial-gradient(ellipse 60% 50% at 80% 30%, rgba(220, 100, 160, 0.25) 0%, transparent 55%),
-      radial-gradient(ellipse 80% 60% at 50% 80%, rgba(160, 60, 120, 0.20) 0%, transparent 50%),
-      linear-gradient(135deg, #1a0a14 0%, #2a1020 30%, #1a0a16 60%, #0d080a 100%)
-    `,
+    name: '随机壁纸',
+    type: 'api',
+    apiType: 'random',
     colors: {
-      accent: 'rgba(210, 90, 150, 0.8)',
-      accentLight: 'rgba(230, 140, 180, 0.4)',
-      accentGlow: 'rgba(210, 90, 150, 0.15)',
-      accentBorder: 'rgba(210, 90, 150, 0.12)'
-    }
-  },
-  {
-    name: '晨雾灰',
-    css: `
-      radial-gradient(ellipse 70% 55% at 20% 30%, rgba(140, 140, 180, 0.25) 0%, transparent 60%),
-      radial-gradient(ellipse 60% 50% at 80% 25%, rgba(100, 120, 160, 0.20) 0%, transparent 55%),
-      radial-gradient(ellipse 80% 60% at 50% 75%, rgba(80, 80, 120, 0.15) 0%, transparent 50%),
-      linear-gradient(135deg, #121216 0%, #1a1a24 30%, #12121a 60%, #0a0a0d 100%)
-    `,
-    colors: {
-      accent: 'rgba(140, 140, 180, 0.7)',
-      accentLight: 'rgba(170, 170, 200, 0.4)',
-      accentGlow: 'rgba(140, 140, 180, 0.12)',
-      accentBorder: 'rgba(140, 140, 180, 0.10)'
+      accent: 'rgba(255, 255, 255, 0.45)',
+      accentLight: 'rgba(255, 255, 255, 0.20)',
+      accentGlow: 'rgba(255, 255, 255, 0.06)',
+      accentBorder: 'rgba(255, 255, 255, 0.05)'
     }
   }
 ];
 
+/* ---- API 壁纸工具函数 ---- */
+/* ---- Bing 每日壁纸：用 urlbase 拼接 1920x1080 高清图 ---- */
+const BING_API = 'https://cn.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1&mkt=zh-CN';
+
+async function fetchBingUrl() {
+  const resp = await fetch(BING_API);
+  if (!resp.ok) throw new Error('Bing API error');
+  const data = await resp.json();
+  if (!data.images || !data.images[0]) throw new Error('Bing API empty result');
+  const img = data.images[0];
+  /* 用 urlbase 拼接 1920x1080 高清图，比 url 字段的图片更清晰 */
+  return 'https://cn.bing.com' + img.urlbase + '_1920x1080.jpg';
+}
+
+/* ---- 随机壁纸：bing.biturl.top 返回随机 Bing 壁纸 ---- */
+function getRandomWallpaperUrl() {
+  /* 加时间戳防浏览器缓存 */
+  return 'https://bing.biturl.top/?resolution=1920&format=image&index=0&mkt=zh-CN&_=' + Date.now();
+}
+
+async function fetchApiWallpaperUrl(apiType) {
+  switch (apiType) {
+    case 'bing': return fetchBingUrl();
+    case 'random': return getRandomWallpaperUrl();
+    default: throw new Error('Unknown apiType: ' + apiType);
+  }
+}
+
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/* ---- 壁纸管理器 ---- */
 const Wallpaper = {
   currentIndex: 0,
 
   async init() {
     const settings = await Storage.getSettings();
     if (settings.wallpaperName) {
-      const index = WALLPAPERS.findIndex(w => w.name === settings.wallpaperName);
-      if (index !== -1) this.currentIndex = index;
+      const idx = WALLPAPERS.findIndex(w => w.name === settings.wallpaperName);
+      if (idx !== -1) this.currentIndex = idx;
     }
-    this.apply(this.currentIndex);
+    await this.apply(this.currentIndex);
   },
 
   getWallpapers() {
     return WALLPAPERS;
   },
 
-  applyColors(index) {
-    const colors = WALLPAPERS[index].colors;
+  applyColors(colors) {
     const root = document.documentElement;
     root.style.setProperty('--accent-color', colors.accent);
     root.style.setProperty('--accent-light', colors.accentLight);
@@ -117,22 +132,108 @@ const Wallpaper = {
     root.style.setProperty('--accent-border', colors.accentBorder);
   },
 
-  apply(index) {
+  clearBgImage(bgLayer) {
+    bgLayer.style.backgroundImage = '';
+    bgLayer.style.backgroundSize = '';
+    bgLayer.style.backgroundPosition = '';
+  },
+
+  setBgImage(bgLayer, url) {
+    bgLayer.style.background = 'none';
+    bgLayer.style.backgroundImage = `url(${url})`;
+    bgLayer.style.backgroundSize = 'cover';
+    bgLayer.style.backgroundPosition = 'center';
+  },
+
+  async apply(index) {
+    const wallpaper = WALLPAPERS[index];
     const bgLayer = document.getElementById('bgLayer');
-    if (bgLayer) {
-      bgLayer.style.background = WALLPAPERS[index].css;
-    }
+    if (!bgLayer) return;
+
     this.currentIndex = index;
-    this.applyColors(index);
+    this.applyColors(wallpaper.colors);
+
+    /* 预设渐变用 15% 淡覆盖，API 壁纸用 35% 深覆盖保证内容可读 */
+    if (wallpaper.type === 'preset') {
+      document.documentElement.style.setProperty('--bg-overlay-opacity', '0.15');
+      this.clearBgImage(bgLayer);
+      bgLayer.style.background = wallpaper.css;
+      return;
+    }
+
+    document.documentElement.style.setProperty('--bg-overlay-opacity', '0.35');
+
+    // API 壁纸
+    bgLayer.style.background = 'none';
+
+    if (wallpaper.apiType === 'random') {
+      // 随机壁纸：直接使用 URL，无需 fetch
+      this.setBgImage(bgLayer, getRandomWallpaperUrl());
+      return;
+    }
+
+    // Bing 每日壁纸：同一天内用缓存
+    const settings = await Storage.getSettings();
+    const cache = settings.wallpaperApiCache || {};
+    let url = null;
+    if (cache.type === 'bing' && cache.date === todayStr()) {
+      url = cache.url;
+    }
+
+    if (!url) {
+      try {
+        url = await fetchApiWallpaperUrl(wallpaper.apiType);
+        if (wallpaper.apiType === 'bing') {
+          await Storage.updateSettings({
+            wallpaperApiCache: { url, type: 'bing', date: todayStr() }
+          });
+        }
+      } catch (e) {
+        console.error('壁纸 API 请求失败:', e);
+        // fallback: 用第一个预设渐变
+        this.clearBgImage(bgLayer);
+        bgLayer.style.background = WALLPAPERS[0].css;
+        this.applyColors(WALLPAPERS[0].colors);
+        return;
+      }
+    }
+
+    this.setBgImage(bgLayer, url);
   },
 
   async set(index) {
-    this.apply(index);
+    await this.apply(index);
     await Storage.updateSettings({ wallpaperName: WALLPAPERS[index].name });
   },
 
   async next() {
     const nextIndex = (this.currentIndex + 1) % WALLPAPERS.length;
     await this.set(nextIndex);
+  },
+
+  /* 手动刷新 API 壁纸 */
+  async refreshCurrent() {
+    const wallpaper = WALLPAPERS[this.currentIndex];
+    if (wallpaper.type !== 'api') return;
+
+    if (wallpaper.apiType === 'random') {
+      // 随机壁纸：重新设置即可（新时间戳 = 新图片）
+      const bgLayer = document.getElementById('bgLayer');
+      if (bgLayer) this.setBgImage(bgLayer, getRandomWallpaperUrl());
+      return;
+    }
+
+    try {
+      const url = await fetchApiWallpaperUrl(wallpaper.apiType);
+      if (wallpaper.apiType === 'bing') {
+        await Storage.updateSettings({
+          wallpaperApiCache: { url, type: 'bing', date: todayStr() }
+        });
+      }
+      const bgLayer = document.getElementById('bgLayer');
+      if (bgLayer) this.setBgImage(bgLayer, url);
+    } catch (e) {
+      console.error('刷新壁纸失败:', e);
+    }
   }
 };
