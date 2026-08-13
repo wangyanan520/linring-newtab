@@ -20,6 +20,52 @@
   animation: panelIn 0.30s var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1));
 }
 
+/* V3 浅色主题：设置面板适配 */
+[data-theme="light"] .settings-overlay {
+  background: rgba(255, 255, 255, 0.30);
+}
+
+[data-theme="light"] .settings-panel {
+  background: rgba(250, 250, 255, 0.96);
+  color: rgba(25, 28, 45, 0.82);
+  border-color: rgba(25, 28, 45, 0.08);
+  box-shadow: 0 24px 80px rgba(40, 35, 70, 0.18);
+}
+
+[data-theme="light"] .settings-header {
+  border-bottom-color: rgba(25, 28, 45, 0.08);
+}
+
+[data-theme="light"] .settings-header h2 {
+  color: rgba(25, 28, 45, 0.92);
+}
+
+[data-theme="light"] .settings-close {
+  color: rgba(25, 28, 45, 0.45);
+}
+
+[data-theme="light"] .settings-close:hover {
+  background: rgba(25, 28, 45, 0.06);
+  color: rgba(25, 28, 45, 0.75);
+}
+
+[data-theme="light"] .settings-tabs {
+  border-bottom-color: rgba(25, 28, 45, 0.08);
+}
+
+[data-theme="light"] .tab-btn {
+  color: rgba(25, 28, 45, 0.45);
+}
+
+[data-theme="light"] .tab-btn:hover {
+  color: rgba(25, 28, 45, 0.70);
+}
+
+[data-theme="light"] .tab-btn.active {
+  color: rgba(25, 28, 45, 0.95);
+  border-bottom-color: rgba(25, 28, 45, 0.35);
+}
+
 @keyframes panelIn {
   from { opacity: 0; transform: translateY(20px) scale(0.97); }
   to { opacity: 1; transform: translateY(0) scale(1); }

@@ -37,6 +37,8 @@ const App = {
     if (bar) {
       bar.classList.toggle('hidden', !settings.showBottomBar);
     }
+    // V3 主题：默认深色，浅色时切换
+    document.documentElement.dataset.theme = settings.theme === 'light' ? 'light' : 'dark';
   },
 
   hideChromeUI() {
@@ -171,7 +173,7 @@ const App = {
       const domain = this.extractDomain(bm.url);
       const firstChar = escapeHtml(bm.title.charAt(0));
       return `
-      <a href="${escapeAttr(bm.url)}" class="bookmark-item" title="${escapeAttr(bm.title)}" target="_blank">
+      <a href="${escapeAttr(bm.url)}" class="bookmark-item" title="${escapeAttr(bm.title)}" target="_blank" draggable="true" data-id="${escapeAttr(bm.id)}">
         <div class="bookmark-icon">
           <img src="https://favicon.im/${domain}"
                alt="${escapeAttr(bm.title)}"
@@ -193,6 +195,8 @@ const App = {
         }
       });
     });
+
+    this.attachDrag(container, (from, to) => Storage.reorderBookmarks(from, to), () => this.renderBookmarks());
   },
 
   async renderCategories() {
@@ -201,7 +205,7 @@ const App = {
     categories.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
 
     container.innerHTML = categories.map(cat => `
-      <div class="category-card" data-id="${cat.id}">
+      <div class="category-card" data-id="${cat.id}" draggable="true">
         <div class="category-header" data-action="toggle" data-id="${cat.id}">
           <span class="category-title">${escapeHtml(cat.title)}</span>
           <span class="category-toggle ${cat.collapsed ? 'collapsed' : ''}">▼</span>
@@ -225,6 +229,50 @@ const App = {
           await this.renderCategories();
         }
       });
+    });
+
+    this.attachDrag(container, (from, to) => Storage.reorderCategories(from, to), () => this.renderCategories());
+  },
+
+  /* 通用拖拽排序：HTML5 DnD，调用 reorderFn 持久化后重渲染 */
+  attachDrag(container, reorderFn, rerenderFn) {
+    const items = () => Array.from(container.querySelectorAll('[draggable="true"]'));
+    let dragIndex = -1;
+
+    container.addEventListener('dragstart', (e) => {
+      const el = e.target.closest('[draggable="true"]');
+      if (!el) return;
+      dragIndex = items().indexOf(el);
+      if (dragIndex === -1) {
+        e.preventDefault();
+        return;
+      }
+      el.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      try {
+        e.dataTransfer.setData('text/plain', el.dataset.id || '');
+      } catch {}
+    });
+
+    container.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+    });
+
+    container.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      const els = items();
+      const target = e.target.closest('[draggable="true"]');
+      if (dragIndex === -1 || !target) return;
+      const toIndex = els.indexOf(target);
+      if (toIndex === -1 || toIndex === dragIndex) return;
+      await reorderFn(dragIndex, toIndex);
+      await rerenderFn();
+    });
+
+    container.addEventListener('dragend', () => {
+      dragIndex = -1;
+      container.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
     });
   },
 

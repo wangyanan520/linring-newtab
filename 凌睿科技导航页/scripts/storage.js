@@ -56,7 +56,7 @@ const DEFAULT_SETTINGS = {
   wallpaperName: '深邃星空',
   wallpaperApiCache: null,
   searchEngine: 'Google',
-  theme: 'light',
+  theme: 'dark',
   weatherCity: '',
   weatherCache: null,
   showBottomBar: false,
@@ -65,6 +65,39 @@ const DEFAULT_SETTINGS = {
 
 function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+/* ---- 通用排序工具：纯函数，不修改入参 ---- */
+function reorder(items, fromIndex, toIndex) {
+  const arr = Array.isArray(items) ? [...items] : [];
+  if (fromIndex < 0 || fromIndex >= arr.length) return arr;
+  if (toIndex < 0 || toIndex >= arr.length) return arr;
+  if (fromIndex === toIndex) return arr;
+  const [moved] = arr.splice(fromIndex, 1);
+  arr.splice(toIndex, 0, moved);
+  return arr;
+}
+
+/* ---- 备份数据校验：纯函数，返回错误列表 ---- */
+function validateBackup(data) {
+  const errors = [];
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    errors.push('文件内容不是有效的备份对象');
+    return errors;
+  }
+  if (data.bookmarks !== undefined && !Array.isArray(data.bookmarks)) {
+    errors.push('bookmarks 字段必须是数组');
+  }
+  if (data.categories !== undefined && !Array.isArray(data.categories)) {
+    errors.push('categories 字段必须是数组');
+  }
+  if (data.todos !== undefined && !Array.isArray(data.todos)) {
+    errors.push('todos 字段必须是数组');
+  }
+  if (data.settings !== undefined && (typeof data.settings !== 'object' || data.settings === null || Array.isArray(data.settings))) {
+    errors.push('settings 字段必须是对象');
+  }
+  return errors;
 }
 
 /* ---- 共享工具函数 ---- */
@@ -169,6 +202,16 @@ const Storage = {
     }
   },
 
+  /* 按 sortOrder 升序读取 → reorder → 批量写回新 sortOrder */
+  async reorderBookmarks(fromIndex, toIndex) {
+    const { bookmarks = [] } = await storageGet(['bookmarks']);
+    const sorted = [...bookmarks].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+    const next = reorder(sorted, fromIndex, toIndex);
+    next.forEach((b, i) => { b.sortOrder = i + 1; });
+    await storageSet({ bookmarks: next });
+    return next;
+  },
+
   async getCategories() {
     try {
       const result = await storageGet(['categories']);
@@ -211,6 +254,16 @@ const Storage = {
     } catch (e) {
       console.error('删除分类失败:', e);
     }
+  },
+
+  /* 分类拖拽排序：与书签一致 */
+  async reorderCategories(fromIndex, toIndex) {
+    const { categories = [] } = await storageGet(['categories']);
+    const sorted = [...categories].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+    const next = reorder(sorted, fromIndex, toIndex);
+    next.forEach((c, i) => { c.sortOrder = i + 1; });
+    await storageSet({ categories: next });
+    return next;
   },
 
   async addCategoryItem(categoryId, item) {
@@ -311,5 +364,42 @@ const Storage = {
     const merged = { ...current, ...settings };
     await storageSet({ settings: merged });
     return merged;
+  },
+
+  /* ---- V3 数据备份：导出/导入 ---- */
+  async exportData() {
+    const result = await storageGet(['bookmarks', 'categories', 'settings', 'todos']);
+    return {
+      schemaVersion: 1,
+      exportedAt: new Date().toISOString(),
+      bookmarks: result.bookmarks || [],
+      categories: result.categories || [],
+      settings: result.settings || DEFAULT_SETTINGS,
+      todos: result.todos || []
+    };
+  },
+
+  async importData(jsonString) {
+    let data;
+    try {
+      data = JSON.parse(jsonString);
+    } catch {
+      throw new Error('文件不是有效的 JSON');
+    }
+    const errors = validateBackup(data);
+    if (errors.length > 0) {
+      throw new Error('校验失败：' + errors.join('；'));
+    }
+
+    // 迁移兼容：缺字段时保留现有数据，不覆盖
+    const current = await storageGet(['bookmarks', 'categories', 'settings', 'todos']);
+    const next = {
+      bookmarks: Array.isArray(data.bookmarks) ? data.bookmarks : (current.bookmarks || []),
+      categories: Array.isArray(data.categories) ? data.categories : (current.categories || []),
+      todos: Array.isArray(data.todos) ? data.todos : (current.todos || []),
+      settings: data.settings ? { ...DEFAULT_SETTINGS, ...data.settings } : (current.settings || DEFAULT_SETTINGS)
+    };
+    await storageSet(next);
+    return next;
   }
 };

@@ -57,6 +57,9 @@ const Settings = {
     if (tab === 'wallpaper') {
       this.renderWallpaperSettings();
     }
+    if (tab === 'data') {
+      this.renderDataSettings();
+    }
     // 清理其他 tab 可能残留的内联表单，防止 ID 冲突
     this.clearInlineForms();
   },
@@ -86,6 +89,8 @@ const Settings = {
           <span class="setting-item-url">${escapeHtml(bm.url)}</span>
         </div>
         <div class="setting-item-actions">
+          <button class="btn-edit btn-sm" data-action="move-bookmark" data-id="${bm.id}" data-dir="up" title="上移">↑</button>
+          <button class="btn-edit btn-sm" data-action="move-bookmark" data-id="${bm.id}" data-dir="down" title="下移">↓</button>
           <button class="btn-edit" data-action="edit-bookmark" data-id="${bm.id}">编辑</button>
           <button class="btn-danger" data-action="delete-bookmark" data-id="${bm.id}">删除</button>
         </div>
@@ -97,6 +102,9 @@ const Settings = {
     });
     container.querySelectorAll('[data-action="delete-bookmark"]').forEach(btn => {
       btn.addEventListener('click', () => this.deleteBookmark(btn.dataset.id));
+    });
+    container.querySelectorAll('[data-action="move-bookmark"]').forEach(btn => {
+      btn.addEventListener('click', async () => this.moveItem('bookmark', btn.dataset.id, btn.dataset.dir));
     });
   },
 
@@ -117,6 +125,8 @@ const Settings = {
             <span class="setting-item-title">${escapeHtml(cat.title)}</span>
           </div>
           <div class="setting-item-actions">
+            <button class="btn-edit btn-sm" data-action="move-category" data-id="${cat.id}" data-dir="up" title="上移">↑</button>
+            <button class="btn-edit btn-sm" data-action="move-category" data-id="${cat.id}" data-dir="down" title="下移">↓</button>
             <button class="btn-primary btn-sm" data-action="add-item" data-id="${cat.id}">+ 添加链接</button>
             <button class="btn-edit" data-action="edit-category" data-id="${cat.id}">编辑</button>
             <button class="btn-danger" data-action="delete-category" data-id="${cat.id}">删除</button>
@@ -148,12 +158,33 @@ const Settings = {
     container.querySelectorAll('[data-action="delete-category"]').forEach(btn => {
       btn.addEventListener('click', () => this.deleteCategory(btn.dataset.id));
     });
+    container.querySelectorAll('[data-action="move-category"]').forEach(btn => {
+      btn.addEventListener('click', async () => this.moveItem('category', btn.dataset.id, btn.dataset.dir));
+    });
     container.querySelectorAll('[data-action="edit-item"]').forEach(btn => {
       btn.addEventListener('click', () => this.showEditItemForm(btn.dataset.catId, btn.dataset.itemId));
     });
     container.querySelectorAll('[data-action="delete-item"]').forEach(btn => {
       btn.addEventListener('click', () => this.deleteCategoryItem(btn.dataset.catId, btn.dataset.itemId));
     });
+  },
+
+  /* 键盘替代排序：上移/下移 */
+  async moveItem(type, id, dir) {
+    const getList = type === 'bookmark' ? Storage.getBookmarks : Storage.getCategories;
+    const reorderFn = type === 'bookmark' ? Storage.reorderBookmarks : Storage.reorderCategories;
+    const rerender = type === 'bookmark' ? () => this.renderBookmarks() : () => this.renderCategories();
+    const appRerender = type === 'bookmark' ? App.renderBookmarks : App.renderCategories;
+
+    const list = await getList();
+    list.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+    const idx = list.findIndex(item => item.id === id);
+    const to = dir === 'up' ? idx - 1 : idx + 1;
+    if (idx === -1 || to < 0 || to >= list.length) return;
+
+    await reorderFn(idx, to);
+    await rerender();
+    appRerender();
   },
 
   showAddBookmarkForm() {
@@ -389,6 +420,67 @@ const Settings = {
     this.updateCityDropdown(savedProvince, savedCityQuery);
   },
 
+  async renderDataSettings() {
+    const tab = document.getElementById('tabData');
+    if (!tab) return;
+    tab.innerHTML = `
+      <div class="setting-section">
+        <div class="setting-section-title">数据备份</div>
+        <p class="setting-section-desc">导出全部配置（书签 / 分类 / 待办 / 设置）为本地 JSON 文件；导入可完整恢复。数据全程保存在本地，不经过任何服务器。</p>
+        <div style="margin-top: 10px; display: flex; gap: 8px; align-items: center;">
+          <button class="btn-primary btn-sm" id="exportDataBtn">导出备份</button>
+          <label class="btn-edit btn-sm" style="cursor: pointer; display: inline-flex; align-items: center;">导入恢复
+            <input type="file" id="importDataInput" accept="application/json,.json" style="display: none;">
+          </label>
+        </div>
+        <div class="todo-save-feedback" id="dataFeedback" style="margin-top: 10px;"></div>
+      </div>
+    `;
+
+    document.getElementById('exportDataBtn').addEventListener('click', async () => {
+      try {
+        const data = await Storage.exportData();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `lingrui-nav-backup-${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        this.showDataFeedback('备份已导出', 'success');
+      } catch (err) {
+        this.showDataFeedback('导出失败：' + err.message, 'error');
+      }
+    });
+
+    document.getElementById('importDataInput').addEventListener('change', async (e) => {
+      const file = e.target.files && e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const next = await Storage.importData(text);
+        this.showDataFeedback(
+          `导入成功：书签 ${(next.bookmarks || []).length} 个、分类 ${(next.categories || []).length} 个、待办 ${(next.todos || []).length} 条`,
+          'success'
+        );
+        await this.renderBookmarks();
+        await this.renderCategories();
+        App.renderBookmarks();
+        App.renderCategories();
+      } catch (err) {
+        this.showDataFeedback('导入失败：' + err.message + '（现有数据未受影响）', 'error');
+      }
+    });
+  },
+
+  showDataFeedback(msg, type) {
+    const fb = document.getElementById('dataFeedback');
+    if (!fb) return;
+    fb.textContent = msg;
+    fb.className = 'todo-save-feedback ' + (type === 'error' ? 'feedback-error' : 'feedback-success');
+  },
+
   async renderWallpaperSettings() {
     const tab = document.getElementById('tabWallpaper');
     if (!tab) return;
@@ -400,6 +492,24 @@ const Settings = {
     const settings = await Storage.getSettings();
     const wallpapers = Wallpaper.getWallpapers();
     const currentName = settings.wallpaperName || wallpapers[0].name;
+
+    // 外观：主题选择
+    const themeSection = document.createElement('div');
+    themeSection.className = 'setting-section';
+    themeSection.innerHTML = `
+      <div class="setting-section-title">主题外观</div>
+      <p class="setting-section-desc">选择界面主题。深色适合夜间，浅色适合明亮环境。</p>
+      <select class="city-select" id="themeSelect">
+        <option value="dark" ${settings.theme === 'light' ? '' : 'selected'}>深色</option>
+        <option value="light" ${settings.theme === 'light' ? 'selected' : ''}>浅色</option>
+      </select>
+    `;
+    tab.appendChild(themeSection);
+    themeSection.querySelector('#themeSelect').addEventListener('change', async (e) => {
+      const val = e.target.value;
+      await Storage.updateSettings({ theme: val });
+      document.documentElement.dataset.theme = val;
+    });
 
     // 底部工具栏开关
     const bottomBarSection = document.createElement('div');
