@@ -45,9 +45,10 @@ const App = {
   },
 
   applySettings(settings) {
-    const bar = document.querySelector('.bottom-bar');
-    if (bar) {
-      bar.classList.toggle('hidden', !settings.showBottomBar);
+    // 底部工具栏开关仅隐藏壁纸按钮；设置按钮是唯一入口，必须始终可见，否则无法再次进入设置
+    const wallpaperBtn = document.getElementById('wallpaperBtn');
+    if (wallpaperBtn) {
+      wallpaperBtn.classList.toggle('hidden', !settings.showBottomBar);
     }
     // V3 主题：默认深色，浅色时切换
     document.documentElement.dataset.theme = settings.theme === 'light' ? 'light' : 'dark';

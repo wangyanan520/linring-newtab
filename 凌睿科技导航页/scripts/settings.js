@@ -617,9 +617,9 @@ const Settings = {
     bottomBarSection.className = 'setting-section';
     bottomBarSection.innerHTML = `
       <div class="setting-section-title">底部工具栏</div>
-      <p class="setting-section-desc">显示/隐藏底部的壁纸和设置按钮</p>
+      <p class="setting-section-desc">显示/隐藏底部的壁纸按钮；设置按钮始终保留，便于再次进入设置。</p>
       <label class="toggle-row">
-        <span>显示底部工具栏</span>
+        <span>显示壁纸按钮</span>
         <input type="checkbox" id="showBottomBarToggle" ${settings.showBottomBar ? 'checked' : ''}>
       </label>
     `;
@@ -627,8 +627,8 @@ const Settings = {
     bottomBarSection.querySelector('#showBottomBarToggle').addEventListener('change', async (e) => {
       const val = e.target.checked;
       await Storage.updateSettings({ showBottomBar: val });
-      const bar = document.querySelector('.bottom-bar');
-      if (bar) bar.classList.toggle('hidden', !val);
+      const wallpaperBtn = document.getElementById('wallpaperBtn');
+      if (wallpaperBtn) wallpaperBtn.classList.toggle('hidden', !val);
     });
 
     // 壁纸源选择

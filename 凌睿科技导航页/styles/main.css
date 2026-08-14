@@ -949,9 +949,9 @@ body {
   flex-shrink: 0;
 }
 
-/* V3 底部工具栏隐藏开关（main.js/settings.js 通过 .hidden class 切换） */
-.bottom-bar.hidden {
-  display: none;
+/* 通用隐藏工具类：底部工具栏开关用于隐藏壁纸按钮（设置按钮始终可见，避免无法再次进入设置） */
+.hidden {
+  display: none !important;
 }
 
 .tool-btn {

@@ -59,7 +59,7 @@ const DEFAULT_SETTINGS = {
   theme: 'dark',
   weatherCity: '',
   weatherCache: null,
-  showBottomBar: false,
+  showBottomBar: true,
   componentVisibility: {},
   version: '1.0.0'
 };
