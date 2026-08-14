@@ -282,10 +282,6 @@ const Storage = {
     }
   },
 
-  async getAll() {
-    return await storageGet(['bookmarks', 'categories', 'settings']);
-  },
-
   async getBookmarks() {
     let bookmarks;
     try {
@@ -577,6 +573,21 @@ const Storage = {
       await storageSet(current).catch(() => {});
       throw new Error('写入失败，已恢复原有数据：' + err.message);
     }
+    return next;
+  },
+
+  /* 恢复最近一次导入前的自动备份（lastImportBackup-1），用于误导入后的回滚 */
+  async restoreLastImportBackup() {
+    const result = await storageGet(['lastImportBackup-1']);
+    const backup = result['lastImportBackup-1'];
+    if (!backup) throw new Error('没有可用的导入前备份');
+    const next = {
+      bookmarks: Array.isArray(backup.bookmarks) ? backup.bookmarks : [],
+      categories: Array.isArray(backup.categories) ? backup.categories : [],
+      todos: Array.isArray(backup.todos) ? backup.todos : [],
+      settings: { ...DEFAULT_SETTINGS, ...(backup.settings && typeof backup.settings === 'object' ? backup.settings : {}) }
+    };
+    await storageSet(next);
     return next;
   }
 };

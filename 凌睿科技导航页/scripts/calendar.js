@@ -254,7 +254,7 @@ const Calendar = {
         : lunar;
 
       return `
-        <div class="${classes.join(' ')}" title="${title}">
+        <div class="${classes.join(' ')}" title="${escapeAttr(title)}">
           ${badge}
           <div class="dhc-day">${cell.d}</div>
           <div class="dhc-sub">${lunar}</div>

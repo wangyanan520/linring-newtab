@@ -25,7 +25,7 @@ const Todos = {
     const todoHtml = todos.length === 0
       ? '<div class="todo-empty">还没有待办事项</div>'
       : todos.map(t => `
-        <div class="todo-item" data-id="${t.id}">
+        <div class="todo-item" data-id="${escapeAttr(t.id)}">
           <input type="checkbox" class="todo-checkbox" ${t.done ? 'checked' : ''}>
           <span class="todo-text ${t.done ? 'done' : ''}">${escapeHtml(t.text)}</span>
           <button class="todo-delete-btn">×</button>

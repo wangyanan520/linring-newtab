@@ -312,7 +312,7 @@ const Weather = {
       <span class="weather-icon">${this.cache.icon}</span>
       <span class="weather-temp">${this.cache.temp}°C</span>
       <span class="weather-sep">|</span>
-      <span class="weather-desc">${this.cache.desc}</span>
+      <span class="weather-desc">${escapeHtml(this.cache.desc)}</span>
       ${loc}
       ${this.renderHoverCard()}
     `;

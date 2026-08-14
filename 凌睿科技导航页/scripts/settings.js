@@ -123,16 +123,16 @@ const Settings = {
     }
 
     container.innerHTML = bookmarks.map(bm => `
-      <div class="setting-item" data-id="${bm.id}">
+      <div class="setting-item" data-id="${escapeAttr(bm.id)}">
         <div class="setting-item-info">
           <span class="setting-item-title">${escapeHtml(bm.title)}</span>
           <span class="setting-item-url">${escapeHtml(bm.url)}</span>
         </div>
         <div class="setting-item-actions">
-          <button class="btn-edit btn-sm" data-action="move-bookmark" data-id="${bm.id}" data-dir="up" title="上移">↑</button>
-          <button class="btn-edit btn-sm" data-action="move-bookmark" data-id="${bm.id}" data-dir="down" title="下移">↓</button>
-          <button class="btn-edit" data-action="edit-bookmark" data-id="${bm.id}">编辑</button>
-          <button class="btn-danger" data-action="delete-bookmark" data-id="${bm.id}">删除</button>
+          <button class="btn-edit btn-sm" data-action="move-bookmark" data-id="${escapeAttr(bm.id)}" data-dir="up" title="上移">↑</button>
+          <button class="btn-edit btn-sm" data-action="move-bookmark" data-id="${escapeAttr(bm.id)}" data-dir="down" title="下移">↓</button>
+          <button class="btn-edit" data-action="edit-bookmark" data-id="${escapeAttr(bm.id)}">编辑</button>
+          <button class="btn-danger" data-action="delete-bookmark" data-id="${escapeAttr(bm.id)}">删除</button>
         </div>
       </div>
     `).join('');
@@ -159,29 +159,29 @@ const Settings = {
     }
 
     container.innerHTML = categories.map(cat => `
-      <div class="category-with-items" data-id="${cat.id}">
+      <div class="category-with-items" data-id="${escapeAttr(cat.id)}">
         <div class="setting-item">
           <div class="setting-item-info">
             <span class="setting-item-title">${escapeHtml(cat.title)}</span>
           </div>
           <div class="setting-item-actions">
-            <button class="btn-edit btn-sm" data-action="move-category" data-id="${cat.id}" data-dir="up" title="上移">↑</button>
-            <button class="btn-edit btn-sm" data-action="move-category" data-id="${cat.id}" data-dir="down" title="下移">↓</button>
-            <button class="btn-primary btn-sm" data-action="add-item" data-id="${cat.id}">+ 添加链接</button>
-            <button class="btn-edit" data-action="edit-category" data-id="${cat.id}">编辑</button>
-            <button class="btn-danger" data-action="delete-category" data-id="${cat.id}">删除</button>
+            <button class="btn-edit btn-sm" data-action="move-category" data-id="${escapeAttr(cat.id)}" data-dir="up" title="上移">↑</button>
+            <button class="btn-edit btn-sm" data-action="move-category" data-id="${escapeAttr(cat.id)}" data-dir="down" title="下移">↓</button>
+            <button class="btn-primary btn-sm" data-action="add-item" data-id="${escapeAttr(cat.id)}">+ 添加链接</button>
+            <button class="btn-edit" data-action="edit-category" data-id="${escapeAttr(cat.id)}">编辑</button>
+            <button class="btn-danger" data-action="delete-category" data-id="${escapeAttr(cat.id)}">删除</button>
           </div>
         </div>
         <div class="category-sub-items">
           ${(cat.items || []).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)).map(item => `
-            <div class="sub-item" data-id="${item.id}" data-cat-id="${cat.id}">
+            <div class="sub-item" data-id="${escapeAttr(item.id)}" data-cat-id="${escapeAttr(cat.id)}">
               <div class="setting-item-info">
                 <span class="setting-item-title">${escapeHtml(item.title)}</span>
                 <span class="setting-item-url">${escapeHtml(item.url)}</span>
               </div>
               <div class="setting-item-actions">
-                <button class="btn-edit" data-action="edit-item" data-cat-id="${cat.id}" data-item-id="${item.id}">编辑</button>
-                <button class="btn-danger" data-action="delete-item" data-cat-id="${cat.id}" data-item-id="${item.id}">删除</button>
+                <button class="btn-edit" data-action="edit-item" data-cat-id="${escapeAttr(cat.id)}" data-item-id="${escapeAttr(item.id)}">编辑</button>
+                <button class="btn-danger" data-action="delete-item" data-cat-id="${escapeAttr(cat.id)}" data-item-id="${escapeAttr(item.id)}">删除</button>
               </div>
             </div>
           `).join('')}
@@ -443,6 +443,9 @@ const Settings = {
     const citySelect = document.getElementById('weatherCitySelect');
     if (!provSelect || !citySelect) return;
 
+    // 城市数据惰性加载：天气组件被隐藏时 Weather.init 不会执行，需在此兜底
+    if (WEATHER_PROVINCES.length === 0) await loadCityData();
+
     const settings = await Storage.getSettings();
     const currentQuery = settings.weatherCity || '';
 
@@ -469,6 +472,7 @@ const Settings = {
           <label class="btn-edit btn-sm" style="cursor: pointer; display: inline-flex; align-items: center;">导入恢复
             <input type="file" id="importDataInput" accept="application/json,.json" style="display: none;">
           </label>
+          <button class="btn-edit btn-sm" id="restoreBackupBtn" title="恢复到最近一次导入前的数据">恢复最近备份</button>
         </div>
         <div class="todo-save-feedback" id="dataFeedback" style="margin-top: 10px;"></div>
       </div>
@@ -529,20 +533,28 @@ const Settings = {
           cleared.length > 0 ? 'error' : 'success'
         );
         // 全量刷新：书签/分类/待办 + 主题/底部栏/组件可见性 + 天气/壁纸
-        await this.renderBookmarks();
-        await this.renderCategories();
-        App.renderBookmarks();
-        App.renderCategories();
-        Todos.render();
-        const s = await Storage.getSettings();
-        App.applySettings(s);
-        // 设置面板只渲染一次，导入恢复的主题需同步到主题下拉，避免 UI 与实际主题不一致
-        const themeSelect = document.getElementById('themeSelect');
-        if (themeSelect) themeSelect.value = s.theme || 'dark';
-        if (typeof Weather !== 'undefined') Weather.setCity(s.weatherCity || '');
-        if (typeof Wallpaper !== 'undefined') Wallpaper.init();
+        await this.refreshAllAfterDataChange();
       } catch (err) {
         this.showDataFeedback('导入失败：' + err.message + '（现有数据未受影响）', 'error');
+      }
+    });
+
+    document.getElementById('restoreBackupBtn').addEventListener('click', async () => {
+      if (!this._confirm('确定恢复到最近一次导入前的数据？当前数据将被覆盖。')) return;
+      try {
+        const next = await Storage.restoreLastImportBackup();
+        const after = {
+          bookmarks: (next.bookmarks || []).length,
+          categories: (next.categories || []).length,
+          todos: (next.todos || []).length
+        };
+        this.showDataFeedback(
+          `已恢复导入前备份：书签 ${after.bookmarks} 个、分类 ${after.categories} 个、待办 ${after.todos} 条`,
+          'success'
+        );
+        await this.refreshAllAfterDataChange();
+      } catch (err) {
+        this.showDataFeedback('恢复失败：' + err.message, 'error');
       }
     });
   },
@@ -552,6 +564,22 @@ const Settings = {
     if (!fb) return;
     fb.textContent = msg;
     fb.className = 'todo-save-feedback ' + (type === 'error' ? 'feedback-error' : 'feedback-success');
+  },
+
+  /* 数据导入/恢复后全量刷新主页与设置面板，保持主题/天气/壁纸同步 */
+  async refreshAllAfterDataChange() {
+    await this.renderBookmarks();
+    await this.renderCategories();
+    App.renderBookmarks();
+    App.renderCategories();
+    Todos.render();
+    const s = await Storage.getSettings();
+    App.applySettings(s);
+    // 导入恢复的主题需同步到主题下拉，避免 UI 与实际主题不一致
+    const themeSelect = document.getElementById('themeSelect');
+    if (themeSelect) themeSelect.value = s.theme || 'dark';
+    if (typeof Weather !== 'undefined') Weather.setCity(s.weatherCity || '');
+    if (typeof Wallpaper !== 'undefined') Wallpaper.init();
   },
 
   async renderWallpaperSettings() {
@@ -657,7 +685,10 @@ const Settings = {
     provSelect.addEventListener('change', () => {
       const prov = provSelect.value;
       const firstCity = WEATHER_PROVINCES.find(p => p.name === prov);
-      const firstQuery = firstCity ? firstCity.cities[0].query : '';
+      // cities 可能为空数组（cities.json 加载失败走 fallback 时空省份无城市），防御取空串避免抛 TypeError
+      const firstQuery = (firstCity && Array.isArray(firstCity.cities) && firstCity.cities.length > 0)
+        ? firstCity.cities[0].query
+        : '';
       this.updateCityDropdown(prov, firstQuery);
       if (firstQuery !== undefined) {
         Weather.setCity(firstQuery);

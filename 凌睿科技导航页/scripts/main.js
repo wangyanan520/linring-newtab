@@ -257,8 +257,8 @@ const App = {
     categories.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
 
     container.innerHTML = categories.map(cat => `
-      <div class="category-card" data-id="${cat.id}" draggable="true">
-        <div class="category-header" data-action="toggle" data-id="${cat.id}">
+      <div class="category-card" data-id="${escapeAttr(cat.id)}" draggable="true">
+        <div class="category-header" data-action="toggle" data-id="${escapeAttr(cat.id)}">
           <span class="category-title">${escapeHtml(cat.title)}</span>
           <span class="category-toggle ${cat.collapsed ? 'collapsed' : ''}">▼</span>
         </div>
