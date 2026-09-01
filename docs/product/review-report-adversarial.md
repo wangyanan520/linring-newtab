@@ -165,6 +165,13 @@ A3 无兜底文案（E2E 证实）、A4 壁纸回退到预设非「上一张」+
 - **验证**：`npm test` 8/8、`test:e2e:preview` 31/31、`test:e2e` 全量 64/64（含扩展模式 newtab 覆盖）。
 - **覆盖率口径局限（P2-7 运行时证据）**：`test:coverage` 报告 100% 仅统计测试文件自身——被测纯函数经 `fs.readFileSync + eval` 执行，**不在 Node 模块加载器统计内**。PBI-15「核心纯函数覆盖率 ≥ 80%」验收前必须解决架构问题（storage.js 模块化导出或 vm 加载），否则覆盖率数字失真。
 
+### PBI-15 完整落地（2026-09-01，测试工程 + CI）
+
+- 最小测试工程：`npm test`（node:test，24 项分组测试）、`npm run test:coverage`（行 95.95% / 分支 74.36% / 函数 96.67%）、`npm run test:e2e`（三模式 64 项）、`npm run test:e2e:preview`（无 GUI 回归入口 31 项）。
+- storage.js UMD 导出（P2-7）：浏览器 `<script>` 加载不变，Node 直接 require，覆盖率真实化。
+- CI 接入（PBI-15 AC3「CI 中自动执行」）：`.github/workflows/ci.yml`，unit（test + coverage）与 e2e-preview（headless 冒烟）双 job；扩展模式（headful + CfT）保留本地运行。
+- **PBI-15 验收对照**：`npm test` 一键运行 ✓；核心纯函数覆盖率 ≥80%（行 95.95%）✓；测试不依赖浏览器环境（mock chrome.storage/localStorage）✓；CI 可重复执行 ✓。
+
 ### P2 修复状态汇总（2026-09-01）
 
 | 项 | 状态 |
