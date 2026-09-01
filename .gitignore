@@ -4,3 +4,4 @@
 __MACOSX/
 ._*
 node_modules/
+dist/
