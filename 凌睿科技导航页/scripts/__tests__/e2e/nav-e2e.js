@@ -147,6 +147,36 @@ async function runCore(page, label) {
   await page.locator('#themeSelect').selectOption('dark');
   await sleep(300);
 
+  // [3.5] PBI-10 主题与壁纸联动
+  const themeOpts = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('#themeSelect option')).map(o => o.value));
+  check('[3.5] 主题下拉含跟随壁纸档', themeOpts.includes('auto'), themeOpts.join(','));
+  // auto 模式：当前壁纸深邃星空（dark）→ data-theme dark
+  await page.locator('#themeSelect').selectOption('auto');
+  await sleep(400);
+  check('[3.5] auto 按当前壁纸解析为 dark', await page.evaluate(() => document.documentElement.dataset.theme) === 'dark');
+  // 手动 light 后换壁纸（极光绿 dark）→ 主题不随壁纸变化（AC2 手动优先）
+  await page.locator('#themeSelect').selectOption('light');
+  await sleep(300);
+  await page.evaluate(() => Wallpaper.next());
+  await sleep(800);
+  check('[3.5] 手动主题不随壁纸变化', await page.evaluate(() => document.documentElement.dataset.theme) === 'light');
+  // 切回 auto → 重新按当前壁纸（极光绿 dark）解析
+  await page.locator('#themeSelect').selectOption('auto');
+  await sleep(400);
+  check('[3.5] 切回 auto 跟随壁纸', await page.evaluate(() => document.documentElement.dataset.theme) === 'dark');
+  // 持久化：刷新后 auto 保持
+  await page.reload();
+  await sleep(2500);
+  check('[3.5] auto 持久化', await page.evaluate(() => document.documentElement.dataset.theme) === 'dark');
+  // 恢复 dark 状态供后续测试
+  await page.click('#settingsBtn');
+  await sleep(500);
+  await page.click('[data-tab="wallpaper"]');
+  await sleep(500);
+  await page.locator('#themeSelect').selectOption('dark');
+  await sleep(300);
+
   // [4] 组件开关
   await page.click('[data-tab="components"]');
   await sleep(600);

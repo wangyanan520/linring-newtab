@@ -657,15 +657,22 @@ const Settings = {
       <div class="setting-section-title">主题外观</div>
       <p class="setting-section-desc">选择界面主题。深色适合夜间，浅色适合明亮环境。</p>
       <select class="city-select" id="themeSelect">
-        <option value="dark" ${settings.theme === 'light' ? '' : 'selected'}>深色</option>
+        <option value="dark" ${settings.theme === 'light' || settings.theme === 'auto' ? '' : 'selected'}>深色</option>
         <option value="light" ${settings.theme === 'light' ? 'selected' : ''}>浅色</option>
+        <option value="auto" ${settings.theme === 'auto' ? 'selected' : ''}>跟随壁纸</option>
       </select>
     `;
     tab.appendChild(themeSection);
     themeSection.querySelector('#themeSelect').addEventListener('change', async (e) => {
       const val = e.target.value;
       await Storage.updateSettings({ theme: val });
-      document.documentElement.dataset.theme = val;
+      // PBI-10：auto 模式立即按当前壁纸明度解析
+      if (val === 'auto') {
+        const wp = Wallpaper.getWallpapers()[Wallpaper.currentIndex];
+        document.documentElement.dataset.theme = wp && wp.themeHint === 'light' ? 'light' : 'dark';
+      } else {
+        document.documentElement.dataset.theme = val;
+      }
     });
 
     // 底部工具栏开关

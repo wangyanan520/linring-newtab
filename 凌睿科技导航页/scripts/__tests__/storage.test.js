@@ -259,6 +259,29 @@ test('Storage.restoreLastImportBackup：无备份时明确报错', async () => {
   } finally { cleanupGlobals(); }
 });
 
+test('PBI-08 旧备份兼容：无 schemaVersion + 无 sortOrder 导入成功且补齐', async () => {
+  try {
+    const { Storage } = withChrome();
+    await Storage.init();
+    // 模拟 V2 时代旧备份：无 schemaVersion、书签无 sortOrder、分类缺 items
+    const legacy = JSON.stringify({
+      bookmarks: [{ id: 'old1', title: '旧书签', url: 'https://old.com' }],
+      categories: [{ id: 'oldc1', title: '旧分类' }],
+      todos: [{ id: 'oldt1', text: '旧待办' }],
+      settings: { theme: 'light' }
+    });
+    const next = await Storage.importData(legacy);
+    assert.equal(next.bookmarks.length, 1, '旧备份书签导入');
+    assert.equal(next.categories.length, 1, '旧备份分类导入');
+    assert.equal(next.categories[0].items.length, 0, '缺 items 补空数组');
+    assert.equal(next.todos.length, 1, '旧备份待办导入');
+    assert.equal((await Storage.getSettings()).theme, 'light', '旧 settings 生效');
+    // 幂等：重复导入同一文件结果一致
+    const next2 = await Storage.importData(legacy);
+    assert.deepEqual(next2.bookmarks, next.bookmarks, '重复导入结果一致（幂等）');
+  } finally { cleanupGlobals(); }
+});
+
 /* ==================== localStorage 回退分支 ==================== */
 
 test('Storage CRUD：localStorage 回退分支', async () => {

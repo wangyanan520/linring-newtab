@@ -3,6 +3,7 @@ const WALLPAPERS = [
   {
     name: '深邃星空',
     type: 'preset',
+    themeHint: 'dark',
     css: `
       radial-gradient(ellipse 70% 55% at 15% 20%, rgba(100, 60, 200, 0.40) 0%, transparent 60%),
       radial-gradient(ellipse 60% 50% at 85% 15%, rgba(40, 100, 220, 0.35) 0%, transparent 55%),
@@ -20,6 +21,7 @@ const WALLPAPERS = [
   {
     name: '极光绿',
     type: 'preset',
+    themeHint: 'dark',
     css: `
       radial-gradient(ellipse 70% 55% at 20% 30%, rgba(0, 180, 120, 0.35) 0%, transparent 60%),
       radial-gradient(ellipse 60% 50% at 80% 20%, rgba(20, 200, 160, 0.25) 0%, transparent 55%),
@@ -36,6 +38,7 @@ const WALLPAPERS = [
   {
     name: '落日暖阳',
     type: 'preset',
+    themeHint: 'dark',
     css: `
       radial-gradient(ellipse 70% 55% at 25% 30%, rgba(220, 100, 40, 0.40) 0%, transparent 60%),
       radial-gradient(ellipse 60% 50% at 75% 20%, rgba(200, 120, 20, 0.30) 0%, transparent 55%),
@@ -53,6 +56,7 @@ const WALLPAPERS = [
   {
     name: 'Bing 每日壁纸',
     type: 'api',
+    themeHint: null,
     apiType: 'bing',
     colors: {
       accent: 'rgba(255, 255, 255, 0.45)',
@@ -64,6 +68,7 @@ const WALLPAPERS = [
   {
     name: '随机壁纸',
     type: 'api',
+    themeHint: null,
     apiType: 'random',
     colors: {
       accent: 'rgba(255, 255, 255, 0.45)',
@@ -152,6 +157,8 @@ const Wallpaper = {
 
     this.currentIndex = index;
     this.applyColors(wallpaper.colors);
+    // PBI-10：主题处于"跟随壁纸"模式时按当前壁纸明度同步（异步读取设置，不阻塞渲染）
+    this.syncThemeFromWallpaper();
 
     /* 预设渐变用 15% 淡覆盖，API 壁纸用 35% 深覆盖保证内容可读 */
     if (wallpaper.type === 'preset') {
@@ -199,6 +206,19 @@ const Wallpaper = {
     }
 
     this.setBgImage(bgLayer, url);
+  },
+
+  /* PBI-10：主题与壁纸联动——仅当设置 theme='auto'（跟随壁纸）时生效；
+     手动选择深/浅后不随壁纸变化（PBI-10 AC2）。API 壁纸明度不可预知，保持当前主题。 */
+  async syncThemeFromWallpaper() {
+    try {
+      const settings = await Storage.getSettings();
+      if (settings.theme !== 'auto') return;
+      const hint = WALLPAPERS[this.currentIndex].themeHint;
+      document.documentElement.dataset.theme = hint === 'light' ? 'light' : 'dark';
+    } catch (e) {
+      console.error('主题联动失败:', e);
+    }
   },
 
   async set(index) {

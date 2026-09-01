@@ -50,8 +50,13 @@ const App = {
     if (wallpaperBtn) {
       wallpaperBtn.classList.toggle('hidden', !settings.showBottomBar);
     }
-    // V3 主题：默认深色，浅色时切换
-    document.documentElement.dataset.theme = settings.theme === 'light' ? 'light' : 'dark';
+    // V3 主题：默认深色，浅色时切换；PBI-10「跟随壁纸」按当前壁纸明度解析
+    let theme = settings.theme === 'light' ? 'light' : 'dark';
+    if (settings.theme === 'auto') {
+      const wp = typeof Wallpaper !== 'undefined' ? Wallpaper.getWallpapers()[Wallpaper.currentIndex] : null;
+      theme = wp && wp.themeHint === 'light' ? 'light' : 'dark';
+    }
+    document.documentElement.dataset.theme = theme;
     // V3 组件可见性：按注册表隐藏/显示主页区块
     this.applyComponentVisibility(settings);
   },
