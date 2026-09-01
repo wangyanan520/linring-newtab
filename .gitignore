@@ -3,3 +3,4 @@
 .AppleDouble
 __MACOSX/
 ._*
+node_modules/
