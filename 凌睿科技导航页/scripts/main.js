@@ -152,6 +152,20 @@ const App = {
       Wallpaper.next();
     });
 
+    // PBI-18 搜索快捷键（US-22）：/ 聚焦搜索框；Esc 清空并失焦；输入聚焦时不冲突
+    document.addEventListener('keydown', (e) => {
+      const tag = e.target.tagName;
+      const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target.isContentEditable === true);
+      if (e.key === '/' && !isTyping) {
+        e.preventDefault();
+        searchInput.focus();
+      } else if (e.key === 'Escape' && document.activeElement === searchInput) {
+        searchInput.value = '';
+        searchClear.classList.remove('visible');
+        searchInput.blur();
+      }
+    });
+
     const todoAddBtn = document.getElementById('todoAddBtn');
     if (todoAddBtn) {
       todoAddBtn.addEventListener('click', () => Todos.toggleForm());

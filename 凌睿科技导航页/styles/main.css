@@ -1368,3 +1368,39 @@ body {
 .dhc-cell.dhc-today .dhc-badge {
   display: none;
 }
+
+/* PBI-18 天气降级：重试按钮 */
+.weather-retry {
+  margin-left: 8px;
+  padding: 2px 10px;
+  font-size: 12px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.weather-retry:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+[data-theme="light"] .weather-retry {
+  color: rgba(25, 28, 45, 0.92);
+  background: rgba(25, 28, 45, 0.06);
+  border-color: rgba(25, 28, 45, 0.16);
+}
+
+/* PBI-11/PBI-12 日历浮层：倒计时行与数据源标注 */
+.dhc-countdown {
+  padding: 4px 14px 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffd9a8;
+}
+.dhc-source-note {
+  padding: 0 14px 4px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+[data-theme="light"] .dhc-countdown {
+  color: #b45309;
+}

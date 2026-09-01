@@ -48,6 +48,7 @@ const Calendar = {
   loaded: false,
   viewYear: 0,
   viewMonth: 0,
+  holidaySource: 'unknown', // PBI-12：'network' | 'cache' | 'partial' | 'fallback'
 
   async init() {
     const now = new Date();
@@ -108,6 +109,7 @@ const Calendar = {
         const obj = JSON.parse(cached);
         if (Date.now() - obj.timestamp < HOLIDAY_CACHE_DURATION) {
           this.holidays = Object.assign({}, HOLIDAY_FALLBACK, obj.data);
+          this.holidaySource = 'cache';
           return;
         }
       }
@@ -116,10 +118,18 @@ const Calendar = {
     const year = new Date().getFullYear();
     const years = [year, year + 1];
     const merged = {};
+    let okYears = 0;
     for (const y of years) {
       const data = await this.fetchYear(y);
-      if (data) Object.assign(merged, data);
+      if (data) {
+        Object.assign(merged, data);
+        okYears++;
+      }
     }
+    // PBI-12：记录数据源状态，用于浮层标注"数据可能不完整"（US-14 AC2）
+    if (okYears === years.length) this.holidaySource = 'network';
+    else if (okYears > 0) this.holidaySource = 'partial';
+    else this.holidaySource = 'fallback';
     if (Object.keys(merged).length > 0) {
       this.holidays = Object.assign({}, HOLIDAY_FALLBACK, merged);
       try {
@@ -128,6 +138,9 @@ const Calendar = {
           data: merged
         }));
       } catch {}
+    } else {
+      // 两源均失败：保持内置 2026 兜底表，不报错（静默降级 + 浮层标注）
+      this.holidays = Object.assign({}, HOLIDAY_FALLBACK);
     }
   },
 
@@ -217,6 +230,34 @@ const Calendar = {
     }
   },
 
+  /* PBI-11：下一个法定节假日倒计时（US-12）；无数据/无未来假日返回 null */
+  getNextHoliday() {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const todayKey = this.formatDate(now.getFullYear(), now.getMonth() + 1, now.getDate());
+    const todayH = this.holidays[todayKey];
+
+    let next = null;
+    for (const [date, h] of Object.entries(this.holidays)) {
+      if (!h || !h.off) continue;
+      const parts = String(date).split('-').map(Number);
+      if (parts.length !== 3 || parts.some(p => !Number.isFinite(p))) continue;
+      const ts = new Date(parts[0], parts[1] - 1, parts[2]).getTime();
+      if (ts < todayStart) continue;
+      const days = Math.round((ts - todayStart) / 86400000);
+      if (!next || ts < next.ts) next = { ts, days, name: h.name };
+    }
+    return { todayH, next };
+  },
+
+  /* PBI-12：数据源状态标注文案（fallback/partial 时显示，US-14 AC2/UC-09 2a） */
+  getSourceNote() {
+    if (this.holidaySource === 'fallback' || this.holidaySource === 'partial') {
+      return '<div class="dhc-source-note">节假日数据可能不完整</div>';
+    }
+    return '';
+  },
+
   render() {
     const now = new Date();
     const year = this.viewYear;
@@ -229,6 +270,17 @@ const Calendar = {
     const weekRow = weekdays.map((w, i) =>
       `<div class="dhc-week ${i >= 5 ? 'dhc-weekend' : ''}">${w}</div>`
     ).join('');
+
+    // PBI-11：节假日倒计时行（今天放假 / 今日调休 / 下个节假日还有 N 天）
+    let countdown = '';
+    const { todayH, next } = this.getNextHoliday();
+    if (todayH) {
+      countdown = todayH.off
+        ? `<div class="dhc-countdown">今天 · ${escapeHtml(todayH.name)}（放假）</div>`
+        : `<div class="dhc-countdown">今日调休上班 · ${escapeHtml(todayH.name)}</div>`;
+    } else if (next && next.days > 0) {
+      countdown = `<div class="dhc-countdown">${escapeHtml(next.name)}还有 ${next.days} 天</div>`;
+    }
 
     const dayCells = cells.map(cell => {
       const key = this.formatDate(cell.y, cell.m, cell.d);
@@ -270,6 +322,8 @@ const Calendar = {
           <button class="dhc-nav" data-action="next-month">▶</button>
           <button class="dhc-nav dhc-nav-today" data-action="reset-view" title="回到今天">●</button>
         </div>
+        ${countdown}
+        ${this.getSourceNote()}
         <div class="dhc-week-row">${weekRow}</div>
         <div class="dhc-grid">${dayCells}</div>
       </div>

@@ -62,8 +62,49 @@ const Settings = {
     if (tab === 'components') {
       this.renderComponentsSettings();
     }
+    if (tab === 'privacy') {
+      this.renderPrivacySettings();
+    }
     // 清理其他 tab 可能残留的内联表单，防止 ID 冲突
     this.clearInlineForms();
+  },
+
+  /* PBI-13 隐私可见化（US-15）：权限清单 / 数据声明 / 外部数据源 / 无埋点声明。
+     纯静态展示，不请求任何网络，不读取用户数据。 */
+  renderPrivacySettings() {
+    const tab = document.getElementById('tabPrivacy');
+    if (!tab) return;
+    if (tab.dataset.rendered) return;
+    tab.dataset.rendered = '1';
+    tab.innerHTML = `
+      <div class="setting-section">
+        <div class="setting-section-title">权限清单</div>
+        <p class="setting-section-desc">本扩展申请的浏览器权限极少，且全部用于本地功能：</p>
+        <ul class="privacy-list">
+          <li><b>storage</b> — 在浏览器本地保存书签 / 分类 / 待办 / 设置，数据不出本机。</li>
+          <li><b>host_permissions（4 个域名）</b> — 仅用于主动访问下列外部数据源，不包含任何埋点或追踪服务。</li>
+        </ul>
+      </div>
+      <div class="setting-section">
+        <div class="setting-section-title">数据存储</div>
+        <p class="setting-section-desc">书签、分类、待办与设置全部保存在浏览器本地（chrome.storage）。导出备份为本地 JSON 文件，由你自行保管；导入恢复仅发生在你主动操作时。无账号、无云同步。</p>
+      </div>
+      <div class="setting-section">
+        <div class="setting-section-title">外部数据源</div>
+        <p class="setting-section-desc">页面功能运行时仅访问以下服务（均可按需关闭对应组件或更换壁纸源）：</p>
+        <ul class="privacy-list">
+          <li><b>wttr.in</b> — 天气查询（天气组件；关闭组件即停止请求）</li>
+          <li><b>cn.bing.com</b> — Bing 每日壁纸（壁纸源）</li>
+          <li><b>bing.biturl.top</b> — 随机壁纸（壁纸源）</li>
+          <li><b>cdn.jsdelivr.net / raw.githubusercontent.com</b> — 节假日数据（离线时使用内置表）</li>
+          <li><b>favicon.im</b> — 书签网站图标（请求地址包含书签域名；加载失败自动回退首字符图标）</li>
+        </ul>
+      </div>
+      <div class="setting-section">
+        <div class="setting-section-title">隐私承诺</div>
+        <p class="setting-section-desc">本扩展无广告、无统计埋点、无任何"默认收集"行为；代码开源可审计。</p>
+      </div>
+    `;
   },
 
   /* V3 组件管理：按 COMPONENTS 注册表渲染开关，搜索框常驻不可关闭 */

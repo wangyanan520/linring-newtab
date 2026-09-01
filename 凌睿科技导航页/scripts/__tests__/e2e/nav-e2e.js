@@ -243,6 +243,60 @@ async function runCore(page, label) {
   check('[11] 日历浮层弹出', await page.locator('.datetime-hover-card').isVisible().catch(() => false));
   const cells = await page.locator('.dhc-cell').count();
   check('[11] 日历格子为 7 的倍数', cells % 7 === 0 && cells >= 28, `实际 ${cells}`);
+  const countdownText = await page.evaluate(() => {
+    const el = document.querySelector('.dhc-countdown');
+    return el ? el.textContent : '';
+  });
+  check('[11] PBI-11 节假日倒计时行', /还有 \d+ 天|今天|调休/.test(countdownText), countdownText || '(无)');
+  await page.keyboard.press('Escape');
+  await sleep(300);
+
+  // [16] PBI-18 搜索快捷键（US-22）
+  await page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); });
+  await page.keyboard.press('/');
+  check('[16] / 聚焦搜索框', await page.evaluate(() => document.activeElement && document.activeElement.id === 'searchInput'));
+  await page.keyboard.type('abc/');
+  check('[16] 输入聚焦时 / 不冲突', await page.evaluate(() =>
+    document.activeElement && document.activeElement.id === 'searchInput' && document.getElementById('searchInput').value.includes('/')));
+  await page.keyboard.press('Escape');
+  check('[16] Esc 清空并失焦', await page.evaluate(() =>
+    (!document.activeElement || document.activeElement.id !== 'searchInput') && document.getElementById('searchInput').value === ''));
+
+  // [15] PBI-13 隐私可见化
+  await page.click('#settingsBtn');
+  await sleep(400);
+  await page.click('[data-tab="privacy"]');
+  await sleep(500);
+  const privacyText = await page.evaluate(() => document.getElementById('tabPrivacy').innerText);
+  check('[15] 隐私 tab：权限清单', /权限清单/.test(privacyText) && /storage/.test(privacyText));
+  check('[15] 隐私 tab：外部数据源', /外部数据源/.test(privacyText) && /favicon\.im/.test(privacyText) && /wttr\.in/.test(privacyText) && /bing\.biturl\.top/.test(privacyText));
+  check('[15] 隐私 tab：无埋点声明', /无统计埋点/.test(privacyText) && /无广告/.test(privacyText));
+  await page.keyboard.press('Escape');
+  await sleep(300);
+
+  // [13] PBI-18 天气：缓存时间标注 + 失败降级 + 重试恢复
+  const whcHeader = await page.evaluate(() => {
+    const el = document.querySelector('.whc-header');
+    return el ? el.textContent : '';
+  });
+  check('[13] 缓存时间标注', /更新于/.test(whcHeader), whcHeader.slice(0, 60));
+  await page.route('**://wttr.in/**', r => r.fulfill({ status: 500, body: 'err', contentType: 'text/plain' }));
+  await page.evaluate(() => { if (typeof Weather !== 'undefined') { Weather._failed = false; Weather.cache = null; Weather.refresh(); } });
+  await sleep(6500);
+  const degradeText = await page.evaluate(() => {
+    const el = document.getElementById('weatherWidget');
+    return el ? el.innerText : '';
+  });
+  check('[13] 天气失败显示降级文案', /天气暂不可用/.test(degradeText), degradeText.slice(0, 60));
+  check('[13] 降级含重试按钮', await page.locator('.weather-retry').count() === 1);
+  await page.unroute('**://wttr.in/**');
+  await page.locator('.weather-retry').click();
+  await sleep(9000);
+  const afterRetry = await page.evaluate(() => {
+    const el = document.getElementById('weatherWidget');
+    return el ? el.innerText : '';
+  });
+  check('[13] 重试后恢复天气', /°C/.test(afterRetry), afterRetry.slice(0, 60));
 
   // [13.5] 扩展模式 CSP 拦截验证
   if (label === 'extension') {

@@ -161,6 +161,7 @@ const Weather = {
   selectedCityQuery: '',
   _timerId: null,
   _inited: false,
+  _failed: false,
 
   async init() {
     // 守卫：即使注册表路径外出现重复调用，也只在首次执行（防止重复 fetch/建定时器）
@@ -202,6 +203,7 @@ const Weather = {
   async setCity(query) {
     this.selectedCityQuery = query;
     this.cache = null;
+    this._failed = false;
     await Storage.updateSettings({ weatherCity: query, weatherCache: null });
     await this.refresh();
   },
@@ -228,7 +230,7 @@ const Weather = {
     });
   },
 
-  async fetchWeather(retries = 2) {
+  async fetchWeather(retries = 2, onFirstFail) {
     let url;
     if (this.selectedCityQuery) {
       url = `https://wttr.in/${this.selectedCityQuery}?format=j1&lang=zh`;
@@ -241,7 +243,8 @@ const Weather = {
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        // PBI-18：首次超时 5 秒，尽快让用户看到降级文案（US-21 AC1）
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
 
         const response = await fetch(url, { signal: controller.signal });
         clearTimeout(timeoutId);
@@ -267,6 +270,10 @@ const Weather = {
           version: CACHE_VERSION
         };
       } catch {
+        if (attempt === 0 && typeof onFirstFail === 'function') {
+          // 首次失败立即通知调用方渲染降级文案，重试在后台继续
+          onFirstFail();
+        }
         if (attempt < retries) {
           await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 1000));
         }
@@ -288,9 +295,14 @@ const Weather = {
   },
 
   async refresh() {
-    const data = await this.fetchWeather();
+    // PBI-18：首次失败即渲染降级文案（5s 内），重试成功自动恢复（US-21 AC1/AC3）
+    const data = await this.fetchWeather(2, () => {
+      this._failed = true;
+      this.render();
+    });
     if (data) {
       this.cache = data;
+      this._failed = false;
       await Storage.updateSettings({ weatherCache: data });
     }
     this.render();
@@ -301,9 +313,24 @@ const Weather = {
     if (!el) return;
     if (!this.cache) {
       const offline = !navigator.onLine;
-      el.innerHTML = offline
-        ? '<span class="weather-loading">离线</span>'
-        : '<span class="weather-loading">获取天气中...</span>';
+      if (offline) {
+        el.innerHTML = '<span class="weather-loading">离线</span>';
+        return;
+      }
+      if (this._failed) {
+        // PBI-18：无缓存且请求失败 → 明确降级文案 + 重试入口
+        el.innerHTML = '<span class="weather-loading">天气暂不可用</span><button class="weather-retry" type="button">重试</button>';
+        const retry = el.querySelector('.weather-retry');
+        if (retry) {
+          retry.addEventListener('click', () => {
+            this._failed = false;
+            this.render();
+            this.refresh();
+          });
+        }
+        return;
+      }
+      el.innerHTML = '<span class="weather-loading">获取天气中...</span>';
       return;
     }
     const display = this.getDisplayCity();
@@ -344,7 +371,13 @@ const Weather = {
     const high = this.cache.todayHigh;
     const low = this.cache.todayLow;
     const range = (high != null && low != null) ? `今日 ${low}° ~ ${high}°` : '';
-    const header = [display, range].filter(Boolean).join(' &middot; ');
+    // PBI-18：有缓存时标注数据时间
+    let updated = '';
+    if (this.cache.timestamp) {
+      const d = new Date(this.cache.timestamp);
+      updated = `更新于 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    }
+    const header = [display, range, updated].filter(Boolean).join(' &middot; ');
 
     const bars = hourly.map((h, idx) => {
       const showLabel = idx === 0 || idx % 3 === 0;
