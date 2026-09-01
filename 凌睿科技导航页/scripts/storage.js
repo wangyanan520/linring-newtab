@@ -610,6 +610,7 @@ if (typeof module !== 'undefined' && module.exports) {
     normalizeCategories,
     escapeHtml,
     escapeAttr,
+    generateId,
     DEFAULT_SETTINGS,
     SUPPORTED_SCHEMA_VERSION
   };
