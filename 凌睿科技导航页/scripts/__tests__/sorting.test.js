@@ -152,6 +152,20 @@ assertTrue(validateBackup({
   categories: [{ id: 'c1', title: 'C', items: [{ id: 'l1', title: 'L', url: 'data:text/html,x' }] }]
 }).length > 0, '分类链接 data: 协议 url 被拒绝');
 
+/* ---- PKG-04 追加：id 字符白名单（防 CSS 选择器注入导致编辑崩溃） ---- */
+assertTrue(validateBackup({
+  bookmarks: [{ id: 'bm"]x', title: 'A', url: 'https://a.com' }]
+}).length > 0, '含引号 id 被拒绝');
+assertTrue(validateBackup({
+  categories: [{ id: 'c]1', title: 'C' }]
+}).length > 0, '含方括号分类 id 被拒绝');
+assertTrue(validateBackup({
+  todos: [{ id: 't1/x', text: 'todo' }]
+}).length > 0, '含斜杠待办 id 被拒绝');
+assertTrue(validateBackup({
+  bookmarks: [{ id: 'bm-1_ok', title: 'A', url: 'https://a.com' }]
+}).length === 0, '字母/数字/下划线/连字符 id 通过');
+
 /* ---- PKG-04 导入归一化：缺 items 的分类补空数组，保证渲染路径安全 ---- */
 const normalizeCategories = eval(`(${extractFunction('normalizeCategories', storageSrc)})`);
 assertEqual(

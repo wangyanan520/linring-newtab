@@ -214,7 +214,8 @@ const Settings = {
     const getList = type === 'bookmark' ? Storage.getBookmarks : Storage.getCategories;
     const reorderFn = type === 'bookmark' ? Storage.reorderBookmarks : Storage.reorderCategories;
     const rerender = type === 'bookmark' ? () => this.renderBookmarks() : () => this.renderCategories();
-    const appRerender = type === 'bookmark' ? App.renderBookmarks : App.renderCategories;
+    // 箭头函数包装保持 this 绑定（直接解构 App.renderBookmarks 会丢失 this 导致 TypeError）
+    const appRerender = type === 'bookmark' ? () => App.renderBookmarks() : () => App.renderCategories();
 
     const list = await getList();
     list.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
@@ -466,7 +467,7 @@ const Settings = {
     tab.innerHTML = `
       <div class="setting-section">
         <div class="setting-section-title">数据备份</div>
-        <p class="setting-section-desc">导出全部配置（书签 / 分类 / 待办 / 设置）为本地 JSON 文件；导入可完整恢复。数据全程保存在本地，不经过任何服务器。</p>
+        <p class="setting-section-desc">导出全部配置（书签 / 分类 / 待办 / 设置）为本地 JSON 文件；导入可完整恢复。备份文件仅保存在本地，不经过任何服务器；页面功能会请求外部数据源（天气 / 壁纸 / 节假日 / 书签图标），无广告、无埋点。</p>
         <div style="margin-top: 10px; display: flex; gap: 8px; align-items: center;">
           <button class="btn-primary btn-sm" id="exportDataBtn">导出备份</button>
           <label class="btn-edit btn-sm" style="cursor: pointer; display: inline-flex; align-items: center;">导入恢复
@@ -566,7 +567,7 @@ const Settings = {
     fb.className = 'todo-save-feedback ' + (type === 'error' ? 'feedback-error' : 'feedback-success');
   },
 
-  /* 数据导入/恢复后全量刷新主页与设置面板，保持主题/天气/壁纸同步 */
+  /* 数据导入/恢复后全量刷新主页与设置面板，保持主题/天气/壁纸/底部栏同步 */
   async refreshAllAfterDataChange() {
     await this.renderBookmarks();
     await this.renderCategories();
@@ -578,6 +579,20 @@ const Settings = {
     // 导入恢复的主题需同步到主题下拉，避免 UI 与实际主题不一致
     const themeSelect = document.getElementById('themeSelect');
     if (themeSelect) themeSelect.value = s.theme || 'dark';
+    // 同步底部工具栏开关（导入的备份可能改变 showBottomBar；undefined 视为默认 true）
+    const bottomBarToggle = document.getElementById('showBottomBarToggle');
+    if (bottomBarToggle) bottomBarToggle.checked = s.showBottomBar !== false;
+    // 同步壁纸源下拉与刷新按钮可见性（仅当导入值在选项内时更新，避免损坏数据破坏 UI）
+    const wallpaperSelect = document.getElementById('wallpaperSourceSelect');
+    const wallpaperName = s.wallpaperName || '';
+    if (wallpaperSelect && [...wallpaperSelect.options].some(o => o.value === wallpaperName)) {
+      wallpaperSelect.value = wallpaperName;
+    }
+    const refreshBtn = document.getElementById('refreshWallpaperBtn');
+    if (refreshBtn) {
+      const wp = typeof Wallpaper !== 'undefined' ? Wallpaper.getWallpapers().find(w => w.name === wallpaperName) : null;
+      refreshBtn.style.display = wp && wp.type === 'api' ? '' : 'none';
+    }
     if (typeof Weather !== 'undefined') Weather.setCity(s.weatherCity || '');
     if (typeof Wallpaper !== 'undefined') Wallpaper.init();
   },

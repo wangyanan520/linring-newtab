@@ -140,6 +140,9 @@ function validateBackup(data) {
       return false;
     }
   };
+  // id 字符白名单：仅允许字母/数字/下划线/连字符，拒绝会破坏 CSS 选择器拼接的字符（如 " ]）
+  // （generateId 与预设 id 均为 [0-9a-z_] 格式，白名单与现有数据完全兼容）
+  const idSafe = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]+$/.test(id);
   if (Array.isArray(data.bookmarks)) {
     const ids = new Set();
     for (let i = 0; i < data.bookmarks.length; i++) {
@@ -150,6 +153,7 @@ function validateBackup(data) {
         continue;
       }
       if (typeof bm.id !== 'string' || !bm.id) errors.push(`bookmarks[${i}] 缺少 id`);
+      else if (!idSafe(bm.id)) errors.push(`bookmarks[${i}] id 含不支持的字符（仅字母/数字/下划线/连字符）`);
       if (typeof bm.title !== 'string' || !bm.title.trim()) errors.push(`bookmarks[${i}] 缺少 title`);
       if (typeof bm.url !== 'string' || !bm.url.trim()) errors.push(`bookmarks[${i}] 缺少 url`);
       else if (!urlProtoAllowed(bm.url.trim())) errors.push(`bookmarks[${i}] url 协议不支持（仅 http/https/chrome-extension）`);
@@ -170,6 +174,7 @@ function validateBackup(data) {
         continue;
       }
       if (typeof cat.id !== 'string' || !cat.id) errors.push(`categories[${i}] 缺少 id`);
+      else if (!idSafe(cat.id)) errors.push(`categories[${i}] id 含不支持的字符（仅字母/数字/下划线/连字符）`);
       if (typeof cat.title !== 'string' || !cat.title.trim()) errors.push(`categories[${i}] 缺少 title`);
       if (cat.items !== undefined && !Array.isArray(cat.items)) errors.push(`categories[${i}] 的 items 必须是数组`);
       if (typeof cat.id === 'string' && cat.id) {
@@ -185,6 +190,7 @@ function validateBackup(data) {
             continue;
           }
           if (typeof item.id !== 'string' || !item.id) errors.push(`categories[${i}].items[${j}] 缺少 id`);
+          else if (!idSafe(item.id)) errors.push(`categories[${i}].items[${j}] id 含不支持的字符（仅字母/数字/下划线/连字符）`);
           if (typeof item.title !== 'string' || !item.title.trim()) errors.push(`categories[${i}].items[${j}] 缺少 title`);
           if (typeof item.url !== 'string' || !item.url.trim()) errors.push(`categories[${i}].items[${j}] 缺少 url`);
           else if (!urlProtoAllowed(item.url.trim())) errors.push(`categories[${i}].items[${j}] url 协议不支持（仅 http/https/chrome-extension）`);
@@ -206,6 +212,7 @@ function validateBackup(data) {
         continue;
       }
       if (typeof todo.id !== 'string' || !todo.id) errors.push(`todos[${i}] 缺少 id`);
+      else if (!idSafe(todo.id)) errors.push(`todos[${i}] id 含不支持的字符（仅字母/数字/下划线/连字符）`);
       if (typeof todo.text !== 'string' || !todo.text.trim()) errors.push(`todos[${i}] 缺少 text`);
       if (typeof todo.id === 'string' && todo.id) {
         if (ids.has(todo.id)) errors.push(`待办 id 重复：${todo.id}`);
