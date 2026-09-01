@@ -172,6 +172,17 @@ A3 无兜底文案（E2E 证实）、A4 壁纸回退到预设非「上一张」+
 - CI 接入（PBI-15 AC3「CI 中自动执行」）：`.github/workflows/ci.yml`，unit（test + coverage）与 e2e-preview（headless 冒烟）双 job；扩展模式（headful + CfT）保留本地运行。
 - **PBI-15 验收对照**：`npm test` 一键运行 ✓；核心纯函数覆盖率 ≥80%（行 95.95%）✓；测试不依赖浏览器环境（mock chrome.storage/localStorage）✓；CI 可重复执行 ✓。
 
+### PBI-17 静态兼容性评估（2026-09-01，评估检查点决策）
+
+**静态审计结论（低风险）**：
+- `chrome.*` API 引用仅 3 处（storage.js:249/253/268 的 `chrome.storage.local`，有 `typeof chrome` 守卫）；无 `browser.*` 引用；Firefox MV3 兼容层支持 `chrome.storage` 与回调式 API。
+- manifest 无 background/action/content_scripts 等差异字段；`chrome_url_overrides.newtab`、`host_permissions`、extension_pages CSP 均为 Firefox MV3 支持项。
+- localStorage 回退、fetch 跨域（host_permissions）行为一致。
+
+**决策记录（按 08-线路.md 风险缓冲条款）**：本机无 Firefox/Edge 环境，动态验证列为**待环境验证项（低风险）**；正式支持维持 Chrome 单端。若后续获得测试环境，按 02-用户故事.md US-19 AC 跑核心功能冒烟（书签/搜索/天气/待办/日历）即可放行。
+
+**附加清理**：manifest CSP 移除无代码引用的死条目（`img-src https://www.google.com`、`style-src https://fonts.googleapis.com`，font-src 收紧为 `'none'`）——对应审查报告 A17 死字段；E2E 全量 98/98 无回归，打包产物重新生成（SHA-256: c2a14661…）。
+
 ### PBI-14 完成 + P2-2 决策落地（2026-09-01，网络请求审计）
 
 - 新增 `network-audit.js`：统一请求注册表（6 项域名 + 用途 + 触发条件）、`isAllowed`（同源豁免 + `*.favicon.im` 子域通配 + favicon 兜底路径规则）、开发期 fetch 包装审计日志（白名单外请求 console.warn）。
