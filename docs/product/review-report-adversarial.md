@@ -172,6 +172,14 @@ A3 无兜底文案（E2E 证实）、A4 壁纸回退到预设非「上一张」+
 - CI 接入（PBI-15 AC3「CI 中自动执行」）：`.github/workflows/ci.yml`，unit（test + coverage）与 e2e-preview（headless 冒烟）双 job；扩展模式（headful + CfT）保留本地运行。
 - **PBI-15 验收对照**：`npm test` 一键运行 ✓；核心纯函数覆盖率 ≥80%（行 95.95%）✓；测试不依赖浏览器环境（mock chrome.storage/localStorage）✓；CI 可重复执行 ✓。
 
+### PBI-14 完成 + P2-2 决策落地（2026-09-01，网络请求审计）
+
+- 新增 `network-audit.js`：统一请求注册表（6 项域名 + 用途 + 触发条件）、`isAllowed`（同源豁免 + `*.favicon.im` 子域通配 + favicon 兜底路径规则）、开发期 fetch 包装审计日志（白名单外请求 console.warn）。
+- **P2-2 决策**：favicon.im 及 CDN 子域（实测运行时重定向 a.favicon.im）、任意域 `/favicon.ico` 兜底以路径规则豁免——功能保留同时审计规则明确；隐私 tab 已声明书签域名外发。
+- US-16 AC 全部达成：统一注册 ✓；E2E 断言全部请求与白名单比对（实测 134 请求零违规，违规即失败并输出 URL）✓；manifest host_permissions 与 CSP connect-src ⊆ 注册表单测断言 ✓。
+- 过程中修复 matchHost 子域通配边界（`*.favicon.im` 须含裸域，`slice(2)` 去 `*.` 前缀）。
+- 验证：npm test 31/31（新增 6 项审计规则测试）；E2E 全量 98/98。
+
 ### PBI-16 完成（2026-09-01，可复现打包）
 
 - `scripts/pack.js`：零依赖（zip 格式手写：local header + central directory + deflateRaw + crc32），`npm run pack` = 单测 + 打包。
