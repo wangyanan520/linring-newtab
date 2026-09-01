@@ -172,6 +172,14 @@ A3 无兜底文案（E2E 证实）、A4 壁纸回退到预设非「上一张」+
 - CI 接入（PBI-15 AC3「CI 中自动执行」）：`.github/workflows/ci.yml`，unit（test + coverage）与 e2e-preview（headless 冒烟）双 job；扩展模式（headful + CfT）保留本地运行。
 - **PBI-15 验收对照**：`npm test` 一键运行 ✓；核心纯函数覆盖率 ≥80%（行 95.95%）✓；测试不依赖浏览器环境（mock chrome.storage/localStorage）✓；CI 可重复执行 ✓。
 
+### PBI-16 完成（2026-09-01，可复现打包）
+
+- `scripts/pack.js`：零依赖（zip 格式手写：local header + central directory + deflateRaw + crc32），`npm run pack` = 单测 + 打包。
+- 产物 `dist/lingrui-nav-v1.0.0-<date>.zip` + `.sha256`；排除 .DS_Store/__MACOSX/._*。
+- 自校验：打包即解压与源码逐文件字节比对；外部验证：系统 unzip 解压后与源码 diff 为空。
+- 可复现性实测：连续两次打包 SHA-256 一致（d6b9f323…）。
+- PBI-16/US-18 三项 AC 全部达成（一条命令 / 无垃圾 / diff 为空 + 哈希可校验）。
+
 ### Phase 2 完成（2026-09-01，PBI-08/10/11/12/13/18 全部落地）
 
 对照 08-产品线路.md Phase 2 范围（PBI-08、PBI-10~13、PBI-18）：
