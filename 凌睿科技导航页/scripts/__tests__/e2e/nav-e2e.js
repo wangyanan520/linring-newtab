@@ -20,6 +20,7 @@
  */
 'use strict';
 const { chromium } = require('playwright');
+const { isAllowed } = require('../../network-audit.js');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -343,6 +344,15 @@ async function runCore(page, label) {
     }).catch(() => 'eval-err');
     check('[13.5] CSP 阻止内联脚本', inline !== true);
   }
+
+  // [12] PBI-14 网络请求审计：全部请求与白名单比对（US-16 AC2：白名单外请求使测试失败并给出 URL）
+  const pageUrl = page.url();
+  const violations = [];
+  for (const u of requests) {
+    if (!isAllowed(u, pageUrl)) violations.push(u);
+  }
+  check('[12] 无白名单外请求（PBI-14）', violations.length === 0, violations.slice(0, 5).join(' || '));
+  info('[12] 生命周期请求总数', String(requests.length));
 
   // [14] 错误归零（A8/N1 修复后的基线）
   await sleep(2500);
