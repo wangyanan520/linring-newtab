@@ -157,6 +157,14 @@ A3 无兜底文案（E2E 证实）、A4 壁纸回退到预设非「上一张」+
 - 入库版实测 **64 PASS / 0 FAIL**（P2-4 修复后 A10 全部断言转绿，预览 + file + 扩展三模式全通过）。
 - 注意：扩展模式需 GUI 会话（headful）；无 GUI 环境可用 `--preview` 跑预览模式回归。
 
+### PBI-15 第一步落地（2026-09-01，最小测试工程）
+
+- 新增根 `package.json`：`npm test`（node:test，8 项分组 / 38 断言）、`npm run test:coverage`、`npm run test:e2e`（三模式全量）、`npm run test:e2e:preview`（无 GUI 回归入口）。
+- `sorting.test.js` 由自定义 runner 迁移为 node:test 风格（`test()` + `assert`），断言等价迁移。
+- devDependency 仅 playwright（E2E 用）；浏览器二进制走 ms-playwright 缓存自动探测，不强制下载。
+- **验证**：`npm test` 8/8、`test:e2e:preview` 31/31、`test:e2e` 全量 64/64（含扩展模式 newtab 覆盖）。
+- **覆盖率口径局限（P2-7 运行时证据）**：`test:coverage` 报告 100% 仅统计测试文件自身——被测纯函数经 `fs.readFileSync + eval` 执行，**不在 Node 模块加载器统计内**。PBI-15「核心纯函数覆盖率 ≥ 80%」验收前必须解决架构问题（storage.js 模块化导出或 vm 加载），否则覆盖率数字失真。
+
 ### P2 修复状态汇总（2026-09-01）
 
 | 项 | 状态 |
