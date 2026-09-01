@@ -175,4 +175,4 @@ A3 无兜底文案（E2E 证实）、A4 壁纸回退到预设非「上一张」+
 | P2-4 导入后设置面板 UI 不同步 | ✅ 已修复（三控件 + 刷新按钮同步） |
 | P2-1 US-08 AC5 文案对齐（http/https vs chrome-extension） | ✅ 已修复（2026-09-01：文档对齐实现——02-用户故事.md US-08 AC5 改为「仅 http/https/chrome-extension 协议，防 XSS；chrome-extension 用于书签指向扩展自身页面」，与 storage.js:138 白名单及错误文案一致；决策依据：实现为有意设计且测试断言固化） |
 | P2-2 网络请求审计承诺（a.favicon.im 等） | ⏳ Phase 3 实现 PBI-14 时决策 |
-| P2-7 可测试性目标 vs 全局脚本架构 | 🚧 第一步已完成（2026-09-01：storage.js 尾部 UMD 导出，测试由 eval 提取改为直接 require，覆盖率真实化——storage.js 行 51.62% / 分支 64.89% / 函数 25.00%，如实暴露 Storage 方法层无测试；距 PBI-15「≥80%」还需补 Storage 方法测试） |
+| P2-7 可测试性目标 vs 全局脚本架构 | ✅ 已完成（2026-09-01：第一步 storage.js UMD 导出 + 测试改直接 require；第二步新增 storage.test.js 24 分组测试覆盖 chrome.storage/localStorage 双分支（init/CRUD/reorder/导入导出/备份轮转/写入失败回滚/读取失败防御），行覆盖率 51.62% → **95.95%**、分支 74.36%、函数 96.67%，PBI-15「≥80%」达成；npm test 24/24，E2E 31/31 无回归） |
