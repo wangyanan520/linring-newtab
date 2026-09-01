@@ -1,0 +1,170 @@
+# 凌睿科技导航页 V3 对抗式审查报告（含两轮再审查 + E2E 运行时验证）
+
+> 审查时间：2026-09-01 · 审查对象：全部源码 + docs/product 文档链 + docs/spec + 分发包
+> 方法：意图↔实现逐条比对（intended-vs-implemented）+ 五轴代码审查 + 两轮对抗式再审查（攻击审查报告自身）+ E2E 运行时验证
+> 状态：本报告为独立审查产物；未改动任何源码。E2E 脚本位于 `/tmp/nav-e2e/`（未入库）
+
+---
+
+## 一、E2E 验证设置与局限
+
+**环境**：Playwright 1.57 + chromium-headless-shell（chromium-1234）；扩展目录经 `python3 -m http.server` 提供（http://127.0.0.1:8899）+ file:// 直开模式。
+**覆盖**：43 项断言通过（渲染/主题/组件开关/CRUD/排序持久化/导入导出/备份轮转/恢复/协议白名单/日历浮层/网络审计/隐私文案/天气/壁纸），含恶意输入注入测试。
+
+**验证局限（必须声明）**：
+1. **扩展模式未能运行**：本机 Chrome 151（dev 版）在无 GUI 会话下反复段错误（`Trying to load the allocator multiple times`、crashpad `mach_vm_read` 错误），`--load-extension` 亦未生效；Playwright 自带浏览器与 1.57 版本不匹配。故存储层走 **localStorage 回退分支**（与 chrome.storage 为同一 `storageGet/storageSet` 接口抽象，逻辑等价），**扩展专属行为未验证**：扩展 CSP 实际拦截、`chrome_url_overrides.newtab` 覆盖、`hideChromeUI`。
+2. 拖拽手势未自动化（HTML5 DnD 需 OS 级拖拽），通过同一 `reorder` 代码路径的键盘按钮验证排序持久化。
+3. 天气/壁纸/节假日为真实外网请求（当日 26°C 深圳晴、jsdelivr 节假日拉取成功、favicon 全链路加载），非 mock。
+
+---
+
+## 二、E2E 运行时证据（按审查项）
+
+### 2.1 运行时证实成立的审查结论
+
+| 审查项 | E2E 证据 |
+|---|---|
+| **A1 导入 URL 白名单契约漂移** | `chrome-extension://abc/index.html` 书签导入**成功**；随后主页渲染触发 favicon 链：`https://favicon.im/abc` → 404 → fallback `https://abc/favicon.ico` → DNS 解析失败（console 2 条错误：404 + ERR_NAME_NOT_RESOLVED）。错误文案亦暴露白名单为「仅 http/https/**chrome-extension**」，与 US-08 AC5「仅 http/https」字面矛盾 |
+| **A2 网络请求审计承诺落空** | 页面生命周期请求：`favicon.im` 38 次 + **`a.favicon.im` 37 次**（CDN 子域，不在文档 6 源清单）——文档白名单粒度与实现实际请求域不一致；CSP `img-src https://*.favicon.im` 通配恰好覆盖，若为精确匹配则全部 favicon 加载失败 |
+| **A3 无兜底文案** | 全部组件关闭后，主页仅剩搜索框 + 标题/设置按钮，**无任何兜底提示文案**（正文只含「凌睿科技导航|探索·发现·高效」） |
+| **A8 恶意 id 致编辑崩溃** | 导入 `{ id: 'bm"]x' }` 后点击编辑 → `pageerror: SyntaxError: Failed to execute 'querySelectorAll' on 'Document': '#bookmarkList .setting-item[data-id="bm"]x"]' is not a valid selector.` **稳定复现**；删除按钮不受影响（行为不对称） |
+| **A10 导入后设置面板 UI 不同步（部分）** | 导入 `{theme:'light', showBottomBar:false, wallpaperName:'极光绿'}` 后：主页 data-theme=light ✓、壁纸按钮隐藏 ✓、**themeSelect 同步为 light ✓**（refreshAllAfterDataChange 的同步逻辑生效）；但 **showBottomBarToggle 仍 checked=true、wallpaperSourceSelect 仍=深邃星空**（未同步，用户看到的面板状态与真实存储不一致）——A10 结论修正为「仅主题下拉同步，其余两个控件未同步」 |
+| **书签域名外发 favicon.im（隐私披露）** | 38+37 次请求路径均含书签域名（`https://favicon.im/www.baidu.com` 等），书签域名列表**完整发送给第三方**；设置面板文案「数据全程保存在本地，不经过任何服务器」（settings.js:469）与数据流不符 |
+| **US-20 预览模式行为不一致** | file:// 直开：cities.json fetch 失败（console: `URL scheme "file" is not supported`），城市下拉降级为仅「自动定位」1 项（http 模式 33 省多城市）——两种模式天气配置行为不一致，US-20 AC3「行为一致」未满足 |
+| **导入/恢复闭环** | 字段级合并 ✓、清空警告 ✓（「注意：分类已被清空，如误操作可回滚」）、3 份轮转备份写入 ✓、恢复按钮还原 8 书签/4 分类 ✓、`javascript:` 拒绝 ✓ |
+
+### 2.2 E2E 新发现（静态审查两轮均未捕获）
+
+**N1（P2）· 键盘排序后主页不刷新 —— `this` 解绑 TypeError**
+- 根因：settings.js:217 `const appRerender = type === 'bookmark' ? App.renderBookmarks : App.renderCategories;` 解构方法引用后，settings.js:227 裸调用 `appRerender()` → `this` 丢失（非严格模式回落 window）→ `this.extractDomain` / `this.attachDrag` 为 undefined → `TypeError: this.extractDomain is not a function`（pageerror 稳定复现）。
+- 影响：**设置面板**的上移/下移按钮执行后，数据已持久化（reorder 先写 storage）、设置面板已刷新，但**主页书签/分类顺序不实时更新**——US-01 AC5 键盘替代操作在主页不生效，需刷新页面才显示新顺序。
+- 修复：settings.js:227 改为 `App.renderBookmarks()` / `App.renderCategories()`（或 `appRerender.call(App)`）。
+
+### 2.3 E2E 通过项（正面基线，43 项）
+
+预设渲染（8 书签/4 分类）、主题即时切换+刷新持久化、组件开关+持久化、搜索框常驻、全关后搜索框保留、书签增删改、URL 补全（example.com→https://）、排序刷新保持、导出（schemaVersion/exportedAt/四类数据/本地日期文件名）、导入统计/合并/清空警告/备份轮转/恢复、日历浮层（2026-09 35 格 = 7 的倍数，农历八月 + 白露节气 + 干支头正确）、天气真实数据（26°C 晴 + 24h 预报 + 今日温幅）、节假日 jsdelivr 拉取无失败请求、`javascript:` 协议拒绝、file:// 模式渲染/localStorage/导出可用。
+
+---
+
+## 三、两轮对抗式再审查结论（对第一版审查报告的修正）
+
+### 第一轮：攻击原审查报告（事实核查 + 定级复核 + 遗漏补报）
+
+**事实错误 2 处**：
+- F-1：原 A16「MutationObserver 永久运行」不成立——main.js:120-127 轮询 20 次（4 秒）后主动 `observer.disconnect()`，观察者最长存活约 4 秒。
+- F-2：原 A15「22 秒」数字错误——最坏路径 8s×3 次尝试 + 退避 1s+2s = **27 秒**。
+
+**定级过高 6 项（下调）**：
+- A1 原 P1 → **P2**：`chrome-extension:` 仅产生页面导航，无脚本执行/无数据越权；测试断言表明为有意设计。P1（安全漏洞）站不住，属文档契约漂移。
+- A3/A4/A5/A6 原 P2 → **P3**：均出自 UC 文档「扩展流程」（备选路径），文档语义是设计说明而非验收承诺；且 US-04 AC3 括号「（如仅保留搜索框）」已把实现方式写进验收标准（AC 满足，UC 未满足，属文档内部标准不一致）。
+- A7 原 P2 → **P3**：无实测断言「无法验收」过强——0.35 遮罩 + 白字对比度可能达标；正确表述为「验收方法未定义，需实测」。
+- A9 原 P2 → **P3**：XSS 前提链脆弱（扩展模式 CSP 挡内联脚本；预览模式需 DNS 劫持/API 污染）；代码不一致缺陷（desc 转义、temp 未转义）仍成立。
+
+**措辞过强 2 处**：B10「零容错」（正则实际容忍多行/普通默认参数，仅对含括号默认值脆弱）；A2「结构性矛盾」（PBI-14 白名单补一条 favicon 例外即可，属未预判决策点）。
+
+**遗漏补报 4 项**：隐私透明度（settings.js:469 文案误导 + 书签域名外发，P2，E2E 已证实）；US-03 AC2 跨标签页不同步（无 storage.onChanged 订阅，P3）；UC-02 搜索为当前页导航（`window.location.href`）与「在新标签页打开」措辞偏差（P3）；预览模式 cities.json CORS 降级（P3，E2E 已证实）。
+
+### 第二轮：攻击修正后的结论 + 结构性盲区
+
+1. **修正后 P2 清单复核（7 项维持）**：A1'（契约漂移）、A2'（manifest 4 域 vs 文档 6 源 + PBI-14 决策点）、A8'（id 注入崩溃）、A10'（导入 UI 部分不同步）、隐私透明度、工程张力（KR-4 可测试性 vs 全局脚本架构）、N1（E2E 新增）。
+2. **方法论盲区**：原报告全部结论基于静态阅读。E2E 证明静态审查的局限——本报告编写过程中 curl 初测 favicon.im/biturl.top 返回 403/404 险些误判「外部依赖不可用、PRD 7.4 假设证伪」，带浏览器 UA 跟随重定向后均 200（正常运行）；运行时行为（CSP 执行、CDN 子域、this 解绑）必须以浏览器实测定论。
+3. **框架盲区**：「文档 vs 代码」二元框架漏掉了产品信任层（隐私叙事 vs 数据流），而这是最有价值的问题之一。
+
+---
+
+## 四、最终定级清单（E2E 验证后）
+
+### P1（阻塞）：无
+
+### P2（重要，7 项）
+
+| # | 项 | 证据 | 修复建议 |
+|---|---|---|---|
+| P2-1 | 导入 URL 白名单契约漂移（US-08 AC5「仅 http/https」vs 实现 + 错误文案含 chrome-extension） | storage.js:138；E2E 证实导入成功 + fallback 404/DNS 链 | 文档/代码二选一对齐；若保留 chrome-extension 则改 AC 文案 |
+| P2-2 | 网络请求审计承诺落空（manifest 4 域 vs 文档 6 源；运行时 a.favicon.im CDN 子域不在清单；CSP img-src `https:` 通配；PBI-14 与 favicon fallback 冲突） | manifest.json:12-19；E2E 请求统计 | Phase 3 实现 PBI-14 前先决策白名单口径（含 CDN 子域与 favicon 例外） |
+| P2-3 | 恶意 id 致设置面板编辑功能崩溃 | settings.js:261/329/399；E2E SyntaxError 复现 | validateBackup 增加 id 字符白名单，或改用 CSS.escape |
+| P2-4 | 导入后设置面板 UI 部分不同步（showBottomBarToggle/wallpaperSourceSelect） | settings.js:570-583；E2E 证实 | refreshAllAfterDataChange 同步全部三个控件 |
+| P2-5 | **N1：键盘排序后主页不刷新（this 解绑 TypeError）** | settings.js:217,227；E2E pageerror 复现 | 改 `App.renderBookmarks()` 显式调用 |
+| P2-6 | 隐私透明度：settings.js:469 文案误导 + 书签域名完整外发 favicon.im + US-15 隐私区块缺位 | E2E 38+37 次请求含域名 | 修文案 + 文档明示数据流 + US-15 排期 |
+| P2-7 | 工程张力：KR-4「可测试性 ≥80%」vs 全局脚本无模块架构（测试只能正则提取+eval）+ P4 画像信任来源排期 Phase 3 | sorting.test.js:16-33；08-线路.md | Phase 3 前评估模块化改造或调整 KR 口径 |
+
+### P3（细节，~15 项）
+
+A3 无兜底文案（E2E 证实）、A4 壁纸回退到预设非「上一张」+ 无提示、A5 剪贴板兜底缺失、A6 无只读降级、A7 取色联动未实测（遮罩方案待视觉验收）、A9 weather temp 未转义（与 desc 不一致）、A12 多标签页 reorder 竞态、A14 todos 缺 createdAt 校验、A15 天气失败 27 秒「获取中」误导、A16 CSS 选择器 hack 误伤面（原「永久运行」指控已撤销）、A17 死字段（defaultVisible/CACHE_VERSION/`https://www.google.com` 权限条目）、A18 测试脆弱（eval 提取 + 覆盖缺口）、US-03 AC2 跨标签页不同步、UC-02 搜索导航语义含糊、预览模式 cities.json 降级（E2E 证实）、文档问题 C1-C4（review-report 事实核对 5/5 的疏漏、甘特图进度标注缺失、性能测量口径未定、画像匿名统计开关与无埋点定位张力）。
+
+---
+
+## 五、结论
+
+**E2E 运行验证了 43 项正面行为，并稳定复现 4 项审查结论（A1/A3/A8/A10）、1 项文档承诺落空（US-20 预览模式）、1 项静态审查漏掉的真实 bug（N1 键盘排序主页不刷新）。** 两轮对抗式再审查修正了原报告 2 处事实错误、6 项定级膨胀、2 处措辞过强，补报 4 项遗漏；最终无 P1 阻塞项，7 项 P2 建议在 MVP 验收放行前优先处理（P2-5 一行可修、P2-3 一行可修、P2-6 一处文案）。
+
+**建议下一步**：修复 P2-5/P2-3/P2-6（各一行级改动）后，在真实 Chrome 扩展环境（GUI 会话）补跑扩展模式冒烟（CSP 实际拦截、newtab 覆盖、chrome.storage 真路径），并将 E2E 脚本收敛入库（`凌睿科技导航页/scripts/__tests__/e2e/`）作为 PBI-15 的起点。
+
+---
+
+## 六、修复与验证记录（2026-09-01，三项 P2 已修复）
+
+> 按报告建议执行三项最高性价比修复；每项修复均有单测 + E2E 回归证据。
+
+### P2-5 已修复：键盘排序后主页不刷新（this 解绑 TypeError）
+
+- **改动**：`凌睿科技导航页/scripts/settings.js` `moveItem()` 中 `appRerender` 由解构方法引用改为箭头函数包装（`() => App.renderBookmarks()`），保持 `this` 绑定。
+- **验证**：E2E 新增断言「[5] N1 主页顺序随键盘排序同步」PASS（修复前该路径稳定抛 `TypeError: this.extractDomain is not a function`，主页不刷新）；页面 pageerror 总数由 2 → 0。
+
+### P2-3 已修复：恶意 id 致编辑崩溃（导入校验白名单）
+
+- **改动**：`凌睿科技导航页/scripts/storage.js` `validateBackup()` 新增 `idSafe` 白名单（`^[A-Za-z0-9_-]+$`），覆盖 bookmarks / categories / 分类链接 / todos 四类 id；与 `generateId` 及全部预设 id 格式兼容，不误伤现有数据。
+- **验证**：
+  - 单测新增 4 条断言（`sorting.test.js`），34/34 通过；
+  - E2E「[9] 恶意 id 被校验拒绝」（`bookmarks[0] id 含不支持的字符…现有数据未受影响`）PASS、「[9] 无新增 pageerror（不再崩溃）」PASS、「合法 id 备份正常导入」PASS（白名单不误伤）。
+
+### P2-6 已修复：隐私文案误导
+
+- **改动**：`凌睿科技导航页/scripts/settings.js` 数据 tab 文案由「数据全程保存在本地，不经过任何服务器」改为「**备份文件仅保存在本地，不经过任何服务器；页面功能会请求外部数据源（天气 / 壁纸 / 节假日 / 书签图标），无广告、无埋点**」——准确区分"备份文件本地化"与"运行时外部数据源"，与 US-15 AC2 声明口径一致。
+- **验证**：E2E「[6] 隐私文案明示外部数据源」PASS。
+
+### P2-6 已修复：隐私文案误导
+
+- **改动**：`凌睿科技导航页/scripts/settings.js` 数据 tab 文案由「数据全程保存在本地，不经过任何服务器」改为「**备份文件仅保存在本地，不经过任何服务器；页面功能会请求外部数据源（天气 / 壁纸 / 节假日 / 书签图标），无广告、无埋点**」——准确区分"备份文件本地化"与"运行时外部数据源"，与 US-15 AC2 声明口径一致。
+- **验证**：E2E「[6] 隐私文案明示外部数据源」PASS。
+
+### P2-4 已修复：导入后设置面板 UI 不同步（A10 剩余部分）
+
+- **改动**：`凌睿科技导航页/scripts/settings.js` `refreshAllAfterDataChange()` 在原有 themeSelect 同步之外，补充：
+  - `showBottomBarToggle.checked = s.showBottomBar !== false`（undefined 视为默认 true，兼容旧备份）；
+  - `wallpaperSourceSelect.value` 同步（仅当导入值在壁纸源选项内时更新，损坏数据不破坏 UI）；
+  - `refreshWallpaperBtn` 可见性随壁纸类型（api/preset）同步。
+- **验证**：E2E 断言全部转绿——底部栏开关同步、壁纸源下拉同步、刷新按钮随预设壁纸隐藏。
+
+### 回归与遗留
+
+- E2E 全量 **48 PASS / 3 FAIL**（修复前 43 PASS / 5 FAIL）；file:// 预览模式 5/5 PASS；`sorting.test.js` 34/34 PASS。
+- 剩余 3 项 FAIL 均为**未纳入本轮范围**的已知项：A10 剩余部分（showBottomBarToggle / wallpaperSourceSelect 导入后不同步，settings.js:570-583 需同步全部控件）、A2（`a.favicon.im` CDN 子域不在文档白名单，Phase 3 实现 PBI-14 时决策）。
+
+### 扩展模式补跑（2026-09-01，Chrome for Testing）
+- **关键突破**：Chrome 136+ 已移除普通 Chrome 的 `--load-extension`，需 **Chrome for Testing**（playwright 缓存 chromium-1234）配合 `--enable-unsafe-extension-debugging` 方可命令行加载扩展。本机 Chrome 151（dev）无 GUI 会话下渲染不稳定，CfT + Playwright 管理启动则正常。
+- **扩展模式 E2E 结果：53 PASS / 3 FAIL**（FAIL 仅 A10 两个遗留控件 + `a.favicon.im` 白名单，均为已知项）。独有验证全部通过：
+  - newtab 被覆盖为 `chrome-extension://fkapmejgokgfcbkehkcklneoidjgccdm/index.html`；
+  - `chrome.storage` 真路径：初始化/预设写入/导入写入/备份轮转/恢复全部生效；
+  - **CSP 实际拦截**：`connect-src` 白名单外请求被拒（console 输出完整违规指令）、内联脚本被 `script-src 'self'` 阻止（`window.__inlineRan` 未执行）——XSS 面被 CSP 兜底的运行时证据；
+  - US-20 AC2 数据隔离：扩展页 localStorage 与 chrome.storage 互不串扰；
+  - 三项修复在扩展模式同样生效（N1 主页同步、恶意 id 拒绝、隐私文案），pageerror = 0。
+
+### E2E 脚本收敛入库（PBI-15 起点）
+
+- 新增 `凌睿科技导航页/scripts/__tests__/e2e/nav-e2e.js`：自包含三模式（扩展 / http 预览 / file:// 预览），内嵌静态服务，自动探测 Chrome for Testing 与 headless shell 路径（`CFT_PATH`/`EXT_PATH`/`PORT` 环境变量可覆盖），存储断言统一探测 chrome.storage / localStorage。
+- 运行：`node scripts/__tests__/e2e/nav-e2e.js [--extension | --preview]`；前置 `npm i -D playwright` + `npx playwright install chromium`。
+- 入库版实测 **64 PASS / 0 FAIL**（P2-4 修复后 A10 全部断言转绿，预览 + file + 扩展三模式全通过）。
+- 注意：扩展模式需 GUI 会话（headful）；无 GUI 环境可用 `--preview` 跑预览模式回归。
+
+### P2 修复状态汇总（2026-09-01）
+
+| 项 | 状态 |
+|---|---|
+| P2-5 键盘排序主页不刷新（this 解绑） | ✅ 已修复（单测 + E2E 回归） |
+| P2-3 恶意 id 致编辑崩溃 | ✅ 已修复（validateBackup id 白名单，单测 34/34） |
+| P2-6 隐私文案误导 | ✅ 已修复（文案准确化） |
+| P2-4 导入后设置面板 UI 不同步 | ✅ 已修复（三控件 + 刷新按钮同步） |
+| P2-1 US-08 AC5 文案对齐（http/https vs chrome-extension） | ✅ 已修复（2026-09-01：文档对齐实现——02-用户故事.md US-08 AC5 改为「仅 http/https/chrome-extension 协议，防 XSS；chrome-extension 用于书签指向扩展自身页面」，与 storage.js:138 白名单及错误文案一致；决策依据：实现为有意设计且测试断言固化） |
+| P2-2 网络请求审计承诺（a.favicon.im 等） | ⏳ Phase 3 实现 PBI-14 时决策 |
+| P2-7 可测试性目标 vs 全局脚本架构 | ⏳ Phase 3 前评估 |
