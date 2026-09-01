@@ -598,3 +598,19 @@ const Storage = {
     return next;
   }
 };
+
+/* ---- Node 测试环境导出（PBI-15/P2-7）：浏览器以 <script> 全局加载，module 未定义时不执行；
+       顶层无浏览器副作用（chrome/document 仅在函数体内引用），Node require 安全 ---- */
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    Storage,
+    reorder,
+    ensureSortOrder,
+    validateBackup,
+    normalizeCategories,
+    escapeHtml,
+    escapeAttr,
+    DEFAULT_SETTINGS,
+    SUPPORTED_SCHEMA_VERSION
+  };
+}

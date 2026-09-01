@@ -1,43 +1,18 @@
 /**
  * PKG-01/PKG-04 核心纯函数断言测试（node:test）
- * 运行：node --test 凌睿科技导航页/scripts/__tests__/（或 npm test）
+ * 运行：npm test（或 node --test "凌睿科技导航页/scripts/__tests__/*.test.js"）
  *
- * storage.js 依赖浏览器全局（chrome/document），无法直接 require，
- * 因此从源码中提取纯函数在 Node 中执行断言。
- * （全局脚本无模块导出为已知架构约束，见 P2-7；模块化改造后改为直接 import）
+ * storage.js 已提供 Node 导出（UMD 尾部，浏览器 <script> 全局加载不受影响），
+ * 此处直接 require，覆盖率可真实统计被测代码（PBI-15/P2-7）。
  */
 const { test } = require('node:test');
 const assert = require('node:assert');
-const fs = require('fs');
-const path = require('path');
-
-const storageSrc = fs.readFileSync(
-  path.join(__dirname, '..', 'storage.js'),
-  'utf8'
-);
-
-function extractFunction(name, source) {
-  const re = new RegExp(`function\\s+${name}\\s*\\([^)]*\\)\\s*\\{`);
-  const match = source.match(re);
-  if (!match) throw new Error(`未找到函数 ${name}`);
-  let depth = 0;
-  let i = source.indexOf('{', match.index);
-  for (; i < source.length; i++) {
-    if (source[i] === '{') depth += 1;
-    else if (source[i] === '}') {
-      depth -= 1;
-      if (depth === 0) break;
-    }
-  }
-  return source.slice(match.index, i + 1);
-}
-
-const reorder = eval(`(${extractFunction('reorder', storageSrc)})`);
-const ensureSortOrder = eval(`(${extractFunction('ensureSortOrder', storageSrc)})`);
-// validateBackup 依赖 SUPPORTED_SCHEMA_VERSION 常量，此处与 storage.js 对齐声明
-const SUPPORTED_SCHEMA_VERSION = 1;
-const validateBackup = eval(`(${extractFunction('validateBackup', storageSrc)})`);
-const normalizeCategories = eval(`(${extractFunction('normalizeCategories', storageSrc)})`);
+const {
+  reorder,
+  ensureSortOrder,
+  validateBackup,
+  normalizeCategories
+} = require('../storage.js');
 
 test('PKG-01 reorder：中间/首/尾边界', () => {
   const abcd = ['a', 'b', 'c', 'd'];
