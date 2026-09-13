@@ -314,6 +314,21 @@ async function runCore(page, label) {
   const actAfter = await page.locator('#categoryList .sub-item').nth(0).locator('.setting-item-actions').count();
   check('[5.6] 编辑链接后切 tab，该行操作按钮仍在', actBefore === 1 && actAfter === 1, `编辑前=${actBefore} 切回后=${actAfter}`);
 
+  // [5.7] 连续编辑两个分类（P0-1 分类路径回归：与书签同源，此前仅按代码同源推断，未单独验证）
+  const catBefore = (await storageGet(page, 'categories')).map(c => c.title);
+  await page.locator('[data-action="edit-category"]').nth(0).click();
+  await sleep(300);
+  await page.locator('[data-action="edit-category"]').nth(0).click();
+  await sleep(300);
+  const dupCatInputs = await page.locator('#editCatTitle').count();
+  check('[5.7] 连续编辑两个分类不产生重复表单 ID', dupCatInputs === 1, `实际 #editCatTitle=${dupCatInputs}`);
+  await page.locator('#editCatTitle').last().fill('BBB_CAT');
+  await page.locator('#saveEditCategory').last().click();
+  await sleep(1500);
+  const catAfter = (await storageGet(page, 'categories')).map(c => c.title);
+  check('[5.7] 第 2 个分类被正确保存（点自己表单的保存）', catAfter[1] === 'BBB_CAT', `实际=${catAfter[1]}`);
+  check('[5.7] 第 1 个分类未被误改', catAfter[0] === catBefore[0], `期望=${catBefore[0]} 实际=${catAfter[0]}`);
+
   // [6] 导出 + 隐私文案
   await page.click('[data-tab="data"]');
   await sleep(600);
@@ -468,6 +483,43 @@ async function runCore(page, label) {
   const clockText = await page.evaluate(() => (document.getElementById('datetime').textContent || '').trim());
   check('[17] 节假日请求挂起时时钟仍显示', clockText.length > 0, `#datetime="${clockText.slice(0, 24)}"`);
   await page.unroute(/holiday-cn/);
+  await page.reload();
+  await sleep(2500);
+
+  // [18] weather 响应体挂起时超时应生效（P1-1 weather 路径回归）
+  // 注入自定义 fetch：请求立即 resolve（模拟响应头已到达），但 json() 永不 settle，
+  // 仅在 abort 信号触发时 reject —— 精确复现"响应头返回、响应体卡住"。
+  // 修复前 clearTimeout 紧跟 fetch 之后执行，5 秒定时器被提前清掉，body 卡住后永不恢复，
+  // 天气会永久停在"获取天气中…"且降级分支不可达。
+  await page.evaluate(() => {
+    const orig = window.fetch;
+    window.__restoreFetch = () => { window.fetch = orig; };
+    window.fetch = function (url, opts) {
+      if (String(url).includes('wttr.in')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => new Promise((_, reject) => {
+            const sig = opts && opts.signal;
+            if (!sig) return; // 无 abort 信号则永不 settle
+            if (sig.aborted) return reject(new DOMException('Aborted', 'AbortError'));
+            sig.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+          })
+        });
+      }
+      return orig.apply(this, arguments);
+    };
+  });
+  await page.evaluate(() => {
+    if (typeof Weather !== 'undefined') { Weather._failed = false; Weather.cache = null; Weather.refresh(); }
+  });
+  await sleep(7000);
+  const slowText = await page.evaluate(() => {
+    const el = document.getElementById('weatherWidget');
+    return el ? el.innerText : '';
+  });
+  check('[18] weather 响应体挂起时超时降级', /天气暂不可用/.test(slowText), slowText.slice(0, 40) || '(空)');
+  await page.evaluate(() => { if (window.__restoreFetch) window.__restoreFetch(); });
   await page.reload();
   await sleep(2500);
 
