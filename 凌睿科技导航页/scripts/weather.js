@@ -200,9 +200,13 @@ const Weather = {
   },
 
   async _initAsync() {
+    // 组件可能在初始化期间被隐藏（onHide → stopRefresh 已把 _active 置 false）。
+    // 此时不应再发起定位与天气请求，否则违背"组件隐藏即停止请求"的隐私承诺（P2-10 残余）
+    if (!this._active) return;
     if (!this.selectedCityQuery) {
       await this.detectLocation();
     }
+    if (!this._active) return; // 定位期间被隐藏
     await this.refresh();
   },
 

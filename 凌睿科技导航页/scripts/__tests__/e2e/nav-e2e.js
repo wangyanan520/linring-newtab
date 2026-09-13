@@ -140,6 +140,44 @@ const CHROME_STORAGE_SHIM = () => {
   };
 };
 
+/* ---- 第三方接口的固定响应（让 E2E 自包含，不受网络波动影响）----
+ *
+ * 背景：此前 [13] 重试恢复、[11] 节假日倒计时等断言依赖真实的 wttr.in / jsdelivr 请求，
+ * 曾观察到一次无法定位的偶发失败，最可能就是外部服务抖动。
+ * 真实响应的结构与可用性改由手动冒烟覆盖，不放进自动化测试。
+ */
+const MOCK_WEATHER = {
+  current_condition: [{ weatherCode: '116', temp_C: '25', weatherDesc: [{ value: '多云' }] }],
+  // 必须像真实 wttr.in 一样给出多天预报：buildHourly24 会跳过当天已过去的小时，
+  // 若只给 1 天，临近午夜时可用点不足 2 个会直接返回 null，悬停卡片就不渲染了
+  // （曾因此在 23 点跑测试时出现 [13]/[20] 两项失败）
+  weather: [0, 1, 2].map(() => ({
+    maxtempC: '30',
+    mintempC: '20',
+    // wttr.in 的 time 形如 "0"/"100"/"2300"，parseWttrTime 会除以 100 得到小时
+    hourly: Array.from({ length: 24 }, (_, i) => ({
+      time: String(i * 100),
+      tempC: String(20 + (i % 8)),
+      weatherCode: '116',
+      chanceofrain: String((i * 7) % 100)
+    }))
+  }))
+};
+
+/* 构造一个必然落在"未来 3 天"的节假日，使倒计时行有确定内容可断言；
+   calendar.js 会分别请求今年与次年，同一天数据对两年响应都适用，故共用一份 */
+const _mockHolidayDate = (() => {
+  const d = new Date();
+  d.setDate(d.getDate() + 3);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+})();
+const MOCK_HOLIDAY = { days: [{ date: _mockHolidayDate, name: '测试节', isOffDay: true }] };
+
+/* 第三方 mock 的行为开关：'ok' 返回固定成功响应，'fail'/'hang' 模拟失败与挂起。
+   用可变状态而非 page.route/unroute —— unroute 会把固定响应一并移除。 */
+let weatherMode = 'ok';
+let holidayMode = 'ok';
+
 /* ---- 内嵌静态文件服务（预览模式用，避免外部依赖） ---- */
 function startStaticServer() {
   return new Promise((resolve, reject) => {
@@ -167,6 +205,18 @@ async function runCore(page, label) {
   page.on('console', m => { if (m.type() === 'error') consoleErrors.push(m.text()); });
   page.on('pageerror', e => pageErrors.push(String(e)));
   page.on('request', r => requests.push(r.url()));
+
+  // 第三方接口一律以固定响应替换，断言不再依赖真实网络（详见文件头 MOCK_* 说明）。
+  // 用行为开关而非 route/unroute：unroute 会连这里的固定响应一起移除。
+  weatherMode = 'ok';
+  holidayMode = 'ok';
+  await page.route(/wttr\.in/, r => weatherMode === 'fail'
+    ? r.fulfill({ status: 500, body: 'err', contentType: 'text/plain' })
+    : r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_WEATHER) }));
+  await page.route(/holiday-cn/, r => {
+    if (holidayMode === 'hang') return; // 不响应：模拟请求卡在响应体阶段
+    return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_HOLIDAY) });
+  });
 
   if (label === 'extension') {
     await page.waitForTimeout(4500); // newtab 已覆盖为扩展页
@@ -424,7 +474,7 @@ async function runCore(page, label) {
     return el ? el.textContent : '';
   });
   check('[13] 缓存时间标注', /更新于/.test(whcHeader), whcHeader.slice(0, 60));
-  await page.route('**://wttr.in/**', r => r.fulfill({ status: 500, body: 'err', contentType: 'text/plain' }));
+  weatherMode = 'fail'; // 由 runCore 开头的固定响应 handler 读取
   await page.evaluate(() => { if (typeof Weather !== 'undefined') { Weather._failed = false; Weather.cache = null; Weather.refresh(); } });
   await sleep(6500);
   const degradeText = await page.evaluate(() => {
@@ -433,9 +483,9 @@ async function runCore(page, label) {
   });
   check('[13] 天气失败显示降级文案', /天气暂不可用/.test(degradeText), degradeText.slice(0, 60));
   check('[13] 降级含重试按钮', await page.locator('.weather-retry').count() === 1);
-  await page.unroute('**://wttr.in/**');
+  weatherMode = 'ok';
   await page.locator('.weather-retry').click();
-  await sleep(9000);
+  await sleep(3500); // 固定响应无网络往返，重试一次即成功
   const afterRetry = await page.evaluate(() => {
     const el = document.getElementById('weatherWidget');
     return el ? el.innerText : '';
@@ -476,13 +526,13 @@ async function runCore(page, label) {
   // 挂起节假日请求模拟"响应头返回后响应体卡住"：修复前 App.startClock() 串在
   // Calendar.init() 之后，会被该请求阻塞导致时间区域长时间空白
   // 必须先清掉 24 小时节假日缓存，否则命中缓存不会发起请求，本断言将失去区分度
-  await page.route(/holiday-cn/, () => { /* 挂起：不 fulfill / abort / continue */ });
+  holidayMode = 'hang'; // 模拟响应体卡住（handler 直接返回，不 fulfill）
   await page.evaluate(() => localStorage.removeItem('holidayCacheV1'));
   await page.reload();
   await sleep(3500);
   const clockText = await page.evaluate(() => (document.getElementById('datetime').textContent || '').trim());
   check('[17] 节假日请求挂起时时钟仍显示', clockText.length > 0, `#datetime="${clockText.slice(0, 24)}"`);
-  await page.unroute(/holiday-cn/);
+  holidayMode = 'ok';
   await page.reload();
   await sleep(2500);
 
@@ -598,6 +648,9 @@ async function runCore(page, label) {
     const { listeners } = await cdp.send('DOMDebugger.getEventListeners', { objectId: object.objectId });
     return listeners.length;
   };
+  // 先渲染一次，确保 el 上的监听器完成首次绑定再计数——否则 0 → 2 是"首次绑定"而非泄漏
+  await page.evaluate(() => { if (typeof Weather !== 'undefined' && Weather.cache) Weather.render(); });
+  await sleep(200);
   const listenersBefore = await countListeners('#weatherWidget');
   const hoverCards = await page.evaluate(() => {
     // 注意：缓存必须带 hourly，否则不会渲染悬停卡片，bindHoverEvents 会在 !card 处提前返回，
@@ -691,6 +744,20 @@ async function runCore(page, label) {
     && /MIT License/.test(fs.readFileSync(tpPath, 'utf8'))
     && /lunar-javascript/.test(fs.readFileSync(tpPath, 'utf8'));
   check('[21] 第三方组件台账含来源与许可证', tpOk, '凌睿科技导航页/THIRD-PARTY.md');
+
+  // [22] 组件隐藏后初始化不得再发起请求（P2-10 残余）
+  // init() 在两次 await 之后才收尾，若该窗口内组件被隐藏，后续的定位与天气请求不应再发出
+  const wtReqBefore = requests.filter(u => /wttr\.in/.test(u)).length;
+  await page.evaluate(async () => {
+    Weather.stopRefresh();        // 模拟 onHide → _active = false
+    Weather._inited = false;      // 重置守卫，让初始化流程可再次走一遍
+    Weather.selectedCityQuery = 'shenzhen';
+    await Weather._initAsync();
+  });
+  await sleep(1200);
+  const wtReqAfter = requests.filter(u => /wttr\.in/.test(u)).length;
+  check('[22] 组件隐藏后初始化不再发起天气请求（P2-10 残余）', wtReqAfter === wtReqBefore,
+    `wttr.in 请求数 ${wtReqBefore} → ${wtReqAfter}`);
 
   return { consoleErrors, pageErrors, requests };
 }
