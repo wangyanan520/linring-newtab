@@ -523,6 +523,68 @@ async function runCore(page, label) {
   await page.reload();
   await sleep(2500);
 
+  // [19] 无障碍（P2-8）：可访问名称 / dialog 语义 / tab 语义 / 焦点管理
+  const a11y = await page.evaluate(() => {
+    const el = id => document.getElementById(id);
+    const name = node => node ? (node.getAttribute('aria-label') || node.getAttribute('title') || '').trim() : '';
+    const overlay = el('settingsOverlay');
+    return {
+      iconNames: [name(el('searchClear')), name(el('settingsClose')), name(el('settingsBtn')), name(el('searchInput'))],
+      overlayRole: overlay ? overlay.getAttribute('role') : null,
+      overlayModal: overlay ? overlay.getAttribute('aria-modal') : null,
+      tablist: !!document.querySelector('.settings-tabs[role="tablist"]'),
+      tabs: document.querySelectorAll('.tab-btn[role="tab"]').length,
+      panels: document.querySelectorAll('.tab-content[role="tabpanel"]').length
+    };
+  });
+  check('[19] 图标按钮与搜索框具备可访问名称', a11y.iconNames.every(n => n.length > 0),
+    `searchClear/settingsClose/settingsBtn/searchInput = ${JSON.stringify(a11y.iconNames)}`);
+  check('[19] 设置面板具备 dialog 语义', a11y.overlayRole === 'dialog' && a11y.overlayModal === 'true',
+    `role=${a11y.overlayRole} aria-modal=${a11y.overlayModal}`);
+  check('[19] tab 与面板语义关联', a11y.tablist && a11y.tabs === 7 && a11y.panels === 7,
+    `tablist=${a11y.tablist} tabs=${a11y.tabs} panels=${a11y.panels}`);
+
+  await page.click('#settingsBtn');
+  await sleep(400);
+  await page.click('[data-tab="data"]');
+  await sleep(300);
+  const selSync = await page.evaluate(() => {
+    const sel = [...document.querySelectorAll('.tab-btn[aria-selected="true"]')];
+    return { count: sel.length, tab: sel[0] ? sel[0].dataset.tab : null };
+  });
+  check('[19] aria-selected 随 tab 切换同步', selSync.count === 1 && selSync.tab === 'data',
+    `选中=${selSync.tab}（应为 data，共 ${selSync.count} 个）`);
+
+  // 焦点陷阱：必须从面板内「最后一个」可聚焦元素按 Tab 才能验出是否生效。
+  // 若从 #settingsBtn 起按 Tab，焦点会顺着 DOM 顺序自然走进面板，无论有无陷阱都"通过"。
+  const lastFocusable = await page.evaluate(() => {
+    const panel = document.querySelector('.settings-panel');
+    if (!panel) return null;
+    const list = Array.from(panel.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    )).filter(el => !el.disabled && el.offsetParent !== null);
+    if (!list.length) return null;
+    const last = list[list.length - 1];
+    last.focus();
+    return last.id || last.className || last.tagName;
+  });
+  await page.keyboard.press('Tab');
+  const afterTab = await page.evaluate(() => {
+    const panel = document.querySelector('.settings-panel');
+    const a = document.activeElement;
+    return {
+      inPanel: !!(panel && a && panel.contains(a)),
+      at: a ? (a.id || a.className || a.tagName) : '(无)'
+    };
+  });
+  check('[19] Tab 到面板末尾后循环回面板内（焦点陷阱）', !!lastFocusable && afterTab.inPanel,
+    `末尾元素=${lastFocusable} → Tab 后=${afterTab.at}`);
+
+  await page.click('#settingsClose');
+  await sleep(300);
+  const focusBack = await page.evaluate(() => (document.activeElement ? document.activeElement.id : ''));
+  check('[19] 关闭后焦点归还触发元素', focusBack === 'settingsBtn', `activeElement=#${focusBack || '(无)'}`);
+
   return { consoleErrors, pageErrors, requests };
 }
 

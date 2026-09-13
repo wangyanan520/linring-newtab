@@ -10,14 +10,48 @@ const Settings = {
   },
 
   open() {
+    // P2-8：记录触发元素，关闭后归还焦点，避免键盘用户丢失位置
+    this._lastFocused = document.activeElement;
     document.getElementById('settingsOverlay').classList.add('open');
     this.renderBookmarks();
     this.renderCategories();
     this.renderWallpaperSettings();
+    // 模态对话框需把焦点移入面板（面板为 tabindex="-1"），随后 Tab 由 trapFocus 限制在面板内
+    const panel = document.querySelector('.settings-panel');
+    if (panel) panel.focus();
   },
 
   close() {
     document.getElementById('settingsOverlay').classList.remove('open');
+    if (this._lastFocused && document.contains(this._lastFocused) && typeof this._lastFocused.focus === 'function') {
+      this._lastFocused.focus();
+    }
+  },
+
+  /* P2-8：把 Tab 焦点限制在设置面板内（模态对话框约定） */
+  trapFocus(e) {
+    const panel = document.querySelector('.settings-panel');
+    if (!panel) return;
+    // 只收可见且可聚焦的元素（未激活 tab 的内容 display:none，offsetParent 为 null）
+    const focusables = Array.from(panel.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    )).filter(el => !el.disabled && el.offsetParent !== null);
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = document.activeElement;
+    if (!panel.contains(active)) {
+      e.preventDefault();
+      (e.shiftKey ? last : first).focus();
+      return;
+    }
+    if (e.shiftKey && active === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
   },
 
   bindEvents() {
@@ -36,6 +70,10 @@ const Settings = {
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') this.close();
+      // P2-8：面板打开时限制 Tab 焦点不逃逸到背后的主页
+      if (e.key === 'Tab' && document.getElementById('settingsOverlay').classList.contains('open')) {
+        this.trapFocus(e);
+      }
     });
 
     this.bindWeatherEvents();
@@ -44,7 +82,9 @@ const Settings = {
   switchTab(tab) {
     this.currentTab = tab;
     document.querySelectorAll('.tab-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.tab === tab);
+      const active = btn.dataset.tab === tab;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-selected', active ? 'true' : 'false'); // P2-8：同步选中态
     });
     document.querySelectorAll('.tab-content').forEach(el => {
       el.classList.toggle('active', el.id === `tab${tab.charAt(0).toUpperCase() + tab.slice(1)}`);
