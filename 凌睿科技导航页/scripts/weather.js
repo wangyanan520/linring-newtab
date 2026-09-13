@@ -97,11 +97,22 @@ function mapCode(code) {
   return WEATHER_CODE_MAP[code] || { icon: '🌤️', text: '' };
 }
 
-function buildHourly24(weatherDays) {
+/* 从 wttr.in 的 localObsDateTime（形如 "2026-09-13 11:00 PM"）解析出城市当地小时（P3-4）。
+   解析不出来时返回 null，调用方回退到浏览器本地时间。 */
+function parseLocalHour(s) {
+  const m = String(s || '').match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  if (!m) return null;
+  let h = parseInt(m[1], 10) % 12;
+  if (/pm/i.test(m[3])) h += 12;
+  return h;
+}
+
+function buildHourly24(weatherDays, localHour) {
   if (!Array.isArray(weatherDays) || weatherDays.length === 0) return null;
   const points = [];
-  const now = new Date();
-  const startHour = now.getHours();
+  // P3-4：起点小时必须取查询城市的当地时间。此前用浏览器本地时间，在境外查国内城市时
+  // 会切错点，"现在"标签与整条 24 小时曲线都会偏移
+  const startHour = Number.isInteger(localHour) ? localHour : new Date().getHours();
 
   for (let d = 0; d < weatherDays.length && points.length < 12; d++) {
     const day = weatherDays[d];
@@ -264,7 +275,7 @@ const Weather = {
         const code = parseInt(current.weatherCode, 10);
         const mapped = WEATHER_CODE_MAP[code] || { icon: '🌤️', text: current.weatherDesc[0].value };
 
-        const hourly = buildHourly24(data.weather);
+        const hourly = buildHourly24(data.weather, parseLocalHour(current.localObsDateTime));
         const today = Array.isArray(data.weather) && data.weather[0] ? data.weather[0] : null;
         const todayHigh = today ? parseInt(today.maxtempC, 10) : null;
         const todayLow = today ? parseInt(today.mintempC, 10) : null;

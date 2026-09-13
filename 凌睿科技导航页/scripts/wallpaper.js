@@ -84,13 +84,24 @@ const WALLPAPERS = [
 const BING_API = 'https://cn.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1&mkt=zh-CN';
 
 async function fetchBingUrl() {
-  const resp = await fetch(BING_API);
-  if (!resp.ok) throw new Error('Bing API error');
-  const data = await resp.json();
-  if (!data.images || !data.images[0]) throw new Error('Bing API empty result');
-  const img = data.images[0];
-  /* 用 urlbase 拼接 1920x1080 高清图，比 url 字段的图片更清晰 */
-  return 'https://cn.bing.com' + img.urlbase + '_1920x1080.jpg';
+  // P3-7：接口无超时，cn.bing.com 卡住时 apply() 会一直悬停，背景先被置空而永远回不来
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const resp = await fetch(BING_API, { signal: controller.signal });
+    if (!resp.ok) throw new Error('Bing API error');
+    const data = await resp.json();
+    const img = data.images && data.images[0];
+    // urlbase 缺失时会拼出 https://cn.bing.comundefined_1920x1080.jpg 这类无效地址，
+    // 而 CSS 背景加载失败是静默的（catch 不到），用户只会看到无图背景（P3-7）
+    if (!img || typeof img.urlbase !== 'string' || !img.urlbase.startsWith('/')) {
+      throw new Error('Bing API 返回的 urlbase 不可用');
+    }
+    /* 用 urlbase 拼接 1920x1080 高清图，比 url 字段的图片更清晰 */
+    return 'https://cn.bing.com' + img.urlbase + '_1920x1080.jpg';
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /* ---- 随机壁纸：bing.biturl.top 返回随机 Bing 壁纸 ---- */
@@ -155,6 +166,10 @@ const Wallpaper = {
     const bgLayer = document.getElementById('bgLayer');
     if (!bgLayer) return;
 
+    // P3-6：记录本次应用的代次。API 壁纸要经历网络往返，若期间用户又切换了壁纸，
+    // 迟到的响应不应把后发的选择覆盖掉（否则屏幕显示与存储的 wallpaperName 会不一致）
+    const gen = (this._applyGen = (this._applyGen || 0) + 1);
+
     this.currentIndex = index;
     this.applyColors(wallpaper.colors);
     // PBI-10：主题处于"跟随壁纸"模式时按当前壁纸明度同步（异步读取设置，不阻塞渲染）
@@ -181,6 +196,7 @@ const Wallpaper = {
 
     // Bing 每日壁纸：同一天内用缓存
     const settings = await Storage.getSettings();
+    if (gen !== this._applyGen) return; // 读取设置期间已被取代
     const cache = settings.wallpaperApiCache || {};
     let url = null;
     if (cache.type === 'bing' && cache.date === todayStr()) {
@@ -189,13 +205,16 @@ const Wallpaper = {
 
     if (!url) {
       try {
-        url = await fetchApiWallpaperUrl(wallpaper.apiType);
+        const fetched = await fetchApiWallpaperUrl(wallpaper.apiType);
+        if (gen !== this._applyGen) return; // 用户已切到别的壁纸，丢弃迟到结果（也不写缓存）
+        url = fetched;
         if (wallpaper.apiType === 'bing') {
           await Storage.updateSettings({
             wallpaperApiCache: { url, type: 'bing', date: todayStr() }
           });
         }
       } catch (e) {
+        if (gen !== this._applyGen) return;
         console.error('壁纸 API 请求失败:', e);
         // fallback: 用第一个预设渐变
         this.clearBgImage(bgLayer);
@@ -205,6 +224,7 @@ const Wallpaper = {
       }
     }
 
+    if (gen !== this._applyGen) return; // 写缓存期间又被取代
     this.setBgImage(bgLayer, url);
   },
 

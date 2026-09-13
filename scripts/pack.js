@@ -179,6 +179,14 @@ function main() {
   verifyZip(zip, files); // 打包即校验，保证产物与源码一致
 
   fs.mkdirSync(OUT_DIR, { recursive: true });
+  // 清理历史产物（P3-12）：产物名带日期，旧包会不断堆积，且容易让人误取过期版本
+  const stale = fs.readdirSync(OUT_DIR).filter(n =>
+    /^lingrui-nav-.*\.zip(\.sha256)?$/.test(n) && n !== outName && n !== outName + '.sha256'
+  );
+  stale.forEach(n => {
+    try { fs.unlinkSync(path.join(OUT_DIR, n)); } catch { /* 忽略清理失败 */ }
+  });
+
   fs.writeFileSync(outPath, zip);
   const sha = crypto.createHash('sha256').update(zip).digest('hex');
   fs.writeFileSync(outPath + '.sha256', sha + '  ' + outName + '\n');
@@ -188,6 +196,7 @@ function main() {
   console.log(`SHA-256: ${sha}`);
   console.log(`自校验: zip 内容与源码逐文件一致 ✓`);
   console.log(`垃圾文件: 已排除（.DS_Store/__MACOSX/._*）`);
+  console.log(`历史产物: 已清理 ${stale.length} 个旧文件`);
 }
 
 main();

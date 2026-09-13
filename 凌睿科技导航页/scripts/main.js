@@ -5,11 +5,13 @@ const SEARCH_ENGINES = [
 ];
 
 /* ---- V3 组件注册表：主页区块统一按注册表 + 可见性配置渲染 ----
-   locked=true 表示常驻组件（搜索框），不可关闭。 */
+   locked=true 表示常驻组件（搜索框），不可关闭。
+   区块定位依赖 index.html 中的 data-component="<id>" 标记（P3-1：此前另用 class/id 选择器，
+   与 index.html 里的标记脱节，那 7 处标记成了没人读的死代码；改用标记后 class 改名不再影响组件开关）。 */
 const COMPONENTS = [
-  { id: 'search', title: '搜索框', selector: '.search-box', locked: true, defaultVisible: true },
+  { id: 'search', title: '搜索框', locked: true, defaultVisible: true },
   {
-    id: 'calendar', title: '农历日历', selector: '.datetime', defaultVisible: true,
+    id: 'calendar', title: '农历日历', defaultVisible: true,
     init: async () => {
       // 时钟不依赖节假日网络数据：先启动时钟（startClock 每秒自检 Calendar.loaded，
       // 数据到位后自动挂载农历浮层），否则慢网络下时间区域会长时间空白
@@ -17,11 +19,11 @@ const COMPONENTS = [
       if (typeof Calendar !== 'undefined' && !Calendar.loaded) await Calendar.init();
     }
   },
-  { id: 'weather', title: '天气', selector: '.weather-widget', defaultVisible: true, init: () => Weather.init(), onShow: () => Weather.startRefresh(), onHide: () => Weather.stopRefresh() },
-  { id: 'bookmarks', title: '快捷书签', selector: '.quick-links', defaultVisible: true, init: () => App.renderBookmarks() },
-  { id: 'categories', title: '分类导航', selector: '.categories', defaultVisible: true, init: () => App.renderCategories() },
-  { id: 'todos', title: '待办', selector: '.todo-card', defaultVisible: true, init: () => Todos.init() },
-  { id: 'wallpaper', title: '壁纸按钮', selector: '#wallpaperBtn', defaultVisible: true }
+  { id: 'weather', title: '天气', defaultVisible: true, init: () => Weather.init(), onShow: () => Weather.startRefresh(), onHide: () => Weather.stopRefresh() },
+  { id: 'bookmarks', title: '快捷书签', defaultVisible: true, init: () => App.renderBookmarks() },
+  { id: 'categories', title: '分类导航', defaultVisible: true, init: () => App.renderCategories() },
+  { id: 'todos', title: '待办', defaultVisible: true, init: () => Todos.init() },
+  { id: 'wallpaper', title: '壁纸按钮', defaultVisible: true }
 ];
 
 const App = {
@@ -38,6 +40,7 @@ const App = {
     this.updateEngineBtn();
     this.applySettings(settings);
     this.bindEvents();
+    this.bindCrossTabSync(); // P3-2
 
     // 组件初始化统一由 applyComponentVisibility 按可见性触发（首次可见时执行一次）
     // 任一初始化失败不阻塞页面其余功能，仅记录错误
@@ -46,11 +49,27 @@ const App = {
     });
   },
 
+  /* P3-2：多标签页同步——新标签页常被同时打开多个，在一个标签页里的改动应即时反映到
+     其他标签页，否则用户会看到彼此不一致的主页。
+     只订阅、不回写，因此不会形成写入循环；设置面板的内联表单不参与同步，
+     避免打断用户正在进行的编辑（面板下次打开时自然读到最新数据）。 */
+  bindCrossTabSync() {
+    if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.onChanged) return;
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'local') return;
+      if (changes.bookmarks) this.renderBookmarks();
+      if (changes.categories) this.renderCategories();
+      if (changes.todos && typeof Todos !== 'undefined') Todos.render();
+      if (changes.settings && changes.settings.newValue) this.applySettings(changes.settings.newValue);
+    });
+  },
+
   applySettings(settings) {
     // 底部工具栏开关仅隐藏壁纸按钮；设置按钮是唯一入口，必须始终可见，否则无法再次进入设置
     const wallpaperBtn = document.getElementById('wallpaperBtn');
     if (wallpaperBtn) {
-      wallpaperBtn.classList.toggle('hidden', !settings.showBottomBar);
+      // 与 settings.js 的判定口径保持一致：undefined 视为默认显示（P3-8）
+      wallpaperBtn.classList.toggle('hidden', settings.showBottomBar === false);
     }
     // V3 主题：默认深色，浅色时切换；PBI-10「跟随壁纸」按当前壁纸明度解析
     let theme = settings.theme === 'light' ? 'light' : 'dark';
@@ -70,7 +89,7 @@ const App = {
 
   applyComponentVisibility(settings) {
     COMPONENTS.forEach(c => {
-      const el = document.querySelector(c.selector);
+      const el = document.querySelector(`[data-component="${c.id}"]`);
       if (!el) return;
       const visible = this.isComponentVisible(c, settings);
       el.classList.toggle('component-hidden', !visible);
@@ -203,6 +222,7 @@ const App = {
     this._clockStarted = true;
     const el = document.getElementById('datetime');
     let hoverCardMounted = false;
+    let mountedDateKey = '';
 
     function update() {
       const now = new Date();
@@ -212,10 +232,16 @@ const App = {
       };
       const dateStr = now.toLocaleDateString('zh-CN', options);
       const timeStr = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+      // P3-3：卡片里的"今天"高亮与节假日倒计时都基于渲染时刻的日期，
+      // 标签页常驻跨过午夜后会停留在昨天，因此日期变化时需重建卡片而非只更新文本
+      const dateKey = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+      const needMount = (!hoverCardMounted || dateKey !== mountedDateKey)
+        && typeof Calendar !== 'undefined' && Calendar.loaded;
 
-      if (!hoverCardMounted && typeof Calendar !== 'undefined' && Calendar.loaded) {
+      if (needMount) {
         el.innerHTML = `<span class="datetime-text">${dateStr}  ${timeStr}</span>${Calendar.render()}`;
         hoverCardMounted = true;
+        mountedDateKey = dateKey;
         const card = el.querySelector('.datetime-hover-card');
         if (card) Calendar.bindCardEvents(card);
       } else {

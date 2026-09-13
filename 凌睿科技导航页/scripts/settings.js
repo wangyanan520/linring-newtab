@@ -777,7 +777,7 @@ const Settings = {
       <p class="setting-section-desc">显示/隐藏底部的壁纸按钮；设置按钮始终保留，便于再次进入设置。</p>
       <label class="toggle-row">
         <span>显示壁纸按钮</span>
-        <input type="checkbox" id="showBottomBarToggle" ${settings.showBottomBar ? 'checked' : ''}>
+        <input type="checkbox" id="showBottomBarToggle" ${settings.showBottomBar !== false ? 'checked' : ''}>
       </label>
     `;
     tab.appendChild(bottomBarSection);
