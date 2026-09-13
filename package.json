@@ -8,6 +8,7 @@
     "test:coverage": "node --experimental-test-coverage --test \"凌睿科技导航页/scripts/__tests__/*.test.js\"",
     "test:e2e": "node 凌睿科技导航页/scripts/__tests__/e2e/nav-e2e.js",
     "test:e2e:preview": "node 凌睿科技导航页/scripts/__tests__/e2e/nav-e2e.js --preview",
+    "test:e2e:shim": "node 凌睿科技导航页/scripts/__tests__/e2e/nav-e2e.js --shim",
     "pack": "npm test && node scripts/pack.js",
     "pack:zip": "node scripts/pack.js"
   },

@@ -37,3 +37,7 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: E2E 预览模式冒烟
         run: npm run test:e2e:preview
+      # 生产存储后端回归：CI 无法跑扩展模式（需 GUI），用模拟的 chrome.storage
+      # 覆盖同一批断言，避免"只在 chrome.storage 下出现"的缺陷逃逸
+      - name: E2E chrome.storage 路径回归
+        run: npm run test:e2e:shim

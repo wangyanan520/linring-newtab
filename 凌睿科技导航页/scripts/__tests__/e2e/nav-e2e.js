@@ -6,6 +6,8 @@
  *   node scripts/__tests__/e2e/nav-e2e.js --extension
  *   # 预览模式（headless，无需 GUI；http + file:// 双模式）
  *   node scripts/__tests__/e2e/nav-e2e.js --preview
+ *   # chrome.storage 路径回归（headless，无需 GUI；注入模拟 chrome.storage 走生产后端代码路径）
+ *   node scripts/__tests__/e2e/nav-e2e.js --shim
  *   # 全部
  *   node scripts/__tests__/e2e/nav-e2e.js
  *
@@ -81,6 +83,63 @@ const storageGet = (page, key) => page.evaluate(k => new Promise(res => {
   }
 }), key);
 
+/* ---- chrome.storage 模拟（--shim 模式，供无 GUI 的 CI 覆盖生产存储后端）----
+ *
+ * 为什么需要它：CI 只跑 --preview（localStorage），而扩展实际用 chrome.storage.local。
+ * 两者的异步特性不同，同一段代码可能表现相反 —— 例如编辑表单重复 ID 缺陷
+ * 在 localStorage 下会因 L2 抛 TypeError 中断而不损坏数据，在 chrome.storage 下
+ * 则静默把数据写错。只覆盖单一后端会让这类缺陷长期逃逸。
+ *
+ * 【关键】异步特性必须用 setTimeout（宏任务）模拟真实 IPC 往返。
+ * 若改成 Promise.resolve()（微任务），第一个监听器让出时微任务队列已就绪，
+ * 它的续体会在第二个监听器之前跑完（销毁 DOM），缺陷不再复现 ——
+ * 测试会重新变成"永远通过的绿灯"。改动此行前请先跑 --shim 的回退验证。
+ *
+ * 后端存 localStorage（__cs__ 前缀），保证 reload 后数据不丢。
+ */
+const CHROME_STORAGE_SHIM = () => {
+  const PREFIX = '__cs__';
+  const read = k => {
+    const raw = localStorage.getItem(PREFIX + k);
+    if (raw === null) return undefined;
+    try { return JSON.parse(raw); } catch { return undefined; }
+  };
+  const write = (k, v) => localStorage.setItem(PREFIX + k, JSON.stringify(v));
+  const clone = v => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
+  window.chrome = {
+    storage: {
+      local: {
+        get(keys, cb) {
+          setTimeout(() => { // 宏任务：模拟跨进程 IPC（勿改为 Promise.resolve）
+            const out = {};
+            if (keys === null || keys === undefined) {
+              for (let i = 0; i < localStorage.length; i++) {
+                const full = localStorage.key(i);
+                if (full && full.startsWith(PREFIX)) {
+                  const k = full.slice(PREFIX.length);
+                  out[k] = read(k);
+                }
+              }
+            } else {
+              for (const k of (Array.isArray(keys) ? keys : [keys])) {
+                const v = read(k);
+                if (v !== undefined) out[k] = v;
+              }
+            }
+            cb(out);
+          }, 1);
+        },
+        set(data, cb) {
+          setTimeout(() => { // 同上：宏任务
+            for (const [k, v] of Object.entries(data)) write(k, clone(v));
+            if (cb) cb();
+          }, 1);
+        }
+      }
+    }
+  };
+};
+
 /* ---- 内嵌静态文件服务（预览模式用，避免外部依赖） ---- */
 function startStaticServer() {
   return new Promise((resolve, reject) => {
@@ -125,6 +184,10 @@ async function runCore(page, label) {
   if (label === 'extension') {
     check('[2] 扩展上下文', await page.evaluate(() => !!(typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id)));
     check('[2] 扩展页 localStorage 与 chrome.storage 隔离', await page.evaluate(() => !localStorage.getItem('bookmarks')));
+  }
+  if (label === 'shim') {
+    // 确认页面确实走在 chrome.storage 分支上，否则本模式的回归价值不成立
+    check('[SHIM] 页面走 chrome.storage 分支', await page.evaluate(() => !!(typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local && typeof chrome.storage.local.get === 'function')));
   }
   const st = await storageGet(page, 'settings');
   check('[2] settings 初始化', !!(st && st.version === '1.0.0' && st.theme === 'dark'));
@@ -438,7 +501,8 @@ async function runFileMode() {
 
 async function main() {
   const mode = process.argv.includes('--extension') ? 'extension'
-    : process.argv.includes('--preview') ? 'preview' : 'all';
+    : process.argv.includes('--preview') ? 'preview'
+    : process.argv.includes('--shim') ? 'shim' : 'all';
 
   if (mode === 'all' || mode === 'preview') {
     const server = await startStaticServer();
@@ -448,6 +512,20 @@ async function main() {
     await browser.close();
     await new Promise(r => server.close(r));
     await runFileMode();
+  }
+
+  // chrome.storage 路径回归（headless，无需 GUI）：注入模拟的 chrome.storage，
+  // 使页面走扩展实际使用的存储后端代码路径
+  if (mode === 'all' || mode === 'shim') {
+    const server = await startStaticServer();
+    const browser = await chromium.launch(headlessLaunchOpts());
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await ctx.addInitScript(CHROME_STORAGE_SHIM);
+    const page = await ctx.newPage();
+    info('[SHIM] chrome.storage 模拟', '宏任务延迟 1ms（模拟 IPC，等价于扩展后端时序）');
+    await runCore(page, 'shim');
+    await browser.close();
+    await new Promise(r => server.close(r));
   }
 
   if (mode === 'all' || mode === 'extension') {
