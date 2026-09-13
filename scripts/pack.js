@@ -19,14 +19,28 @@ const ROOT = path.resolve(__dirname, '..');
 const SRC = path.join(ROOT, '凌睿科技导航页');
 const OUT_DIR = path.join(ROOT, 'dist');
 
-/* ---- 垃圾文件过滤（US-18 AC2：无 .DS_Store / __MACOSX） ---- */
+/* ---- 垃圾与非发布文件过滤（US-18 AC2：无 .DS_Store / __MACOSX） ---- */
 function isJunk(name) {
   return name === '.DS_Store' || name === '.AppleDouble'
     || name === '__MACOSX' || name.startsWith('._')
-    || name === '.git';
+    || name === '.git'
+    || name === '__tests__';   // 测试代码不进分发包（P1-3）
 }
 
-/* ---- 遍历源码目录，返回 [{ path, buffer, mtime }]（zip 内路径为相对 SRC） ---- */
+/* ---- 固定打包时间戳（P1-4）----
+ * 可复现性要求同一份源码在任何机器、任何时刻产出相同字节流。
+ * 早期实现用文件 mtime 编码 zip 时间戳，导致 git clone 或 touch 之后 SHA 就变，
+ * 跨环境无法作为发布指纹。改为固定时间戳；需要时用 SOURCE_DATE_EPOCH 覆盖。 */
+const ZIP_TIMESTAMP = (() => {
+  const raw = process.env.SOURCE_DATE_EPOCH;
+  if (raw !== undefined) {
+    const secs = Number(raw);
+    if (Number.isFinite(secs)) return new Date(secs * 1000);
+  }
+  return new Date(1980, 0, 1, 0, 0, 0); // zip 纪元起点，稳定且合法
+})();
+
+/* ---- 遍历源码目录，返回 [{ path, buffer }]（zip 内路径为相对 SRC） ---- */
 function collectFiles(dir, base) {
   const out = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -36,7 +50,7 @@ function collectFiles(dir, base) {
     if (entry.isDirectory()) {
       out.push(...collectFiles(abs, rel));
     } else {
-      out.push({ path: rel.split(path.sep).join('/'), buffer: fs.readFileSync(abs), mtime: fs.statSync(abs).mtime });
+      out.push({ path: rel.split(path.sep).join('/'), buffer: fs.readFileSync(abs) });
     }
   }
   return out;
@@ -69,12 +83,12 @@ function dosDateTime(d) {
 function buildZip(files) {
   const localParts = [];
   const centralParts = [];
+  const { time, date } = dosDateTime(ZIP_TIMESTAMP); // 固定时间戳，保证可复现（P1-4）
   let offset = 0;
   for (const f of files) {
     const nameBuf = Buffer.from(f.path, 'utf8');
     const comp = zlib.deflateRawSync(f.buffer);
     const crc = crc32(f.buffer);
-    const { time, date } = dosDateTime(f.mtime);
 
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);      // local file header signature
