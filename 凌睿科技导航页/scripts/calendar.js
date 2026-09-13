@@ -150,11 +150,12 @@ const Calendar = {
       `https://raw.githubusercontent.com/NateScarlet/holiday-cn/master/${year}.json`
     ];
     for (const url of urls) {
+      const controller = new AbortController();
+      // 超时须覆盖整轮请求（含 response.json() 的响应体读取），并在 finally 中清理，
+      // 否则响应头返回后 body 挂起时既不超时、也感知不到失败，会一直阻塞日历初始化
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 6000);
         const resp = await fetch(url, { signal: controller.signal });
-        clearTimeout(timeoutId);
         if (!resp.ok) continue;
         const json = await resp.json();
         if (!Array.isArray(json.days)) continue;
@@ -163,7 +164,9 @@ const Calendar = {
           map[d.date] = { name: d.name, off: !!d.isOffDay };
         }
         return map;
-      } catch {}
+      } catch {} finally {
+        clearTimeout(timeoutId);
+      }
     }
     return null;
   },

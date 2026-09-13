@@ -241,13 +241,13 @@ const Weather = {
     }
 
     for (let attempt = 0; attempt <= retries; attempt++) {
+      const controller = new AbortController();
+      // PBI-18：首次超时 5 秒，尽快让用户看到降级文案（US-21 AC1）
+      // 超时须覆盖整轮请求（含 response.json() 的响应体读取），并在 finally 中清理，
+      // 否则响应头返回后 body 挂起时既不会超时、fetch 抛错时又会遗留定时器
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
       try {
-        const controller = new AbortController();
-        // PBI-18：首次超时 5 秒，尽快让用户看到降级文案（US-21 AC1）
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
-
         const response = await fetch(url, { signal: controller.signal });
-        clearTimeout(timeoutId);
         if (!response.ok) throw new Error('Weather fetch failed');
         const data = await response.json();
         const current = data.current_condition[0];
@@ -277,6 +277,8 @@ const Weather = {
         if (attempt < retries) {
           await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 1000));
         }
+      } finally {
+        clearTimeout(timeoutId);
       }
     }
     return null;

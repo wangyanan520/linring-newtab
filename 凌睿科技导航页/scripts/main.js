@@ -11,8 +11,10 @@ const COMPONENTS = [
   {
     id: 'calendar', title: '农历日历', selector: '.datetime', defaultVisible: true,
     init: async () => {
-      if (typeof Calendar !== 'undefined' && !Calendar.loaded) await Calendar.init();
+      // 时钟不依赖节假日网络数据：先启动时钟（startClock 每秒自检 Calendar.loaded，
+      // 数据到位后自动挂载农历浮层），否则慢网络下时间区域会长时间空白
       App.startClock();
+      if (typeof Calendar !== 'undefined' && !Calendar.loaded) await Calendar.init();
     }
   },
   { id: 'weather', title: '天气', selector: '.weather-widget', defaultVisible: true, init: () => Weather.init(), onShow: () => Weather.startRefresh(), onHide: () => Weather.stopRefresh() },
