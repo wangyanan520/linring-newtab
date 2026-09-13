@@ -242,6 +242,12 @@ const App = {
     const bookmarks = await Storage.getBookmarks();
     bookmarks.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
 
+    // 空状态提示：数据被清空后避免主页留一片无法解释的空白
+    if (bookmarks.length === 0) {
+      container.innerHTML = '<div class="empty-hint">还没有书签，点击底部「设置」添加</div>';
+      return;
+    }
+
     container.innerHTML = bookmarks.map(bm => {
       const domain = this.extractDomain(bm.url);
       // 属性值上下文用 escapeAttr（escapeHtml 不转义引号，标题首字符为 " 时会提前闭合属性）
@@ -277,6 +283,12 @@ const App = {
     const container = document.getElementById('categoryContainer');
     const categories = await Storage.getCategories();
     categories.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+
+    // 空状态提示（同书签区）
+    if (categories.length === 0) {
+      container.innerHTML = '<div class="empty-hint">还没有分类，可在「设置 → 分类导航」中添加</div>';
+      return;
+    }
 
     container.innerHTML = categories.map(cat => `
       <div class="category-card" data-id="${escapeAttr(cat.id)}" draggable="true">

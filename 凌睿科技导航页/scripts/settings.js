@@ -145,7 +145,7 @@ const Settings = {
           <li><b>cn.bing.com</b> — Bing 每日壁纸（壁纸源）</li>
           <li><b>bing.biturl.top</b> — 随机壁纸（壁纸源）</li>
           <li><b>cdn.jsdelivr.net / raw.githubusercontent.com</b> — 节假日数据（离线时使用内置表）</li>
-          <li><b>favicon.im</b> — 书签网站图标（请求地址包含书签域名；加载失败自动回退首字符图标）</li>
+          <li><b>favicon.im</b> — 书签网站图标（请求地址包含书签域名）。该服务不可用时回退为<b>直接请求书签自身域名</b>的 /favicon.ico（若添加了内网站点，会向内网域名发起请求）；仍失败则显示首字符图标</li>
         </ul>
       </div>
       <div class="setting-section">
@@ -334,9 +334,14 @@ const Settings = {
     container.prepend(form);
 
     document.getElementById('saveBookmark').addEventListener('click', async () => {
-      const title = document.getElementById('bmTitle').value.trim();
-      const url = normalizeUrl(document.getElementById('bmUrl').value.trim());
-      if (!title || !url) return;
+      const titleEl = document.getElementById('bmTitle');
+      const urlEl = document.getElementById('bmUrl');
+      const title = titleEl.value.trim();
+      const url = normalizeUrl(urlEl.value.trim());
+      // 校验失败时用原生校验 UI 提示，而不是静默 return（P2-13；协议白名单见 P2-1）
+      titleEl.setCustomValidity(title ? '' : '请填写名称');
+      urlEl.setCustomValidity(url ? '' : '请输入合法网址（支持 http / https / chrome-extension）');
+      if (!titleEl.reportValidity() || !urlEl.reportValidity()) return;
       await Storage.addBookmark({ title, url });
       form.remove();
       await this.renderBookmarks();
@@ -374,9 +379,13 @@ const Settings = {
 
     // 查询限定在 form 内：即使页面上意外出现同 ID 元素也不会串扰
     form.querySelector('#saveEditBookmark').addEventListener('click', async () => {
-      const newTitle = form.querySelector('#editBmTitle').value.trim();
-      const newUrl = normalizeUrl(form.querySelector('#editBmUrl').value.trim());
-      if (!newTitle || !newUrl) return;
+      const titleEl = form.querySelector('#editBmTitle');
+      const urlEl = form.querySelector('#editBmUrl');
+      const newTitle = titleEl.value.trim();
+      const newUrl = normalizeUrl(urlEl.value.trim());
+      titleEl.setCustomValidity(newTitle ? '' : '请填写名称');
+      urlEl.setCustomValidity(newUrl ? '' : '请输入合法网址（支持 http / https / chrome-extension）');
+      if (!titleEl.reportValidity() || !urlEl.reportValidity()) return;
       await Storage.updateBookmark(id, { title: newTitle, url: newUrl });
       await this.renderBookmarks();
       App.renderBookmarks();
@@ -410,8 +419,10 @@ const Settings = {
     container.prepend(form);
 
     document.getElementById('saveCategory').addEventListener('click', async () => {
-      const title = document.getElementById('catTitle').value.trim();
-      if (!title) return;
+      const titleEl = document.getElementById('catTitle');
+      const title = titleEl.value.trim();
+      titleEl.setCustomValidity(title ? '' : '请填写分类名称');
+      if (!titleEl.reportValidity()) return;
       await Storage.addCategory({ title });
       form.remove();
       await this.renderCategories();
@@ -447,8 +458,10 @@ const Settings = {
 
     // 查询限定在 form 内：即使页面上意外出现同 ID 元素也不会串扰
     form.querySelector('#saveEditCategory').addEventListener('click', async () => {
-      const newTitle = form.querySelector('#editCatTitle').value.trim();
-      if (!newTitle) return;
+      const titleEl = form.querySelector('#editCatTitle');
+      const newTitle = titleEl.value.trim();
+      titleEl.setCustomValidity(newTitle ? '' : '请填写分类名称');
+      if (!titleEl.reportValidity()) return;
       await Storage.updateCategory(id, { title: newTitle });
       await this.renderCategories();
       App.renderCategories();
@@ -485,9 +498,13 @@ const Settings = {
     container.appendChild(form);
 
     document.getElementById('saveItem').addEventListener('click', async () => {
-      const title = document.getElementById('itemTitle').value.trim();
-      const url = normalizeUrl(document.getElementById('itemUrl').value.trim());
-      if (!title || !url) return;
+      const titleEl = document.getElementById('itemTitle');
+      const urlEl = document.getElementById('itemUrl');
+      const title = titleEl.value.trim();
+      const url = normalizeUrl(urlEl.value.trim());
+      titleEl.setCustomValidity(title ? '' : '请填写名称');
+      urlEl.setCustomValidity(url ? '' : '请输入合法网址（支持 http / https / chrome-extension）');
+      if (!titleEl.reportValidity() || !urlEl.reportValidity()) return;
       await Storage.addCategoryItem(categoryId, { title, url });
       form.remove();
       await this.renderCategories();
@@ -522,9 +539,13 @@ const Settings = {
     actions.replaceWith(form);
 
     document.getElementById('saveEditItem').addEventListener('click', async () => {
-      const newTitle = document.getElementById('editItemTitle').value.trim();
-      const newUrl = normalizeUrl(document.getElementById('editItemUrl').value.trim());
-      if (!newTitle || !newUrl) return;
+      const titleEl = document.getElementById('editItemTitle');
+      const urlEl = document.getElementById('editItemUrl');
+      const newTitle = titleEl.value.trim();
+      const newUrl = normalizeUrl(urlEl.value.trim());
+      titleEl.setCustomValidity(newTitle ? '' : '请填写名称');
+      urlEl.setCustomValidity(newUrl ? '' : '请输入合法网址（支持 http / https / chrome-extension）');
+      if (!titleEl.reportValidity() || !urlEl.reportValidity()) return;
       await Storage.updateCategoryItem(categoryId, itemId, { title: newTitle, url: newUrl });
       await this.renderCategories();
       App.renderCategories();
@@ -636,8 +657,14 @@ const Settings = {
           `导入成功：书签 ${after.bookmarks} 个、分类 ${after.categories} 个、待办 ${after.todos} 条${clearedTip}`,
           cleared.length > 0 ? 'error' : 'success'
         );
-        // 全量刷新：书签/分类/待办 + 主题/底部栏/组件可见性 + 天气/壁纸
-        await this.refreshAllAfterDataChange();
+        // 全量刷新：书签/分类/待办 + 主题/底部栏/组件可见性 + 天气/壁纸。
+        // 必须放在主 try 之外：此刻数据已写入成功，刷新界面若抛错不应被误报成
+        // "导入失败（现有数据未受影响）"——那会让用户以为数据没变而重复导入（P2-14）
+        try {
+          await this.refreshAllAfterDataChange();
+        } catch (refreshErr) {
+          console.error('导入后刷新界面失败:', refreshErr);
+        }
       } catch (err) {
         this.showDataFeedback('导入失败：' + err.message + '（现有数据未受影响）', 'error');
       }
@@ -656,7 +683,12 @@ const Settings = {
           `已恢复导入前备份：书签 ${after.bookmarks} 个、分类 ${after.categories} 个、待办 ${after.todos} 条`,
           'success'
         );
-        await this.refreshAllAfterDataChange();
+        // 同上：恢复已成功，刷新界面失败不应被误报为"恢复失败"（P2-14）
+        try {
+          await this.refreshAllAfterDataChange();
+        } catch (refreshErr) {
+          console.error('恢复后刷新界面失败:', refreshErr);
+        }
       } catch (err) {
         this.showDataFeedback('恢复失败：' + err.message, 'error');
       }
@@ -840,9 +872,21 @@ const Settings = {
 };
 
 /* ---- 自动补全网址协议 ---- */
+/* URL 规范化：无协议时补 https://，并按与 storage.js validateBackup 相同的白名单校验协议。
+   返回空串表示输入不可用，调用方据此给出提示（P2-1：此前用「是否含 ://」的子串判断，
+   javascript:alert(1)//https://x 这类输入可以绕过）。 */
 function normalizeUrl(url) {
   if (!url) return '';
-  url = url.trim().replace(/^\/+/, '');
-  if (!/:\/\//.test(url)) return 'https://' + url;
-  return url;
+  let candidate = url.trim().replace(/^\/+/, '');
+  if (!candidate) return '';
+  // 无协议前缀时按 https 补全（用户常直接粘贴 example.com）
+  if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(candidate)) candidate = 'https://' + candidate;
+  try {
+    const parsed = new URL(candidate);
+    if (!['http:', 'https:', 'chrome-extension:'].includes(parsed.protocol)) return '';
+    return candidate;
+  } catch {
+    // 解析失败（含空格、非法主机等）同样视为不可用
+    return '';
+  }
 }
