@@ -216,6 +216,41 @@ async function runCore(page, label) {
   const orderPersist = await page.evaluate(() => Array.from(document.querySelectorAll('#bookmarkList .setting-item-title')).map(e => e.textContent));
   check('[5] 排序刷新持久化', JSON.stringify(orderPersist) === JSON.stringify(orderAfter));
 
+  // [5.5] 连续编辑两条书签（P0-1 回归：编辑表单重复 ID 导致保存错位）
+  // 用户路径：点开 A 的编辑 → 改主意点开 B 的编辑 → 在 B 的表单里输入并点它自己的保存按钮
+  // 注意断言必须落在"最后一个表单自己的按钮"上：修复前该按钮没有监听器（无反应），
+  // 而"点第一个按钮"在修复前后会得到相同的数据结果，无法区分
+  await page.click('[data-tab="bookmarks"]');
+  await sleep(500);
+  const editBefore = (await storageGet(page, 'bookmarks')).map(b => b.title);
+  await page.locator('[data-action="edit-bookmark"]').nth(0).click();
+  await sleep(300);
+  // 第 1 条的编辑按钮已被内联表单替换，剩余按钮中的第 1 个即原第 2 条
+  await page.locator('[data-action="edit-bookmark"]').nth(0).click();
+  await sleep(300);
+  const dupTitleInputs = await page.locator('#editBmTitle').count();
+  check('[5.5] 连续编辑两条不产生重复表单 ID', dupTitleInputs === 1, `实际 #editBmTitle=${dupTitleInputs}`);
+  await page.locator('#editBmTitle').last().fill('BBB_EDIT');
+  await page.locator('#saveEditBookmark').last().click();
+  await sleep(1500);
+  const editAfter = (await storageGet(page, 'bookmarks')).map(b => b.title);
+  check('[5.5] 第 2 条被正确保存（点自己表单的保存）', editAfter[1] === 'BBB_EDIT', `实际=${editAfter[1]}`);
+  check('[5.5] 第 1 条未被误改', editAfter[0] === editBefore[0], `期望=${editBefore[0]} 实际=${editAfter[0]}`);
+  // 注：不复原标题——后续 [6] 只校验导出结构，[7] 用固定备份覆盖数据，均不依赖书签标题
+
+  // [5.6] 编辑链接后切 tab（P1-2 回归：操作按钮不应永久消失）
+  await page.click('[data-tab="categories"]');
+  await sleep(500);
+  const actBefore = await page.locator('#categoryList .sub-item').nth(0).locator('.setting-item-actions').count();
+  await page.locator('[data-action="edit-item"]').nth(0).click();
+  await sleep(300);
+  await page.click('[data-tab="wallpaper"]');
+  await sleep(300);
+  await page.click('[data-tab="categories"]');
+  await sleep(500);
+  const actAfter = await page.locator('#categoryList .sub-item').nth(0).locator('.setting-item-actions').count();
+  check('[5.6] 编辑链接后切 tab，该行操作按钮仍在', actBefore === 1 && actAfter === 1, `编辑前=${actBefore} 切回后=${actAfter}`);
+
   // [6] 导出 + 隐私文案
   await page.click('[data-tab="data"]');
   await sleep(600);
@@ -358,6 +393,21 @@ async function runCore(page, label) {
   await sleep(2500);
   check('[14] 无 pageerror', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));
   info('[14] console error 详情', consoleErrors.slice(0, 3).join(' || ') || '无');
+
+  // [17] 时钟不依赖节假日网络（P1-1 回归）
+  // 挂起节假日请求模拟"响应头返回后响应体卡住"：修复前 App.startClock() 串在
+  // Calendar.init() 之后，会被该请求阻塞导致时间区域长时间空白
+  // 必须先清掉 24 小时节假日缓存，否则命中缓存不会发起请求，本断言将失去区分度
+  await page.route(/holiday-cn/, () => { /* 挂起：不 fulfill / abort / continue */ });
+  await page.evaluate(() => localStorage.removeItem('holidayCacheV1'));
+  await page.reload();
+  await sleep(3500);
+  const clockText = await page.evaluate(() => (document.getElementById('datetime').textContent || '').trim());
+  check('[17] 节假日请求挂起时时钟仍显示', clockText.length > 0, `#datetime="${clockText.slice(0, 24)}"`);
+  await page.unroute(/holiday-cn/);
+  await page.reload();
+  await sleep(2500);
+
   return { consoleErrors, pageErrors, requests };
 }
 
