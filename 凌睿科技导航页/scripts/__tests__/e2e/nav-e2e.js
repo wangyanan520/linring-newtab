@@ -106,8 +106,23 @@ const CHROME_STORAGE_SHIM = () => {
   };
   const write = (k, v) => localStorage.setItem(PREFIX + k, JSON.stringify(v));
   const clone = v => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
+
+  /* onChanged 支持：真实 chrome.storage 的变更会广播到该扩展的所有页面，
+     跨标签页同步（P3-2）依赖这一行为。同一页面内直接回调，跨页面用 BroadcastChannel。 */
+  const listeners = [];
+  const emit = changes => listeners.forEach(fn => { try { fn(changes, 'local'); } catch { /* 忽略监听器异常 */ } });
+  let channel = null;
+  try {
+    channel = new BroadcastChannel('__cs_changes__');
+    channel.onmessage = e => emit(e.data);
+  } catch { /* 环境不支持时退化为仅同页通知 */ }
+
   window.chrome = {
     storage: {
+      onChanged: {
+        addListener(fn) { if (typeof fn === 'function' && !listeners.includes(fn)) listeners.push(fn); },
+        removeListener(fn) { const i = listeners.indexOf(fn); if (i !== -1) listeners.splice(i, 1); }
+      },
       local: {
         get(keys, cb) {
           setTimeout(() => { // 宏任务：模拟跨进程 IPC（勿改为 Promise.resolve）
@@ -131,8 +146,15 @@ const CHROME_STORAGE_SHIM = () => {
         },
         set(data, cb) {
           setTimeout(() => { // 同上：宏任务
-            for (const [k, v] of Object.entries(data)) write(k, clone(v));
+            const changes = {};
+            for (const [k, v] of Object.entries(data)) {
+              changes[k] = { oldValue: read(k), newValue: clone(v) };
+              write(k, clone(v));
+            }
             if (cb) cb();
+            // 写入完成后广播（与真实 API 的时序一致）
+            emit(changes);
+            if (channel) { try { channel.postMessage(changes); } catch { /* 忽略 */ } }
           }, 1);
         }
       }
@@ -140,14 +162,24 @@ const CHROME_STORAGE_SHIM = () => {
   };
 };
 
-/* ---- 第三方接口的固定响应（让 E2E 自包含，不受网络波动影响）----
+/* 第三方接口的固定响应（让 E2E 自包含，不受网络波动影响）----
  *
  * 背景：此前 [13] 重试恢复、[11] 节假日倒计时等断言依赖真实的 wttr.in / jsdelivr 请求，
  * 曾观察到一次无法定位的偶发失败，最可能就是外部服务抖动。
  * 真实响应的结构与可用性改由手动冒烟覆盖，不放进自动化测试。
  */
+const MOCK_CITY_HOUR = (new Date().getHours() + 6) % 24;
+const _mockHour12 = h => `${h % 12 === 0 ? 12 : h % 12}:00 ${h < 12 ? 'AM' : 'PM'}`;
+
 const MOCK_WEATHER = {
-  current_condition: [{ weatherCode: '116', temp_C: '25', weatherDesc: [{ value: '多云' }] }],
+  current_condition: [{
+    weatherCode: '116',
+    temp_C: '25',
+    weatherDesc: [{ value: '多云' }],
+    // 城市当地时间故意取「浏览器时间 +6 小时」，用于验证小时轴按城市时间对齐（P3-4）：
+    // 若代码回退到浏览器本地时间，[23] 的第二个刻度就会对不上
+    localObsDateTime: `2026-01-01 ${_mockHour12(MOCK_CITY_HOUR)}`
+  }],
   // 必须像真实 wttr.in 一样给出多天预报：buildHourly24 会跳过当天已过去的小时，
   // 若只给 1 天，临近午夜时可用点不足 2 个会直接返回 null，悬停卡片就不渲染了
   // （曾因此在 23 点跑测试时出现 [13]/[20] 两项失败）
@@ -177,6 +209,7 @@ const MOCK_HOLIDAY = { days: [{ date: _mockHolidayDate, name: '测试节', isOff
    用可变状态而非 page.route/unroute —— unroute 会把固定响应一并移除。 */
 let weatherMode = 'ok';
 let holidayMode = 'ok';
+let bingDelayMs = 0; // >0 时模拟 Bing 接口慢响应，用于验证壁纸代次（P3-6）
 
 /* ---- 内嵌静态文件服务（预览模式用，避免外部依赖） ---- */
 function startStaticServer() {
@@ -216,6 +249,15 @@ async function runCore(page, label) {
   await page.route(/holiday-cn/, r => {
     if (holidayMode === 'hang') return; // 不响应：模拟请求卡在响应体阶段
     return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_HOLIDAY) });
+  });
+  bingDelayMs = 0;
+  await page.route(/cn\.bing\.com/, async r => {
+    if (bingDelayMs) await new Promise(res => setTimeout(res, bingDelayMs));
+    return r.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ images: [{ urlbase: '/th?id=OHR.MockWallpaper' }] })
+    });
   });
 
   if (label === 'extension') {
@@ -759,6 +801,53 @@ async function runCore(page, label) {
   check('[22] 组件隐藏后初始化不再发起天气请求（P2-10 残余）', wtReqAfter === wtReqBefore,
     `wttr.in 请求数 ${wtReqBefore} → ${wtReqAfter}`);
 
+  // [23] 小时轴按城市当地时间对齐（P3-4）
+  // mock 的城市时间是浏览器时间 +6 小时：若代码仍用浏览器本地时间对齐，第二个刻度会对不上
+  await page.evaluate(async () => {
+    Weather.cache = null;
+    await Weather.refresh(); // 重新经过 buildHourly24，使用 mock 的 localObsDateTime
+  });
+  await sleep(800);
+  const hourTicks = await page.evaluate(() => {
+    Weather.render();
+    return [...document.querySelectorAll('.whc-hour')].map(e => e.textContent.trim()).filter(Boolean);
+  });
+  const expectTick = String((MOCK_CITY_HOUR + 3) % 24).padStart(2, '0');
+  check('[23] 小时轴按城市当地时间对齐（P3-4）',
+    hourTicks[0] === '现在' && hourTicks[1] === expectTick,
+    `刻度=${JSON.stringify(hourTicks)}，期望第 2 个=${expectTick}`);
+
+  // [24] 跨标签页同步（P3-2）
+  // 在第二个标签页写入数据，本页应通过 storage.onChanged 自动刷新。
+  // 预览模式走 localStorage 回退，没有 chrome.storage.onChanged —— 该能力仅在扩展环境具备，跳过。
+  const hasOnChanged = await page.evaluate(() =>
+    !!(typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged));
+  if (hasOnChanged) {
+    const page2 = await page.context().newPage();
+    await page2.goto(page.url(), { waitUntil: 'domcontentloaded' });
+    await page2.waitForSelector('.bookmark-item, .empty-hint');
+    await page2.evaluate(() => Storage.addBookmark({ title: '跨页同步测试', url: 'https://cross-tab.example.com' }));
+    await sleep(1500);
+    const synced = await page.evaluate(() =>
+      [...document.querySelectorAll('.bookmark-item .bookmark-title')].some(e => e.textContent === '跨页同步测试'));
+    check('[24] 跨标签页同步：另一页新增的书签本页可见（P3-2）', synced, synced ? '已同步' : '未同步');
+    await page2.close();
+  } else {
+    info('[24] 跨标签页同步断言', '预览模式无 chrome.storage.onChanged，跳过（该能力仅扩展环境具备）');
+  }
+
+  // [25] 壁纸慢响应不覆盖后发操作（P3-6）
+  // 先发起 Bing 每日壁纸（mock 为 1.5 秒慢响应），随后立刻切到随机壁纸；
+  // 迟到的 Bing 响应不得把后发的选择覆盖掉
+  bingDelayMs = 1500;
+  await page.evaluate(() => { Wallpaper.apply(3); }); // 3 = Bing 每日壁纸（不 await，让它在后台慢）
+  await sleep(250);
+  await page.evaluate(() => { Wallpaper.apply(4); }); // 4 = 随机壁纸（同步生效）
+  await sleep(2600);
+  const bgAfter = await page.evaluate(() => document.getElementById('bgLayer').style.backgroundImage || '');
+  check('[25] 慢响应不覆盖后发的壁纸选择（P3-6）', /biturl\.top/.test(bgAfter), bgAfter.slice(0, 80));
+  bingDelayMs = 0;
+
   return { consoleErrors, pageErrors, requests };
 }
 
@@ -795,7 +884,10 @@ async function main() {
   if (mode === 'all' || mode === 'preview') {
     const server = await startStaticServer();
     const browser = await chromium.launch(headlessLaunchOpts());
-    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    // 用显式 context：[24] 跨标签页同步断言需要再开一个 page，
+    // 而 browser.newPage() 产生的隐式 context 不允许再新建页面
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const page = await ctx.newPage();
     await runCore(page, 'preview');
     await browser.close();
     await new Promise(r => server.close(r));
