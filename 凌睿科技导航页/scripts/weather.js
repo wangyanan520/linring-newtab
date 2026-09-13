@@ -162,6 +162,7 @@ const Weather = {
   _timerId: null,
   _inited: false,
   _failed: false,
+  _active: true, // 组件期望运行状态，由 startRefresh / stopRefresh 维护（P2-10）
 
   async init() {
     // 守卫：即使注册表路径外出现重复调用，也只在首次执行（防止重复 fetch/建定时器）
@@ -176,10 +177,14 @@ const Weather = {
     }
     // 异步启动位置检测 + 天气刷新，不阻塞页面渲染
     this._initAsync().catch(() => {});
-    this.startRefresh();
+    // 初始化期间组件可能已被隐藏（onHide → stopRefresh 已把 _active 置 false）。
+    // 此处若照常启动，定时器会一直跑下去，且因为 _visible 已经是 false，
+    // 后续不会再触发 onHide，没有任何路径能停掉它（P2-10）
+    if (this._active) this.startRefresh();
   },
 
   startRefresh() {
+    this._active = true;
     // 已有定时器不重复创建
     if (this._timerId) return;
     this._timerId = setInterval(() => this.refresh(), CACHE_DURATION);
@@ -187,6 +192,7 @@ const Weather = {
 
   stopRefresh() {
     // 组件隐藏时停止刷新，避免后台持续请求 wttr.in（隐私友好）
+    this._active = false;
     if (this._timerId) {
       clearInterval(this._timerId);
       this._timerId = null;
@@ -338,8 +344,8 @@ const Weather = {
     const display = this.getDisplayCity();
     const loc = display ? `<span class="weather-sep">|</span><span class="weather-desc">${display}</span>` : '';
     el.innerHTML = `
-      <span class="weather-icon">${this.cache.icon}</span>
-      <span class="weather-temp">${this.cache.temp}°C</span>
+      <span class="weather-icon">${escapeHtml(String(this.cache.icon == null ? '' : this.cache.icon))}</span>
+      <span class="weather-temp">${escapeHtml(String(this.cache.temp == null ? '' : this.cache.temp))}°C</span>
       <span class="weather-sep">|</span>
       <span class="weather-desc">${escapeHtml(this.cache.desc)}</span>
       ${loc}
@@ -349,20 +355,27 @@ const Weather = {
   },
 
   bindHoverEvents(el) {
-    let hideTimer = null;
     const card = el.querySelector('.weather-hover-card');
     if (!card) return;
-    const showCard = () => {
-      clearTimeout(hideTimer);
-      el.classList.add('show-weather-card');
-    };
-    const hideCard = () => {
-      hideTimer = setTimeout(() => el.classList.remove('show-weather-card'), 200);
-    };
-    el.addEventListener('mouseenter', showCard);
-    el.addEventListener('mouseleave', hideCard);
-    card.addEventListener('mouseenter', showCard);
-    card.addEventListener('mouseleave', hideCard);
+    // #weatherWidget 是静态元素，但 render() 会反复重建它的 innerHTML。
+    // 绑定在 el 自身的监听器必须只绑一次：否则每次 render 净增 2 个，且闭包会一直持有
+    // 已被移除的旧卡片节点使其无法回收（P2-11：实测 16 次 render 累积到 34 个监听器）
+    if (!this._hoverBound) {
+      this._hoverBound = true;
+      this._hideTimer = null;
+      this._showCard = () => {
+        clearTimeout(this._hideTimer);
+        el.classList.add('show-weather-card');
+      };
+      this._hideCard = () => {
+        this._hideTimer = setTimeout(() => el.classList.remove('show-weather-card'), 200);
+      };
+      el.addEventListener('mouseenter', this._showCard);
+      el.addEventListener('mouseleave', this._hideCard);
+    }
+    // 悬停卡片每次 render 都是新节点，需重新绑定；旧节点随 innerHTML 重建被回收
+    card.addEventListener('mouseenter', this._showCard);
+    card.addEventListener('mouseleave', this._hideCard);
   },
 
   renderHoverCard() {

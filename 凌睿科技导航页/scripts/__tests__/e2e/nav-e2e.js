@@ -585,6 +585,38 @@ async function runCore(page, label) {
   const focusBack = await page.evaluate(() => (document.activeElement ? document.activeElement.id : ''));
   check('[19] 关闭后焦点归还触发元素', focusBack === 'settingsBtn', `activeElement=#${focusBack || '(无)'}`);
 
+  // [20] 常驻运行时的资源生命周期（P2-11）
+  // 这类问题只在长时间常驻后显现，分钟级 E2E 不会自然暴露，必须显式模拟反复 render。
+  // 用 CDP 读取元素上的真实监听器数量——比 DOM 断言更直接。
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('DOM.enable');
+  const countListeners = async (sel) => {
+    const { root } = await cdp.send('DOM.getDocument', { depth: -1 });
+    const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: sel });
+    if (!nodeId) return null;
+    const { object } = await cdp.send('DOM.resolveNode', { nodeId });
+    const { listeners } = await cdp.send('DOMDebugger.getEventListeners', { objectId: object.objectId });
+    return listeners.length;
+  };
+  const listenersBefore = await countListeners('#weatherWidget');
+  const hoverCards = await page.evaluate(() => {
+    // 注意：缓存必须带 hourly，否则不会渲染悬停卡片，bindHoverEvents 会在 !card 处提前返回，
+    // 那样根本测不到泄漏（首次探测正是因此误判为"无泄漏"）
+    Weather.cache = {
+      temp: '25', icon: '☀️', desc: '晴',
+      hourly: Array.from({ length: 12 }, (_, i) => ({ hour: i * 2, icon: '☀️', temp: 25 + i, rain: 10 + i })),
+      todayHigh: 30, todayLow: 20, timestamp: Date.now(), version: 7
+    };
+    for (let i = 0; i < 10; i++) Weather.render();
+    return document.querySelectorAll('.weather-hover-card').length;
+  });
+  await sleep(300);
+  const listenersAfter = await countListeners('#weatherWidget');
+  check('[20] 反复 render 后天气组件监听器不累积（P2-11）',
+    hoverCards === 1 && listenersBefore !== null && listenersBefore === listenersAfter,
+    `悬停卡片=${hoverCards} 个，监听器 ${listenersBefore} → ${listenersAfter}（10 次 render）`);
+  await cdp.detach();
+
   return { consoleErrors, pageErrors, requests };
 }
 
