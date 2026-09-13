@@ -65,6 +65,14 @@ const Settings = {
     if (tab === 'privacy') {
       this.renderPrivacySettings();
     }
+    // 切回列表 tab 时重建渲染：内联编辑表单是用 replaceWith 把操作按钮整块顶掉的，
+    // 只靠 clearInlineForms 删除表单不会把按钮恢复回来（P1-2）
+    if (tab === 'bookmarks') {
+      this.renderBookmarks();
+    }
+    if (tab === 'categories') {
+      this.renderCategories();
+    }
     // 清理其他 tab 可能残留的内联表单，防止 ID 冲突
     this.clearInlineForms();
   },
@@ -146,7 +154,7 @@ const Settings = {
   },
 
   clearInlineForms() {
-    const ids = ['bookmarkForm', 'categoryForm', 'itemForm', 'editItemForm'];
+    const ids = ['bookmarkForm', 'categoryForm', 'itemForm', 'editItemForm', 'editBookmarkForm', 'editCategoryForm'];
     ids.forEach(id => {
       const el = document.getElementById(id);
       if (el) el.remove();
@@ -299,7 +307,12 @@ const Settings = {
     document.getElementById('bmTitle').focus();
   },
 
-  showEditBookmarkForm(id) {
+  async showEditBookmarkForm(id) {
+    // 已有其他编辑表单时先重建列表：内联表单是用 replaceWith 整块顶掉操作按钮的，
+    // 只 remove 表单会让上一行永久失去"编辑/删除"按钮（与 P1-2 同源）
+    if (document.getElementById('editBookmarkForm')) {
+      await this.renderBookmarks();
+    }
     const items = document.querySelectorAll(`#bookmarkList .setting-item[data-id="${id}"]`);
     const item = items[0];
     if (!item) return;
@@ -309,6 +322,7 @@ const Settings = {
     const actions = item.querySelector('.setting-item-actions');
 
     const form = document.createElement('div');
+    form.id = 'editBookmarkForm';
     form.className = 'inline-form';
     form.innerHTML = `
       <input type="text" id="editBmTitle" value="${escapeAttr(title)}" required>
@@ -318,16 +332,17 @@ const Settings = {
     `;
     actions.replaceWith(form);
 
-    document.getElementById('saveEditBookmark').addEventListener('click', async () => {
-      const newTitle = document.getElementById('editBmTitle').value.trim();
-      const newUrl = normalizeUrl(document.getElementById('editBmUrl').value.trim());
+    // 查询限定在 form 内：即使页面上意外出现同 ID 元素也不会串扰
+    form.querySelector('#saveEditBookmark').addEventListener('click', async () => {
+      const newTitle = form.querySelector('#editBmTitle').value.trim();
+      const newUrl = normalizeUrl(form.querySelector('#editBmUrl').value.trim());
       if (!newTitle || !newUrl) return;
       await Storage.updateBookmark(id, { title: newTitle, url: newUrl });
       await this.renderBookmarks();
       App.renderBookmarks();
     });
 
-    document.getElementById('cancelEditBookmark').addEventListener('click', () => {
+    form.querySelector('#cancelEditBookmark').addEventListener('click', () => {
       this.renderBookmarks();
     });
   },
@@ -367,7 +382,11 @@ const Settings = {
     document.getElementById('catTitle').focus();
   },
 
-  showEditCategoryForm(id) {
+  async showEditCategoryForm(id) {
+    // 同 showEditBookmarkForm：先重建列表，避免上一行操作按钮被永久顶掉
+    if (document.getElementById('editCategoryForm')) {
+      await this.renderCategories();
+    }
     const containers = document.querySelectorAll(`#categoryList .category-with-items[data-id="${id}"]`);
     const container = containers[0];
     if (!container) return;
@@ -377,6 +396,7 @@ const Settings = {
     const actions = container.querySelector('.setting-item .setting-item-actions');
 
     const form = document.createElement('div');
+    form.id = 'editCategoryForm';
     form.className = 'inline-form';
     form.innerHTML = `
       <input type="text" id="editCatTitle" value="${escapeAttr(currentTitle)}" required>
@@ -385,15 +405,16 @@ const Settings = {
     `;
     actions.replaceWith(form);
 
-    document.getElementById('saveEditCategory').addEventListener('click', async () => {
-      const newTitle = document.getElementById('editCatTitle').value.trim();
+    // 查询限定在 form 内：即使页面上意外出现同 ID 元素也不会串扰
+    form.querySelector('#saveEditCategory').addEventListener('click', async () => {
+      const newTitle = form.querySelector('#editCatTitle').value.trim();
       if (!newTitle) return;
       await Storage.updateCategory(id, { title: newTitle });
       await this.renderCategories();
       App.renderCategories();
     });
 
-    document.getElementById('cancelEditCategory').addEventListener('click', () => {
+    form.querySelector('#cancelEditCategory').addEventListener('click', () => {
       this.renderCategories();
     });
   },
@@ -437,7 +458,11 @@ const Settings = {
     document.getElementById('itemTitle').focus();
   },
 
-  showEditItemForm(categoryId, itemId) {
+  async showEditItemForm(categoryId, itemId) {
+    // 同 showEditBookmarkForm：先重建列表，避免上一行操作按钮被永久顶掉
+    if (document.getElementById('editItemForm')) {
+      await this.renderCategories();
+    }
     const subItem = document.querySelector(`.sub-item[data-id="${itemId}"][data-cat-id="${categoryId}"]`);
     if (!subItem) return;
 
@@ -446,9 +471,6 @@ const Settings = {
     const actions = subItem.querySelector('.setting-item-actions');
 
     const form = document.createElement('div');
-    // 清理旧表单
-    const oldForm = document.getElementById('editItemForm');
-    if (oldForm) oldForm.remove();
     form.id = 'editItemForm';
     form.className = 'inline-form-sub';
     form.innerHTML = `
