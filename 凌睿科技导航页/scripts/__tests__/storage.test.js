@@ -196,6 +196,40 @@ test('Storage 组件可见性与设置合并（chrome 分支）', async () => {
   } finally { cleanupGlobals(); }
 });
 
+test('P2-15 并发写不丢失：并发切换多个组件开关应全部保留', async () => {
+  try {
+    const { Storage } = withChrome();
+    await Storage.init();
+    // 不等待前一次写入完成即发起下一次：串行化之前，updateSettings 的「读→改→写」
+    // 会基于同一旧快照互相覆盖，只有最后写入的一项生效
+    await Promise.all([
+      Storage.setComponentVisible('weather', false),
+      Storage.setComponentVisible('todos', false),
+      Storage.setComponentVisible('calendar', false)
+    ]);
+    const vis = await Storage.getComponentVisibility();
+    assert.equal(vis.weather, false, 'weather 开关应保留');
+    assert.equal(vis.todos, false, 'todos 开关应保留');
+    assert.equal(vis.calendar, false, 'calendar 开关应保留');
+  } finally { cleanupGlobals(); }
+});
+
+test('P2-15 并发写不丢失：并发 updateSettings 修改不同字段应互不覆盖', async () => {
+  try {
+    const { Storage } = withChrome();
+    await Storage.init();
+    await Promise.all([
+      Storage.updateSettings({ theme: 'light' }),
+      Storage.updateSettings({ searchEngine: '百度' }),
+      Storage.updateSettings({ showBottomBar: false })
+    ]);
+    const s = await Storage.getSettings();
+    assert.equal(s.theme, 'light', 'theme 应保留');
+    assert.equal(s.searchEngine, '百度', 'searchEngine 应保留');
+    assert.equal(s.showBottomBar, false, 'showBottomBar 应保留');
+  } finally { cleanupGlobals(); }
+});
+
 test('Storage exportData：四类数据 + schemaVersion（chrome 分支）', async () => {
   try {
     const { Storage } = withChrome();

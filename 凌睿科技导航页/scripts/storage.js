@@ -512,7 +512,10 @@ const Storage = {
 
   async updateSettings(settings) {
     const current = await this.getSettings();
-    const merged = { ...current, ...settings };
+    // 支持函数式更新：需要「读当前值 → 合并」的操作必须整体在同一队列执行体内完成，
+    // 否则并发的读-改-写会基于同一旧快照互相覆盖（P2-15）
+    const patch = typeof settings === 'function' ? settings(current) : settings;
+    const merged = { ...current, ...patch };
     await storageSet({ settings: merged });
     return merged;
   },
@@ -524,10 +527,12 @@ const Storage = {
   },
 
   async setComponentVisible(id, visible) {
-    const current = await this.getComponentVisibility();
-    const next = { ...current, [id]: !!visible };
-    await this.updateSettings({ componentVisibility: next });
-    return next;
+    // 用函数式更新把「读当前可见性 → 合并 → 写回」放进 updateSettings 的串行队列内。
+    // 若按原写法（先 getComponentVisibility 再 updateSettings），读发生在队列之外，
+    // 并发切换多个开关时仍会丢失其中一项（P2-15）
+    return this.updateSettings(cur => ({
+      componentVisibility: { ...(cur.componentVisibility || {}), [id]: !!visible }
+    }));
   },
 
   /* ---- V3 数据备份：导出/导入 ---- */
@@ -598,6 +603,35 @@ const Storage = {
     return next;
   }
 };
+
+/* ---- 写操作串行化（P2-15）----
+ * Storage 中多数方法是「读取 → 修改 → 写回」三步，且共享同一份存储快照。
+ * 并发调用时，后写者会基于旧快照覆盖先写者，造成静默数据丢失 ——
+ * 编辑表单错位（P0-1）、组件开关连点丢设置、待办勾选与删除并发致已删除项复活，
+ * 都是这一根因的不同表现。这里用一条 promise 链把写方法排成队列，保证同一时刻只有一个在执行。
+ *
+ * 约束：被包装的方法内部不得再调用另一个被包装的方法（会自等待死锁）。
+ * 需要复用时改调其内部逻辑或使用函数式更新（见 updateSettings / setComponentVisible）。
+ * 读方法（getXxx / exportData）不排队，避免拖慢渲染。
+ */
+const SERIALIZED_METHODS = [
+  'addBookmark', 'updateBookmark', 'deleteBookmark', 'reorderBookmarks',
+  'addCategory', 'updateCategory', 'deleteCategory', 'reorderCategories',
+  'addCategoryItem', 'updateCategoryItem', 'deleteCategoryItem',
+  'addTodo', 'toggleTodo', 'deleteTodo',
+  'updateSettings',
+  'importData', 'restoreLastImportBackup'
+];
+let _writeChain = Promise.resolve();
+for (const _name of SERIALIZED_METHODS) {
+  const _orig = Storage[_name];
+  Storage[_name] = function (...args) {
+    // 前一个任务失败不应阻塞后续任务，因此两个分支都执行
+    const _run = _writeChain.then(() => _orig.apply(this, args), () => _orig.apply(this, args));
+    _writeChain = _run.then(() => {}, () => {}); // 队列自身永不 reject
+    return _run;                                  // 调用方仍能拿到真实结果/异常
+  };
+}
 
 /* ---- Node 测试环境导出（PBI-15/P2-7）：浏览器以 <script> 全局加载，module 未定义时不执行；
        顶层无浏览器副作用（chrome/document 仅在函数体内引用），Node require 安全 ---- */
