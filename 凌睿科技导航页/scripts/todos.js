@@ -40,7 +40,8 @@ const Todos = {
       if (input) {
         input.focus();
         input.addEventListener('keydown', async (e) => {
-          if (e.key === 'Enter') await this.add();
+          // isComposing：中文等输入法用 Enter 确认候选词时不应提交待办
+          if (e.key === 'Enter' && !e.isComposing) await this.add();
         });
         // blur 不再自动添加，仅通过 Enter 键或按钮提交
       }

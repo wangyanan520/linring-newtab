@@ -34,11 +34,13 @@ function matchHost(rule, host) {
   return host === rule;
 }
 
-/** 判断请求是否在白名单内；pageUrl 用于同源豁免（页面自身资源） */
+/** 判断请求是否在白名单内；pageUrl 用于同源豁免（页面自身资源），同时作为相对 URL 的解析基准 */
 function isAllowed(url, pageUrl) {
   let u;
   try {
-    u = new URL(url);
+    // 相对 URL（如 fetch('data/cities.json')）必须以页面地址为 base 解析，
+    // 否则 new URL 会抛错并落入 catch 被判为"白名单外"，导致同源资源每次开页面都误报
+    u = new URL(url, pageUrl || undefined);
   } catch {
     return false;
   }

@@ -40,7 +40,10 @@ test('PBI-14 白名单：清单外请求拒绝', () => {
   for (const url of no) {
     assert.strictEqual(isAllowed(url, PAGE_URL), false, `应拒绝: ${url}`);
   }
-  assert.strictEqual(isAllowed('not-a-url', PAGE_URL), false, '非法 URL 拒绝');
+  // 注意：'not-a-url' 这类相对路径在引入 pageUrl 基准后会被解析为同源资源并放行（P2-2 修复的预期行为），
+  // 因此这里改用真正无法解析的 URL 验证兜底分支
+  assert.strictEqual(isAllowed('http://', PAGE_URL), false, '非法 URL 拒绝');
+  assert.strictEqual(isAllowed('https://', PAGE_URL), false, '非法 URL 拒绝（https）');
 });
 
 test('PBI-14 favicon 兜底例外：任意域 /favicon.ico 放行，其余路径拒绝', () => {
@@ -54,6 +57,15 @@ test('PBI-14 同源豁免：页面自身资源放行', () => {
   assert.strictEqual(isAllowed('chrome-extension://fkapmejgokgfcbkehkcklneoidjgccdm/data/cities.json', PAGE_URL), true, '扩展同源');
   assert.strictEqual(isAllowed('http://127.0.0.1:8899/index.html', 'http://127.0.0.1:8899/index.html'), true, '预览同源');
   assert.strictEqual(isAllowed('http://127.0.0.1:8899/index.html', PAGE_URL), false, '跨源拒绝');
+});
+
+test('PBI-14 相对 URL 以 pageUrl 为基准解析（P2-2 回归：不得误报同源资源）', () => {
+  // weather.js 用 fetch('data/cities.json') 请求同源文件；修复前 new URL 单参数会抛错，
+  // 落入 catch 被判为"白名单外"，导致每次打开新标签页都输出一条审计误报
+  assert.strictEqual(isAllowed('data/cities.json', 'http://127.0.0.1:8899/index.html'), true, '相对路径解析为同源');
+  assert.strictEqual(isAllowed('data/cities.json', 'chrome-extension://fkapmejgokgfcbkehkcklneoidjgccdm/index.html'), true, '扩展页相对路径同源');
+  assert.strictEqual(isAllowed('./data/cities.json', 'http://127.0.0.1:8899/index.html'), true, './ 前缀同样放行');
+  assert.strictEqual(isAllowed('data/cities.json', undefined), false, '无基准时保守拒绝');
 });
 
 test('PBI-14 matchHost：精确与子域通配', () => {
