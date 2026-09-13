@@ -617,6 +617,81 @@ async function runCore(page, label) {
     `悬停卡片=${hoverCards} 个，监听器 ${listenersBefore} → ${listenersAfter}（10 次 render）`);
   await cdp.detach();
 
+  // [21] 交互反馈与输入校验（P2-1 / P2-13 / P2-3 / 空状态）
+  // P2-13：必填项为空时点保存应给出校验反馈，而不是静默无反应。
+  // 注意不能只断言 validity.valid —— required 是 HTML 属性，静默 return 时它同样是 invalid，
+  // 那样测的是"约束存在"而非"有没有给出提示"。改为统计 reportValidity 的实际调用次数。
+  await page.click('#settingsBtn');
+  await sleep(400);
+  await page.click('[data-tab="bookmarks"]');
+  await sleep(300);
+  await page.click('#addBookmarkBtn');
+  await sleep(300);
+  await page.fill('#bmUrl', '');
+  const reportCalls = await page.evaluate(async () => {
+    const proto = HTMLInputElement.prototype;
+    const orig = proto.reportValidity;
+    let called = 0;
+    proto.reportValidity = function () { called++; return orig.apply(this, arguments); };
+    document.getElementById('saveBookmark').click();
+    await new Promise(r => setTimeout(r, 400));
+    proto.reportValidity = orig;
+    return called;
+  });
+  const stillEmpty = await page.evaluate(() => ({
+    saved: [...document.querySelectorAll('#bookmarkList .setting-item-title')].some(e => !e.textContent.trim()),
+    formOpen: !!document.getElementById('bookmarkForm')
+  }));
+  check('[21] 必填项为空时触发原生校验提示（P2-13）',
+    reportCalls >= 1 && !stillEmpty.saved,
+    `reportValidity 调用 ${reportCalls} 次，表单仍打开=${stillEmpty.formOpen}`);
+
+  // P2-1：手动输入路径的协议白名单应与导入路径一致
+  await page.fill('#bmTitle', 'XSSTEST');
+  await page.fill('#bmUrl', 'javascript:alert(1)//https://x');
+  await page.click('#saveBookmark');
+  await sleep(400);
+  const protoCheck = await page.evaluate(() => {
+    const u = document.getElementById('bmUrl');
+    const titles = [...document.querySelectorAll('#bookmarkList .setting-item-title')].map(e => e.textContent);
+    return { invalid: !!(u && !u.validity.valid), saved: titles.includes('XSSTEST') };
+  });
+  check('[21] javascript: 被手动输入路径拒绝（P2-1）', protoCheck.invalid && !protoCheck.saved,
+    `url invalid=${protoCheck.invalid} 已入库=${protoCheck.saved}`);
+  const cancelBtn = page.locator('#cancelBookmark');
+  if (await cancelBtn.count()) { await cancelBtn.click(); await sleep(200); }
+
+  // P2-3：隐私清单需披露 favicon 兜底会直连书签自身域名
+  await page.click('[data-tab="privacy"]');
+  await sleep(400);
+  const privacyP23 = await page.evaluate(() => {
+    const el = document.getElementById('tabPrivacy');
+    return el ? el.innerText : '';
+  });
+  check('[21] 隐私清单披露书签域名直连（P2-3）', /书签自身域名/.test(privacyP23),
+    privacyP23.replace(/\s+/g, ' ').slice(0, 70));
+
+  // 空状态：数据清空后主页应给出提示，而不是一片空白（原 P3）
+  const emptyHint = await page.evaluate(async () => {
+    await Storage.importData(JSON.stringify({ schemaVersion: 1, bookmarks: [], categories: [], todos: [] }));
+    await App.renderBookmarks();
+    await App.renderCategories();
+    await new Promise(r => setTimeout(r, 400));
+    const b = document.querySelector('#bookmarkContainer .empty-hint');
+    const c = document.querySelector('#categoryContainer .empty-hint');
+    return { bookmarks: b ? b.textContent.trim() : '', categories: c ? c.textContent.trim() : '' };
+  });
+  check('[21] 数据清空后主页显示空状态提示',
+    emptyHint.bookmarks.length > 0 && emptyHint.categories.length > 0,
+    `书签区="${emptyHint.bookmarks}" 分类区="${emptyHint.categories}"`);
+
+  // 第三方组件台账（MIT 要求许可证随分发）
+  const tpPath = path.join(EXT_PATH, 'THIRD-PARTY.md');
+  const tpOk = fs.existsSync(tpPath)
+    && /MIT License/.test(fs.readFileSync(tpPath, 'utf8'))
+    && /lunar-javascript/.test(fs.readFileSync(tpPath, 'utf8'));
+  check('[21] 第三方组件台账含来源与许可证', tpOk, '凌睿科技导航页/THIRD-PARTY.md');
+
   return { consoleErrors, pageErrors, requests };
 }
 
