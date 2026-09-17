@@ -220,6 +220,21 @@ const MOCK_WEATHER = {
   }))
 };
 
+/* 霾天的主源响应：复刻真实 wttr.in（2026-09-17 实测北京）。
+   weatherCode=149「Smoky haze」不在 WWO 标准表里，项目码表原本也漏了它，
+   而请求上的 `lang=zh` 对 weatherDesc 与 lang_zh 都不生效（两者都返回英文）。
+   结果就是中文界面在霾天显示英文（天津/广州/西安同为 149，兰州则是 137 沙尘暴）。
+   这份 mock 专供 [44]，不参与其他断言。 */
+const MOCK_WEATHER_HAZE = {
+  ...MOCK_WEATHER,
+  current_condition: [{
+    ...MOCK_WEATHER.current_condition[0],
+    weatherCode: '149',
+    weatherDesc: [{ value: 'Smoky haze' }],
+    lang_zh: [{ value: 'Smoky haze' }]
+  }]
+};
+
 /* 备用源 Open-Meteo 的固定响应（结构与真实返回一致，timezone=auto 下 time 为当地时间）。
    2026-09-15 wttr.in 证书过期后，天气可用性就靠这条回退链路兜住，必须有断言覆盖。 */
 const MOCK_OPEN_METEO = {
@@ -360,9 +375,12 @@ async function runCore(page, label) {
   openMeteoMode = 'ok';
   ipLocateMode = 'ok';
   holidayMode = 'ok';
-  await page.route(/wttr\.in/, r => weatherMode === 'fail'
-    ? r.fulfill({ status: 500, body: 'err', contentType: 'text/plain' })
-    : r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_WEATHER) }));
+  await page.route(/wttr\.in/, r => {
+    if (weatherMode === 'fail') return r.fulfill({ status: 500, body: 'err', contentType: 'text/plain' });
+    // haze：真实霾天的响应形态（code 149 + 英文描述），见 [44]
+    const body = weatherMode === 'haze' ? MOCK_WEATHER_HAZE : MOCK_WEATHER;
+    return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  });
   // 备用源与 IP 定位同样以固定响应替换：否则主源失败时用例会打真实外网，
   // 结果取决于当天 Open-Meteo/ipwho.is 的可用性，断言将失去稳定性
   await page.route(/api\.open-meteo\.com/, r => openMeteoMode === 'fail'
@@ -721,6 +739,31 @@ async function runCore(page, label) {
     return el ? el.querySelectorAll('.whc-col').length : 0;
   });
   check('[26] 备用源同样提供 24 小时预报', failoverHourly === 24, `列数=${failoverHourly}`);
+
+  // [44] 中文界面不得渲染英文天气描述（主源未覆盖代码的兜底路径）
+  // 修复前：码表漏了 137/149，而 lang=zh 对 weatherDesc 不生效，英文原文直接上屏。
+  // 修复分两层（码表补 137/149 + 描述映射兜底），单测分别钉住两层，这里验证端到端结果。
+  weatherMode = 'haze';
+  await page.evaluate(() => {
+    if (typeof Weather !== 'undefined') {
+      Weather._failed = false;
+      Weather.cache = null;
+      Weather.selectedCityQuery = 'Beijing'; // 走 cities.json 的城市坐标，不依赖定位时序
+      Weather.refresh();
+    }
+  });
+  await sleep(3000);
+  const hazeText = await page.evaluate(() => {
+    const el = document.getElementById('weatherWidget');
+    return el ? el.innerText : '';
+  });
+  const hazeFlat = hazeText.replace(/\n/g, ' ');
+  check('[44] 未覆盖代码（149 烟霾）显示为中文描述', /烟霾/.test(hazeText), hazeFlat.slice(0, 70));
+  // 关键断言：文案不得含英文字母。回退兜底逻辑后这里会拿到 "Smoky haze"。
+  // 温度单位 °C 要排除掉 —— 它是固定单位不是文案，否则断言会永远为红（首版即栽在这里）
+  check('[44] 天气文案不含英文字母（°C 除外）',
+    !/[A-Za-z]/.test(hazeText.replace(/°C/g, '')), hazeFlat.slice(0, 70));
+
   weatherMode = 'ok';
   openMeteoMode = 'ok';
   await page.reload();

@@ -66,6 +66,36 @@ test('天气：WMO 代码映射（Open-Meteo 口径，不得复用 wttr 的 WWO 
   assert.ok(Weather && typeof Weather.refresh === 'function');
 });
 
+test('天气：wttr 码表覆盖实测出现的 137（沙尘暴）与 149（烟霾）', () => {
+  const { WEATHER_CODE_MAP, resolveWwoWeather } = loadWeather();
+  /* 2026-09-17 实测 wttr.in：北京 / 天津 / 广州 / 西安 返回 149「Smoky haze」，
+     兰州返回 137「Sandstorm」，两者原本都不在码表里 —— 而这正是中国最高频的
+     两类天气，中文界面会因此在霾天直接显示英文。 */
+  assert.strictEqual(WEATHER_CODE_MAP[149] && WEATHER_CODE_MAP[149].text, '烟霾');
+  assert.strictEqual(WEATHER_CODE_MAP[137] && WEATHER_CODE_MAP[137].text, '沙尘暴');
+  // 命中码表时图标取自码表，不落进描述映射的通用图标（据此可区分两层修复）
+  assert.strictEqual(resolveWwoWeather(149, [{ value: 'Smoky haze' }]).icon, '🌫️');
+  assert.strictEqual(resolveWwoWeather(137, [{ value: 'Sandstorm' }]).icon, '🌪️');
+});
+
+test('天气：wttr 未覆盖代码不得把英文描述渲染进中文界面', () => {
+  const { resolveWwoWeather } = loadWeather();
+  // 未知代码 + 可识别的英文描述 → 中文
+  assert.strictEqual(resolveWwoWeather(9999, [{ value: 'Sandstorm' }]).text, '沙尘暴');
+  // wttr.in 的部分描述带尾部空格（实测 "Overcast "），trim 后仍要能对上
+  assert.strictEqual(resolveWwoWeather(9999, [{ value: 'Overcast ' }]).text, '阴');
+  assert.strictEqual(resolveWwoWeather(9999, [{ value: 'LIGHT RAIN' }]).text, '小雨');
+  // 完全识别不出时给中文兜底。旧实现是直接吐 weatherDesc 原文，
+  // 这条断言在回退后会因文案含英文字母而变红
+  const unknown = resolveWwoWeather(9999, [{ value: 'Weird Weather XYZ' }]);
+  assert.ok(!/[A-Za-z]/.test(unknown.text), `兜底文案不得含英文字母，实际 "${unknown.text}"`);
+  // 描述结构异常不得抛错：该函数被 try 块包着，抛错会让整轮主源请求被判失败，
+  // 从而白白让位给备用源（真实响应里 weatherDesc 缺失并非不可能）
+  assert.ok(resolveWwoWeather(9999, undefined).text);
+  assert.ok(resolveWwoWeather(9999, []).text);
+  assert.ok(resolveWwoWeather(9999, [{ value: null }]).text);
+});
+
 test('天气：Open-Meteo hourly 扁平数组 → UI 需要的 24 点结构', () => {
   const { buildHourlyFromOpenMeteo } = loadWeather();
   const points = buildHourlyFromOpenMeteo(MOCK_OPEN_METEO.hourly, '2026-09-15T22:30');

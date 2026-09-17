@@ -27,11 +27,11 @@ URL 误报、存储层并发写竞态、无障碍支持、打包卫生、输入�
 
 | 命令 | 用途 |
 |------|------|
-| `npm test` | 单元测试（node:test，64 项） |
+| `npm test` | 单元测试（node:test，66 项） |
 | `npm run test:coverage` | 覆盖率（storage.js 行覆盖约 96%，仅统计被单测加载的模块） |
-| `npm run test:e2e` | E2E 全量四模式：preview + file:// + shim + 扩展（合计 374 项断言） |
-| `npm run test:e2e:preview` | 仅 http 预览模式（headless，123 项断言） |
-| `npm run test:e2e:shim` | 仅 chrome.storage 模拟模式（headless，126 项断言） |
+| `npm run test:e2e` | E2E 全量四模式：preview + file:// + shim + 扩展（合计 380 项断言） |
+| `npm run test:e2e:preview` | 仅 http 预览模式（headless，125 项断言） |
+| `npm run test:e2e:shim` | 仅 chrome.storage 模拟模式（headless，128 项断言） |
 | `node scripts/ux-audit.js` | **体验体检**：布局 / 溢出 / 主题对比度 / 交互，不达标时退出码 1 |
 | `npm run pack` | 单测 + 可复现打包到 `dist/`（排除测试文件、固定时间戳） |
 | `node scripts/gen-city-coords.js --dry-run\|--write` | 重建城市经纬度（天气备用源用），构建期工具 |
@@ -42,6 +42,9 @@ URL 误报、存储层并发写竞态、无障碍支持、打包卫生、输入�
 > **改动天气逻辑时先读 `weather.js` 顶部与 `gen-city-coords.js` 的注释**：天气是双源
 > （wttr.in 主源 → Open-Meteo 备源），备用源只认经纬度，坐标来自 `data/cities.json`
 > 与 IP 定位兜底；两者缺一，回退链路就会静默失效（E2E `[26]`/`[27]` 覆盖该链路）。
+> **天气文案必须是中文**：wttr.in 的 `lang=zh` 对 `weatherDesc` 不生效，码表没覆盖到的
+> 代码会回退成英文原文（149 烟霾 / 137 沙尘暴就是这样漏到界面上的）；改码表或兜底后
+> 跑 E2E `[44]`，并注意 mock 若把 `weatherDesc` 直接写成中文，这条路径就测不到。
 > **改动 E2E 静态服务器时先读 `startStaticServer` 上方注释**：`Content-Type` 必须按扩展名
 > 给对，否则 preview/shim 两种模式会静默失去全部样式，样式类断言变成永远通过的绿灯。
 > **改动主题或配色时**跑 `node scripts/ux-audit.js --contrast`：对比度用真实截图采样

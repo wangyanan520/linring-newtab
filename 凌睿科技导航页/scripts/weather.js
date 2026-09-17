@@ -31,7 +31,9 @@ const WEATHER_CODE_MAP = {
   116: { icon: '⛅', text: '多云' },
   119: { icon: '☁️', text: '阴天' },
   122: { icon: '☁️', text: '阴' },
+  137: { icon: '🌪️', text: '沙尘暴' },
   143: { icon: '🌫️', text: '雾' },
+  149: { icon: '🌫️', text: '烟霾' },
   176: { icon: '🌦️', text: '小雨' },
   179: { icon: '🌧️', text: '雨' },
   182: { icon: '🌧️', text: '雨' },
@@ -76,6 +78,56 @@ const WEATHER_CODE_MAP = {
   392: { icon: '⛈️', text: '雷阵雪' },
   395: { icon: '⛈️', text: '雷暴' }
 };
+
+/* wttr.in 的 weatherDesc 是 WWO 的英文描述，且请求上的 `lang=zh` 对它无效——
+   2026-09-17 实测：code 149 的 weatherDesc 与 lang_zh 都返回 "Smoky haze"，
+   code 137 两者都是 "Sandstorm"。因此一旦码表未覆盖某个代码，英文原文会被
+   直接渲染进中文界面（北京/天津/广州/西安的烟霾天就是这个表现）。
+   描述文本是有限集合，用映射兜住；仍识别不出时给通用中文，绝不泄漏英文原文。
+
+   键为 trim + 小写后的原始描述（wttr.in 部分描述带尾部空格，实测 "Overcast "）。 */
+const WWO_DESC_ZH = {
+  'sunny': '晴', 'clear': '晴', 'partly cloudy': '多云', 'cloudy': '阴天', 'overcast': '阴',
+  'mist': '薄雾', 'fog': '雾', 'freezing fog': '冻雾',
+  'smoky haze': '烟霾', 'sandstorm': '沙尘暴',
+  'patchy light drizzle': '局部小毛毛雨', 'light drizzle': '小毛毛雨',
+  'freezing drizzle': '冻毛毛雨', 'heavy freezing drizzle': '强冻毛毛雨',
+  'patchy freezing drizzle possible': '局部冻毛毛雨',
+  'patchy rain possible': '局部有雨', 'patchy rain nearby': '局部有雨',
+  'patchy light rain': '局部小雨', 'light rain': '小雨', 'light rain shower': '小阵雨',
+  'moderate rain at times': '间歇中雨', 'moderate rain': '中雨',
+  'heavy rain at times': '间歇大雨', 'heavy rain': '大雨',
+  'moderate or heavy rain shower': '中到大阵雨', 'torrential rain shower': '暴雨',
+  'light freezing rain': '小冻雨', 'moderate or heavy freezing rain': '中到大冻雨',
+  'light sleet': '小雨夹雪', 'moderate or heavy sleet': '中到大雨夹雪',
+  'patchy sleet possible': '局部有雨夹雪',
+  'light sleet showers': '小阵雨夹雪', 'moderate or heavy sleet showers': '中到大阵雨夹雪',
+  'patchy snow possible': '局部有雪', 'patchy light snow': '局部小雪', 'light snow': '小雪',
+  'patchy moderate snow': '局部中雪', 'moderate snow': '中雪',
+  'patchy heavy snow': '局部大雪', 'heavy snow': '大雪',
+  'blowing snow': '风吹雪', 'blizzard': '暴风雪',
+  'light snow showers': '小阵雪', 'moderate or heavy snow showers': '中到大阵雪',
+  'ice pellets': '冰粒', 'light showers of ice pellets': '小冰粒',
+  'moderate or heavy showers of ice pellets': '中到大冰粒',
+  'thundery outbreaks possible': '可能有雷暴',
+  'patchy light rain with thunder': '局部雷阵雨',
+  'moderate or heavy rain with thunder': '中到大雷雨',
+  'patchy light snow with thunder': '局部雷阵雪',
+  'moderate or heavy snow with thunder': '中到大雷阵雪'
+};
+
+/* 主源（wttr.in）的代码 + 描述 → 界面文案。码表优先；
+   未覆盖的代码（137/149 是实测会真实出现的两个）走描述映射，最后中文兜底。
+   注意 weatherDesc 结构异常（缺失、空数组、value 非字符串）时不得抛错——
+   它被 try 块包着，一旦抛错整轮主源请求就会被判失败而白白让位给备用源。 */
+function resolveWwoWeather(code, weatherDesc) {
+  const known = WEATHER_CODE_MAP[code];
+  if (known) return known;
+  const first = Array.isArray(weatherDesc) ? weatherDesc[0] : null;
+  const raw = first && typeof first.value === 'string' ? first.value : '';
+  const text = WWO_DESC_ZH[raw.trim().toLowerCase()];
+  return { icon: '🌤️', text: text || '未知天气' };
+}
 
 const CACHE_DURATION = 30 * 60 * 1000;
 const CACHE_VERSION = 7;
@@ -434,7 +486,7 @@ const Weather = {
         const data = await response.json();
         const current = data.current_condition[0];
         const code = parseInt(current.weatherCode, 10);
-        const mapped = WEATHER_CODE_MAP[code] || { icon: '🌤️', text: current.weatherDesc[0].value };
+        const mapped = resolveWwoWeather(code, current.weatherDesc);
 
         const hourly = buildHourly24(data.weather, parseLocalHour(current.localObsDateTime));
         const today = Array.isArray(data.weather) && data.weather[0] ? data.weather[0] : null;
@@ -642,6 +694,9 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     Weather,
     mapWmoCode,
+    WEATHER_CODE_MAP,
+    WWO_DESC_ZH,
+    resolveWwoWeather,
     buildHourlyFromOpenMeteo,
     buildOpenMeteoCache,
     buildHourly24,
