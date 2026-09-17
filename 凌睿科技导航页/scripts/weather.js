@@ -80,6 +80,102 @@ const WEATHER_CODE_MAP = {
 const CACHE_DURATION = 30 * 60 * 1000;
 const CACHE_VERSION = 7;
 
+/* ---- 备用数据源 Open-Meteo ----
+ * 2026-09-15 wttr.in 的 Let's Encrypt 证书过期（valid_to = Sep 15 08:35 GMT），
+ * 浏览器侧直接 CERT_HAS_EXPIRED，天气在全新安装的电脑上必然失败。
+ * 备用源只在主源失败后启用，且必须用经纬度查询（城市坐标随 cities.json 分发）。 */
+const OPEN_METEO_API = 'https://api.open-meteo.com/v1/forecast';
+const OPEN_METEO_QUERY = 'current=temperature_2m,weather_code'
+  + '&hourly=temperature_2m,precipitation_probability,weather_code'
+  + '&daily=temperature_2m_max,temperature_2m_min'
+  + '&timezone=auto&forecast_days=2';
+
+/* WMO 天气代码（Open-Meteo 口径，与 wttr.in 的 WWO 代码不是一套，不能复用） */
+const WMO_CODE_MAP = {
+  0: { icon: '☀️', text: '晴' },
+  1: { icon: '🌤️', text: '晴间多云' },
+  2: { icon: '⛅', text: '多云' },
+  3: { icon: '☁️', text: '阴' },
+  45: { icon: '🌫️', text: '雾' },
+  48: { icon: '🌫️', text: '雾凇' },
+  51: { icon: '🌦️', text: '小毛毛雨' },
+  53: { icon: '🌦️', text: '毛毛雨' },
+  55: { icon: '🌧️', text: '大毛毛雨' },
+  56: { icon: '🌧️', text: '冻毛毛雨' },
+  57: { icon: '🌧️', text: '冻毛毛雨' },
+  61: { icon: '🌦️', text: '小雨' },
+  63: { icon: '🌧️', text: '中雨' },
+  65: { icon: '🌧️', text: '大雨' },
+  66: { icon: '🌧️', text: '冻雨' },
+  67: { icon: '🌧️', text: '冻雨' },
+  71: { icon: '🌨️', text: '小雪' },
+  73: { icon: '🌨️', text: '中雪' },
+  75: { icon: '🌨️', text: '大雪' },
+  77: { icon: '🌨️', text: '雪粒' },
+  80: { icon: '🌦️', text: '阵雨' },
+  81: { icon: '🌧️', text: '中阵雨' },
+  82: { icon: '🌧️', text: '强阵雨' },
+  85: { icon: '🌨️', text: '阵雪' },
+  86: { icon: '🌨️', text: '强阵雪' },
+  95: { icon: '⛈️', text: '雷暴' },
+  96: { icon: '⛈️', text: '雷暴伴冰雹' },
+  99: { icon: '⛈️', text: '雷暴伴大冰雹' }
+};
+
+function mapWmoCode(code) {
+  return WMO_CODE_MAP[code] || { icon: '🌤️', text: '—' };
+}
+
+/* Open-Meteo 的 hourly 是扁平数组（time/temperature_2m/... 各自一列），
+   与 wttr.in 的 weather[].hourly[] 结构完全不同，需要单独构建。
+   timezone=auto 让 time 与 current.time 都是查询地当地时间，直接切片取小时即可，
+   不需要 wttr 那条"按城市当地时间对齐"的插值逻辑（P3-4）。 */
+function buildHourlyFromOpenMeteo(hourly, currentTimeIso) {
+  if (!hourly || !Array.isArray(hourly.time) || hourly.time.length === 0) return null;
+  const temps = Array.isArray(hourly.temperature_2m) ? hourly.temperature_2m : [];
+  const rains = Array.isArray(hourly.precipitation_probability) ? hourly.precipitation_probability : [];
+  const codes = Array.isArray(hourly.weather_code) ? hourly.weather_code : [];
+
+  const startKey = String(currentTimeIso || '').slice(0, 13); // "YYYY-MM-DDTHH"
+  let start = startKey ? hourly.time.findIndex(t => String(t).slice(0, 13) === startKey) : -1;
+  if (start < 0) start = 0;
+
+  const points = [];
+  for (let i = start; i < hourly.time.length && points.length < 24; i++) {
+    const temp = Number(temps[i]);
+    if (!Number.isFinite(temp)) continue;
+    const t = String(hourly.time[i]);
+    points.push({
+      hour: parseInt(t.slice(11, 13), 10),
+      temp: Math.round(temp),
+      rain: Math.round(Number(rains[i]) || 0),
+      icon: mapWmoCode(codes[i]).icon
+    });
+  }
+  return points.length >= 2 ? points : null;
+}
+
+/* 把 Open-Meteo 响应规范化成与 wttr.in 相同的缓存结构，UI 与渲染逻辑无需区分数据来源 */
+function buildOpenMeteoCache(data) {
+  const current = data && data.current;
+  if (!current || !Number.isFinite(Number(current.temperature_2m))) return null;
+  const mapped = mapWmoCode(current.weather_code);
+  const daily = (data && data.daily) || {};
+  const highs = Array.isArray(daily.temperature_2m_max) ? daily.temperature_2m_max : [];
+  const lows = Array.isArray(daily.temperature_2m_min) ? daily.temperature_2m_min : [];
+  return {
+    temp: String(Math.round(Number(current.temperature_2m))),
+    icon: mapped.icon,
+    desc: mapped.text,
+    hourly: buildHourlyFromOpenMeteo(data.hourly, current.time),
+    todayHigh: highs.length && Number.isFinite(Number(highs[0])) ? Math.round(Number(highs[0])) : null,
+    todayLow: lows.length && Number.isFinite(Number(lows[0])) ? Math.round(Number(lows[0])) : null,
+    timestamp: Date.now(),
+    version: CACHE_VERSION,
+    source: 'open-meteo'
+  };
+}
+
 function findCityByQuery(query) {
   for (const prov of WEATHER_PROVINCES) {
     const city = prov.cities.find(c => c.query === query);
@@ -221,37 +317,102 @@ const Weather = {
     await this.refresh();
   },
 
+  /* 浏览器定位：扩展页里基本拿不到——chrome-extension:// 页面既不弹授权气泡，
+     permissions.query 长期停在 prompt，最终 code=3 Timeout（2026-09-15 实测，
+     加 geolocation 权限也一样）。保留它是为了用户在本机已授权时仍能用更准的坐标。 */
+  _geoLocate() {
+    return new Promise((resolve) => {
+      if (!navigator.geolocation) {
+        resolve(null);
+        return;
+      }
+      let settled = false;
+      let timer = null;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(value);
+      };
+      // 不能只依赖 getCurrentPosition 的 timeout 选项：扩展页里授权提示挂起时
+      // 成功与失败回调都不会触发，该选项不生效，detectLocation 会永久悬停，
+      // 连带 IP 定位拿到的坐标也永远赋不上值（E2E [27] 正是卡在这里暴露的）
+      timer = setTimeout(() => finish(null), 4500);
+      navigator.geolocation.getCurrentPosition(
+        (pos) => finish({
+          lat: pos.coords.latitude.toFixed(2),
+          lng: pos.coords.longitude.toFixed(2),
+          source: 'geo'
+        }),
+        () => finish(null),
+        { timeout: 4000, enableHighAccuracy: false }
+      );
+    });
+  },
+
+  /* IP 定位兜底：只回一个城市级大致坐标，不发送任何本地数据，也不需要授权。
+     没有它，全新安装的电脑既没有城市也没有坐标，备用源会因为拿不到经纬度而用不上。 */
+  async _ipLocate() {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    try {
+      const resp = await fetch('https://ipwho.is/', { signal: controller.signal });
+      if (!resp.ok) throw new Error('IP locate failed');
+      const d = await resp.json();
+      if (!d || d.success === false) return null;
+      const lat = Number(d.latitude);
+      const lon = Number(d.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+      return { lat: lat.toFixed(2), lng: lon.toFixed(2), source: 'ip' };
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  },
+
+  async detectLocation() {
+    if (!this._active) return;
+    // 两者并行：浏览器定位大概率要等到超时才失败，串行会让首次出天气白等两轮
+    const geoPromise = this._geoLocate();
+    const ipPromise = this._ipLocate();
+    const geo = await geoPromise;
+    const ip = await ipPromise;
+    this.coords = geo || ip || null;
+  },
+
+  /* 备用源（Open-Meteo）只认经纬度：优先用户明确选中的城市，其次定位结果。
+     两者都没有时返回 null，此时备用源不可用，直接走降级文案。 */
+  resolveCoords() {
+    if (this.selectedCityQuery) {
+      const match = findCityByQuery(this.selectedCityQuery);
+      const city = match && match.city;
+      if (city && Number.isFinite(city.lat) && Number.isFinite(city.lon)) {
+        return { lat: city.lat, lon: city.lon };
+      }
+      return null;
+    }
+    if (this.coords) {
+      const lat = Number(this.coords.lat);
+      const lon = Number(this.coords.lng);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) return { lat, lon };
+    }
+    return null;
+  },
+
   async setCity(query) {
     this.selectedCityQuery = query;
     this.cache = null;
     this._failed = false;
     await Storage.updateSettings({ weatherCity: query, weatherCache: null });
+    // 从具体城市切回"自动定位"时需要重新取一次坐标，否则备用源无坐标可用
+    if (!query && !this.coords) await this.detectLocation();
     await this.refresh();
   },
 
-  detectLocation() {
-    return new Promise((resolve) => {
-      if (!navigator.geolocation) {
-        resolve();
-        return;
-      }
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          this.coords = {
-            lat: pos.coords.latitude.toFixed(2),
-            lng: pos.coords.longitude.toFixed(2)
-          };
-          resolve();
-        },
-        () => {
-          resolve();
-        },
-        { timeout: 5000, enableHighAccuracy: false }
-      );
-    });
-  },
-
-  async fetchWeather(retries = 2, onFirstFail) {
+  /* 主源 wttr.in。retries 默认为 0：失败后立即让位给备用源，
+     跨源切换本身比在同一源上退避重试更有效（且总等待从 18s 降到 10s 以内）。 */
+  async fetchWeather(retries = 0, onFirstFail) {
     let url;
     if (this.selectedCityQuery) {
       url = `https://wttr.in/${this.selectedCityQuery}?format=j1&lang=zh`;
@@ -288,11 +449,12 @@ const Weather = {
           todayHigh,
           todayLow,
           timestamp: Date.now(),
-          version: CACHE_VERSION
+          version: CACHE_VERSION,
+          source: 'wttr.in'
         };
       } catch {
         if (attempt === 0 && typeof onFirstFail === 'function') {
-          // 首次失败立即通知调用方渲染降级文案，重试在后台继续
+          // 首次失败立即通知调用方渲染降级文案，后续尝试在后台继续
           onFirstFail();
         }
         if (attempt < retries) {
@@ -303,6 +465,24 @@ const Weather = {
       }
     }
     return null;
+  },
+
+  /* 备用源 Open-Meteo：只在主源失败后调用，超时口径与主源一致（5s） */
+  async fetchOpenMeteoWeather() {
+    const coords = this.resolveCoords();
+    if (!coords) return null;
+    const url = `${OPEN_METEO_API}?latitude=${coords.lat}&longitude=${coords.lon}&${OPEN_METEO_QUERY}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      if (!response.ok) throw new Error('Open-Meteo fetch failed');
+      return buildOpenMeteoCache(await response.json());
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   },
 
   getDisplayCity() {
@@ -318,17 +498,29 @@ const Weather = {
   },
 
   async refresh() {
-    // PBI-18：首次失败即渲染降级文案（5s 内），重试成功自动恢复（US-21 AC1/AC3）
-    const data = await this.fetchWeather(2, () => {
+    // PBI-18：首次失败即渲染降级文案（5s 内），后续源成功自动恢复（US-21 AC1/AC3）
+    let data = await this.fetchWeather(0, () => {
       this._failed = true;
       this.render();
     });
+    // 主源不可用 → 回退备用源。两者是独立服务、独立证书、独立网络路径，
+    // 2026-09-15 的 wttr.in 证书过期就是靠这条链路兜住的
+    if (!data) {
+      data = await this.fetchOpenMeteoWeather();
+    }
     if (data) {
       this.cache = data;
       this._failed = false;
       await Storage.updateSettings({ weatherCache: data });
     }
     this.render();
+  },
+
+  /* 降级引导：打开设置面板的天气页签 */
+  openCitySettings() {
+    if (typeof Settings === 'undefined') return;
+    Settings.open();
+    Settings.switchTab('weather');
   },
 
   render() {
@@ -341,7 +533,15 @@ const Weather = {
         return;
       }
       if (this._failed) {
-        // PBI-18：无缓存且请求失败 → 明确降级文案 + 重试入口
+        // PBI-18：无缓存且请求失败 → 明确降级文案 + 重试入口。
+        // 若连坐标都没有（定位失败且未选城市），备用源同样无从查起，
+        // 此时给一条能走通的路（去设置里选城市），而不是让用户反复点重试
+        if (!this.selectedCityQuery && !this.coords) {
+          el.innerHTML = '<span class="weather-loading">未获取到位置</span><button class="weather-retry weather-pick-city" type="button">选择城市</button>';
+          const pick = el.querySelector('.weather-pick-city');
+          if (pick) pick.addEventListener('click', () => this.openCitySettings());
+          return;
+        }
         el.innerHTML = '<span class="weather-loading">天气暂不可用</span><button class="weather-retry" type="button">重试</button>';
         const retry = el.querySelector('.weather-retry');
         if (retry) {
@@ -436,3 +636,17 @@ const Weather = {
     `;
   }
 };
+
+/* Node 单测导出（浏览器里没有 module，不受影响；同 network-audit.js 的写法） */
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    Weather,
+    mapWmoCode,
+    buildHourlyFromOpenMeteo,
+    buildOpenMeteoCache,
+    buildHourly24,
+    loadCityData,
+    findCityByQuery,
+    getProvinces: () => WEATHER_PROVINCES
+  };
+}

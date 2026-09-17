@@ -12,11 +12,13 @@
   "host_permissions": [
     "https://cn.bing.com/*",
     "https://wttr.in/*",
+    "https://api.open-meteo.com/*",
+    "https://ipwho.is/*",
     "https://cdn.jsdelivr.net/*",
     "https://raw.githubusercontent.com/*"
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; connect-src 'self' https://cn.bing.com https://wttr.in https://cdn.jsdelivr.net https://raw.githubusercontent.com; img-src 'self' data: https://*.favicon.im https:; style-src 'self' 'unsafe-inline'; font-src 'none';"
+    "extension_pages": "script-src 'self'; connect-src 'self' https://cn.bing.com https://wttr.in https://api.open-meteo.com https://ipwho.is https://cdn.jsdelivr.net https://raw.githubusercontent.com; img-src 'self' data: https://*.favicon.im https:; style-src 'self' 'unsafe-inline'; font-src 'none';"
   },
   "icons": {
     "16": "images/icons/icon-16.png",

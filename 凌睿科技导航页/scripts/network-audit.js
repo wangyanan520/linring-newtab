@@ -14,7 +14,9 @@
  * - manifest host_permissions 与 CSP connect-src 域名均须是本清单的子集（单测断言）
  */
 const NETWORK_ALLOWLIST = [
-  { host: 'wttr.in', purpose: '天气查询（天气组件）', trigger: '天气组件刷新/城市切换' },
+  { host: 'wttr.in', purpose: '天气查询主源（天气组件）', trigger: '天气组件刷新/城市切换' },
+  { host: 'api.open-meteo.com', purpose: '天气查询备用源', trigger: '主源 wttr.in 请求失败后回退' },
+  { host: 'ipwho.is', purpose: 'IP 定位兜底（仅取经纬度）', trigger: '未选择城市且浏览器定位失败时' },
   { host: 'cn.bing.com', purpose: 'Bing 每日壁纸（HPImageArchive 接口）', trigger: '壁纸源为 Bing 每日且当日无缓存' },
   { host: 'bing.biturl.top', purpose: '随机壁纸（背景图）', trigger: '壁纸源为随机' },
   { host: 'cdn.jsdelivr.net', purpose: '节假日数据主源（holiday-cn）', trigger: '日历初始化且缓存过期' },
