@@ -361,6 +361,11 @@ const App = {
     // UX-09：空状态此前只有一行 11px 低对比度小字，没有任何可点的入口，
     // 新用户（或清空预设数据后）在此处会卡住。改为"说明 + 主行动按钮"。
     if (bookmarks.length === 0) {
+      // 空状态要把网格切成单列（见 styles/main.css 的 .links-grid.is-empty）：
+      // repeat(auto-fit, 68px) 在没有任何 bookmark-cell 时会把空轨道全部折成 0px，
+      // 空状态块被压进 52px、文案竖排。用类而不是 CSS :has()——后者要 Chrome 105+，
+      // 而本项目其余 CSS 的最低门槛只到 aspect-ratio（Chrome 88）。
+      container.classList.add('is-empty');
       container.innerHTML = `
         <div class="empty-state-block">
           <div class="empty-hint">还没有书签</div>
@@ -395,6 +400,7 @@ const App = {
     // draggable 也从 <a> 移到 cell：拖拽逻辑按 [draggable="true"] 收集元素，
     // 搬 cell 才能让删除按钮跟着一起走，否则重排后按钮会留在原地。
     const showQuickAdd = (await Storage.getSettings()).showQuickAdd !== false;
+    container.classList.remove('is-empty');
     container.innerHTML = bookmarks.map(bm => {
       const domain = this.extractDomain(bm.url);
       // 属性值上下文用 escapeAttr（escapeHtml 不转义引号，标题首字符为 " 时会提前闭合属性）

@@ -1351,9 +1351,10 @@ body {
    上面那条 grid-column:1/-1 只跨到剩下的一条 68px 轨道，空状态被压进 52px：
    文案逐字换行、按钮变成 55×144 与 55×120（UX-06 的 auto-fit 与 UX-09 的空状态叠加所致，
    前者只考虑了"书签少"，没想到"0 个"）。
-   此时切回单列流式，让空状态占满容器宽度。
-   不能用 auto-fill 回避：它不折叠空轨道，少量书签会整体左偏（见 .links-grid 上方 UX-06 注释）。 */
-.links-grid:has(> .empty-state-block) {
+   此时切回单列流式，让空状态占满容器宽度。类由 renderBookmarks 维护。
+   不能用 auto-fill 回避：它不折叠空轨道，少量书签会整体左偏（见 .links-grid 上方 UX-06 注释）。
+   也不用 :has()：那需要 Chrome 105+，会把本项目的 CSS 门槛从 88（aspect-ratio）抬到 105。 */
+.links-grid.is-empty {
   grid-template-columns: minmax(0, 1fr);
 }
 
