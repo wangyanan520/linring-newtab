@@ -123,8 +123,7 @@ const CHROME_STORAGE_SHIM = () => {
         addListener(fn) { if (typeof fn === 'function' && !listeners.includes(fn)) listeners.push(fn); },
         removeListener(fn) { const i = listeners.indexOf(fn); if (i !== -1) listeners.splice(i, 1); }
       },
-      local: {
-        get(keys, cb) {
+      local: {        get(keys, cb) {
           setTimeout(() => { // 宏任务：模拟跨进程 IPC（勿改为 Promise.resolve）
             const out = {};
             if (keys === null || keys === undefined) {
@@ -157,6 +156,31 @@ const CHROME_STORAGE_SHIM = () => {
             if (channel) { try { channel.postMessage(changes); } catch { /* 忽略 */ } }
           }, 1);
         }
+      }
+    },
+    /* UX-10 替身：chrome.permissions / chrome.bookmarks。
+       同样用宏任务（setTimeout）复刻真实 IPC 时序，勿改成同步回调——
+       同步回调会让"权限申请必须在用户手势同步栈内发起"这类约束在测试里失去意义。 */
+    runtime: { lastError: null },
+    permissions: {
+      request(_perms, cb) {
+        setTimeout(() => { cb(window.__permissionsGranted !== false); }, 1);
+      },
+      contains(_perms, cb) {
+        setTimeout(() => { cb(window.__permissionsGranted !== false); }, 1);
+      }
+    },
+    bookmarks: {
+      getTree(cb) {
+        setTimeout(() => {
+          if (window.__bookmarksUnavailable) {
+            window.chrome.runtime.lastError = { message: 'mock: 读取失败' };
+            cb([]);
+            window.chrome.runtime.lastError = null;
+            return;
+          }
+          cb(window.__bookmarksTree || []);
+        }, 1);
       }
     }
   };
@@ -196,6 +220,25 @@ const MOCK_WEATHER = {
   }))
 };
 
+/* 备用源 Open-Meteo 的固定响应（结构与真实返回一致，timezone=auto 下 time 为当地时间）。
+   2026-09-15 wttr.in 证书过期后，天气可用性就靠这条回退链路兜住，必须有断言覆盖。 */
+const MOCK_OPEN_METEO = {
+  current: { time: '2026-01-01T12:00', temperature_2m: 26.4, weather_code: 2 },
+  hourly: {
+    time: Array.from({ length: 48 }, (_, i) => {
+      const day = i < 24 ? '2026-01-01' : '2026-01-02';
+      return `${day}T${String(i % 24).padStart(2, '0')}:00`;
+    }),
+    temperature_2m: Array.from({ length: 48 }, (_, i) => 20 + (i % 8)),
+    precipitation_probability: Array.from({ length: 48 }, (_, i) => (i * 7) % 100),
+    weather_code: Array.from({ length: 48 }, () => 61)
+  },
+  daily: { temperature_2m_max: [30], temperature_2m_min: [20] }
+};
+
+/* IP 定位兜底的固定响应：扩展页拿不到浏览器定位（实测 code=3 Timeout），走这里 */
+const MOCK_IP_LOCATE = { ip: '203.0.113.7', success: true, city: 'Shenzhen', country_code: 'CN', latitude: 22.54, longitude: 114.06 };
+
 /* 构造一个必然落在"未来 3 天"的节假日，使倒计时行有确定内容可断言；
    calendar.js 会分别请求今年与次年，同一天数据对两年响应都适用，故共用一份 */
 const _mockHolidayDate = (() => {
@@ -208,10 +251,28 @@ const MOCK_HOLIDAY = { days: [{ date: _mockHolidayDate, name: '测试节', isOff
 /* 第三方 mock 的行为开关：'ok' 返回固定成功响应，'fail'/'hang' 模拟失败与挂起。
    用可变状态而非 page.route/unroute —— unroute 会把固定响应一并移除。 */
 let weatherMode = 'ok';
+let openMeteoMode = 'ok'; // 天气备用源（主源失败时的回退目标）
+let ipLocateMode = 'ok'; // IP 定位兜底
 let holidayMode = 'ok';
 let bingDelayMs = 0; // >0 时模拟 Bing 接口慢响应，用于验证壁纸代次（P3-6）
 
 /* ---- 内嵌静态文件服务（预览模式用，避免外部依赖） ---- */
+/* Content-Type 必须按扩展名给对：此前一律回 text/html，Chrome 在标准模式下会拒绝
+   应用 MIME 不是 text/css 的样式表，于是 preview/shim 两种模式的页面**完全没有样式**。
+   后果是隐蔽的——所有只测 DOM 与行为的断言照常全绿，而任何样式相关的回归都测不到
+   （[28][32][33][34] 这类布局断言在修好这里之前永远不可能通过）。
+   与扩展模式、file:// 模式（两者由 Chrome 按扩展名推断 MIME）保持一致的验证条件。 */
+const STATIC_MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon'
+};
+
 function startStaticServer() {
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
@@ -221,13 +282,67 @@ function startStaticServer() {
         if (!file.startsWith(EXT_PATH) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
           res.writeHead(404); res.end('404'); return;
         }
-        res.writeHead(200, { 'Content-Type': file.endsWith('.json') ? 'application/json' : 'text/html; charset=utf-8' });
+        const type = STATIC_MIME[path.extname(file).toLowerCase()] || 'application/octet-stream';
+        res.writeHead(200, { 'Content-Type': type });
         res.end(fs.readFileSync(file));
       } catch { res.writeHead(500); res.end(); }
     });
     server.on('error', reject);
     server.listen(PORT, '127.0.0.1', () => resolve(server));
   });
+}
+
+/* ---- 像素级对比度采样（[29] 用）----
+   与 scripts/ux-audit.js 同一口径：背景取元素矩形内的像素众数色，前景取 computed color
+   （含祖先 opacity 累积）。后者是外部可复跑的工具（全壁纸×主题矩阵），
+   这里是 CI 内嵌版，只覆盖默认壁纸下的深浅两档，避免 E2E 耗时翻倍。
+   注意不能改成"断言 data-theme 属性值"——那个断言在文字完全不可读时同样是绿的。 */
+async function contrastRatios(page, targets) {
+  const shot = await page.screenshot();
+  return page.evaluate(async ([b64, targets]) => {
+    const img = new Image();
+    img.src = 'data:image/png;base64,' + b64;
+    await img.decode();
+    const cv = document.createElement('canvas');
+    cv.width = img.width; cv.height = img.height;
+    const cx = cv.getContext('2d', { willReadFrequently: true });
+    cx.drawImage(img, 0, 0);
+    const parse = c => { const m = String(c).match(/rgba?\(([^)]+)\)/); if (!m) return null;
+      const p = m[1].split(',').map(parseFloat);
+      return { r: p[0], g: p[1], b: p[2], a: p[3] === undefined ? 1 : p[3] }; };
+    const over = (f, b) => ({ r: f.r * f.a + b.r * (1 - f.a), g: f.g * f.a + b.g * (1 - f.a), b: f.b * f.a + b.b * (1 - f.a) });
+    const lum = c => { const q = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+      return 0.2126 * q(c.r) + 0.7152 * q(c.g) + 0.0722 * q(c.b); };
+    const ratio = (a, b) => { const l1 = lum(a), l2 = lum(b); return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05); };
+    const effOpacity = el => { let o = 1, n = el;
+      while (n && n !== document.documentElement) { const v = parseFloat(getComputedStyle(n).opacity); if (!Number.isNaN(v)) o *= v; n = n.parentElement; }
+      return o; };
+    const out = [];
+    for (const [sel, name] of targets) {
+      const el = document.querySelector(sel);
+      if (!el) { out.push({ name, status: 'missing' }); continue; }
+      const r = el.getBoundingClientRect();
+      if (r.width < 4 || r.height < 4 || r.top < 0 || r.bottom > img.height) { out.push({ name, status: 'offscreen' }); continue; }
+      const x = Math.max(0, Math.floor(r.left)), y = Math.max(0, Math.floor(r.top));
+      const d = cx.getImageData(x, y, Math.min(cv.width - x, Math.ceil(r.width)), Math.min(cv.height - y, Math.ceil(r.height))).data;
+      const hist = new Map();
+      for (let i = 0; i < d.length; i += 4) {
+        const k = `${d[i] >> 2},${d[i + 1] >> 2},${d[i + 2] >> 2}`;
+        const e = hist.get(k) || { n: 0, r: 0, g: 0, b: 0 };
+        e.n++; e.r += d[i]; e.g += d[i + 1]; e.b += d[i + 2]; hist.set(k, e);
+      }
+      const top = [...hist.values()].sort((a, b) => b.n - a.n)[0];
+      const bg = { r: top.r / top.n, g: top.g / top.n, b: top.b / top.n };
+      const cs = getComputedStyle(el);
+      const fg0 = parse(cs.color) || { r: 255, g: 255, b: 255, a: 1 };
+      const fg = over({ ...fg0, a: fg0.a * effOpacity(el) }, bg);
+      const shown = +ratio(fg, bg).toFixed(2);
+      const size = parseFloat(cs.fontSize);
+      const large = size >= 24 || (size >= 18.66 && parseInt(cs.fontWeight, 10) >= 700);
+      out.push({ name, status: 'ok', ratio: shown, need: large ? 3 : 4.5, pass: shown >= (large ? 3 : 4.5) });
+    }
+    return out;
+  }, [shot.toString('base64'), targets]);
 }
 
 /* ---- 核心断言流程（扩展模式 / http 预览模式共用） ---- */
@@ -242,16 +357,35 @@ async function runCore(page, label) {
   // 第三方接口一律以固定响应替换，断言不再依赖真实网络（详见文件头 MOCK_* 说明）。
   // 用行为开关而非 route/unroute：unroute 会连这里的固定响应一起移除。
   weatherMode = 'ok';
+  openMeteoMode = 'ok';
+  ipLocateMode = 'ok';
   holidayMode = 'ok';
   await page.route(/wttr\.in/, r => weatherMode === 'fail'
     ? r.fulfill({ status: 500, body: 'err', contentType: 'text/plain' })
     : r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_WEATHER) }));
+  // 备用源与 IP 定位同样以固定响应替换：否则主源失败时用例会打真实外网，
+  // 结果取决于当天 Open-Meteo/ipwho.is 的可用性，断言将失去稳定性
+  await page.route(/api\.open-meteo\.com/, r => openMeteoMode === 'fail'
+    ? r.fulfill({ status: 500, body: 'err', contentType: 'text/plain' })
+    : r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_OPEN_METEO) }));
+  await page.route(/ipwho\.is/, r => ipLocateMode === 'fail'
+    ? r.fulfill({ status: 500, body: 'err', contentType: 'text/plain' })
+    : r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_IP_LOCATE) }));
   await page.route(/holiday-cn/, r => {
     if (holidayMode === 'hang') return; // 不响应：模拟请求卡在响应体阶段
     return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_HOLIDAY) });
   });
   bingDelayMs = 0;
+  // UX-13：图片请求与实际 API 请求分开 mock —— 前者返回可控亮度的图片（供明度采样），
+  // 后者返回 JSON。默认给一张深色图，保证既有断言（如 [25] 壁纸代次）行为不变。
+  let bingImageBase64 = '';
   await page.route(/cn\.bing\.com/, async r => {
+    if (/th\?id=/.test(r.request().url())) {
+      return r.fulfill({
+        status: 200, contentType: 'image/png',
+        body: bingImageBase64 ? Buffer.from(bingImageBase64, 'base64') : Buffer.from([137, 80, 78, 71])
+      });
+    }
     if (bingDelayMs) await new Promise(res => setTimeout(res, bingDelayMs));
     return r.fulfill({
       status: 200,
@@ -268,7 +402,8 @@ async function runCore(page, label) {
   }
 
   // [1] 渲染
-  check('[1] 预设书签 8 个', await page.locator('.bookmark-item').count() === 8);
+  // 选择器排除 UX-12 的快捷添加磁贴（它复用 .bookmark-item 的布局样式）
+  check('[1] 预设书签 8 个', await page.locator('.bookmark-item:not([data-quick-add])').count() === 8);
   check('[1] 预设分类 4 个', await page.locator('.category-card').count() === 4);
   check('[1] 待办/天气/时钟可见', await page.locator('.todo-card').isVisible() && await page.locator('.weather-widget').isVisible() && await page.locator('#datetime').isVisible());
 
@@ -360,7 +495,9 @@ async function runCore(page, label) {
   await sleep(600);
   const orderAfter = await page.evaluate(() => Array.from(document.querySelectorAll('#bookmarkList .setting-item-title')).map(e => e.textContent));
   check('[5] 上移改变顺序', JSON.stringify(orderBefore) !== JSON.stringify(orderAfter));
-  const homeOrder = await page.evaluate(() => Array.from(document.querySelectorAll('.bookmark-item .bookmark-title')).map(e => e.textContent));
+  // 排除 UX-12 的快捷添加磁贴（它复用 .bookmark-item 结构，标题固定是"添加"）
+  const homeOrder = await page.evaluate(() => Array.from(
+    document.querySelectorAll('.bookmark-item:not([data-quick-add]) .bookmark-title')).map(e => e.textContent));
   check('[5] N1 主页顺序随键盘排序同步', JSON.stringify(homeOrder) === JSON.stringify(orderAfter));
   await page.reload();
   await sleep(2500);
@@ -510,6 +647,21 @@ async function runCore(page, label) {
   await page.keyboard.press('Escape');
   await sleep(300);
 
+  // [27] 定位兜底：未选城市时必须能拿到坐标，这是备用源可用的前提。
+  // 扩展页里 navigator.geolocation 拿不到位置（实测 code=3 Timeout，加 geolocation
+  // 权限也一样），没有 IP 定位兜底，全新安装的电脑在 wttr.in 故障时就彻底没有天气。
+  // 注意：weather.js 用 `const Weather` 声明，不会挂到 window 上，只能按裸标识符访问
+  const locState = await page.evaluate(() => {
+    if (typeof Weather === 'undefined' || !Weather.coords) return { hasCoords: false, lat: null, source: null };
+    return { hasCoords: true, lat: Weather.coords.lat, source: Weather.coords.source || null };
+  });
+  check('[27] 未选城市时能取到定位坐标（IP 定位兜底）',
+    locState.hasCoords && Number.isFinite(Number(locState.lat)), JSON.stringify(locState));
+  check('[27] 定位来源可用（浏览器定位或 IP 定位）',
+    locState.source === 'ip' || locState.source === 'geo', `source=${locState.source}`);
+  check('[27] 浏览器定位不可用时确实请求了 IP 定位服务',
+    requests.some(u => /ipwho\.is/.test(u)) || locState.source === 'geo');
+
   // [13] PBI-18 天气：缓存时间标注 + 失败降级 + 重试恢复
   const whcHeader = await page.evaluate(() => {
     const el = document.querySelector('.whc-header');
@@ -517,7 +669,16 @@ async function runCore(page, label) {
   });
   check('[13] 缓存时间标注', /更新于/.test(whcHeader), whcHeader.slice(0, 60));
   weatherMode = 'fail'; // 由 runCore 开头的固定响应 handler 读取
-  await page.evaluate(() => { if (typeof Weather !== 'undefined') { Weather._failed = false; Weather.cache = null; Weather.refresh(); } });
+  openMeteoMode = 'fail'; // 备用源也失败，才会走到降级文案（容灾链路见 [26]）
+  await page.evaluate(() => {
+    if (typeof Weather !== 'undefined') {
+      Weather._failed = false;
+      Weather.cache = null;
+      // 固定坐标，避免断言依赖浏览器定位/IP 定位的时序
+      Weather.coords = { lat: '22.54', lng: '114.06' };
+      Weather.refresh();
+    }
+  });
   await sleep(6500);
   const degradeText = await page.evaluate(() => {
     const el = document.getElementById('weatherWidget');
@@ -526,6 +687,7 @@ async function runCore(page, label) {
   check('[13] 天气失败显示降级文案', /天气暂不可用/.test(degradeText), degradeText.slice(0, 60));
   check('[13] 降级含重试按钮', await page.locator('.weather-retry').count() === 1);
   weatherMode = 'ok';
+  openMeteoMode = 'ok';
   await page.locator('.weather-retry').click();
   await sleep(3500); // 固定响应无网络往返，重试一次即成功
   const afterRetry = await page.evaluate(() => {
@@ -533,6 +695,36 @@ async function runCore(page, label) {
     return el ? el.innerText : '';
   });
   check('[13] 重试后恢复天气', /°C/.test(afterRetry), afterRetry.slice(0, 60));
+
+  // [26] 天气容灾：主源失败时自动回退备用源（2026-09-15 wttr.in 证书过期的直接回归）
+  // 修复前这里只会显示"天气暂不可用"：全新安装的电脑没有缓存，证书过期即彻底没有天气
+  weatherMode = 'fail';
+  openMeteoMode = 'ok';
+  await page.evaluate(() => {
+    if (typeof Weather !== 'undefined') {
+      Weather._failed = false;
+      Weather.cache = null;
+      Weather.selectedCityQuery = 'Shenzhen'; // 走 cities.json 的城市坐标，而非定位
+      Weather.refresh();
+    }
+  });
+  await sleep(3000);
+  const failoverText = await page.evaluate(() => {
+    const el = document.getElementById('weatherWidget');
+    return el ? el.innerText : '';
+  });
+  check('[26] 主源失败时备用源接管天气', /°C/.test(failoverText), failoverText.slice(0, 60));
+  check('[26] 缓存标注数据来源为备用源',
+    await page.evaluate(() => typeof Weather !== 'undefined' && !!Weather.cache && Weather.cache.source === 'open-meteo'));
+  const failoverHourly = await page.evaluate(() => {
+    const el = document.querySelector('.weather-hover-card');
+    return el ? el.querySelectorAll('.whc-col').length : 0;
+  });
+  check('[26] 备用源同样提供 24 小时预报', failoverHourly === 24, `列数=${failoverHourly}`);
+  weatherMode = 'ok';
+  openMeteoMode = 'ok';
+  await page.reload();
+  await sleep(2500);
 
   // [13.5] 扩展模式 CSP 拦截验证
   if (label === 'extension') {
@@ -583,6 +775,9 @@ async function runCore(page, label) {
   // 仅在 abort 信号触发时 reject —— 精确复现"响应头返回、响应体卡住"。
   // 修复前 clearTimeout 紧跟 fetch 之后执行，5 秒定时器被提前清掉，body 卡住后永不恢复，
   // 天气会永久停在"获取天气中…"且降级分支不可达。
+  // 备用源在这里也必须失败：否则回退链路会把天气救回来，降级分支同样不可达，
+  // 断言就测不到 wttr 这条路径的超时了（容灾本身由 [26] 覆盖）。
+  openMeteoMode = 'fail';
   await page.evaluate(() => {
     const orig = window.fetch;
     window.__restoreFetch = () => { window.fetch = orig; };
@@ -603,7 +798,12 @@ async function runCore(page, label) {
     };
   });
   await page.evaluate(() => {
-    if (typeof Weather !== 'undefined') { Weather._failed = false; Weather.cache = null; Weather.refresh(); }
+    if (typeof Weather !== 'undefined') {
+      Weather._failed = false;
+      Weather.cache = null;
+      Weather.coords = { lat: '22.54', lng: '114.06' }; // 固定坐标，避免降级分支取决于定位时序
+      Weather.refresh();
+    }
   });
   await sleep(7000);
   const slowText = await page.evaluate(() => {
@@ -612,9 +812,9 @@ async function runCore(page, label) {
   });
   check('[18] weather 响应体挂起时超时降级', /天气暂不可用/.test(slowText), slowText.slice(0, 40) || '(空)');
   await page.evaluate(() => { if (window.__restoreFetch) window.__restoreFetch(); });
+  openMeteoMode = 'ok';
   await page.reload();
   await sleep(2500);
-
   // [19] 无障碍（P2-8）：可访问名称 / dialog 语义 / tab 语义 / 焦点管理
   const a11y = await page.evaluate(() => {
     const el = id => document.getElementById(id);
@@ -840,13 +1040,665 @@ async function runCore(page, label) {
   // 先发起 Bing 每日壁纸（mock 为 1.5 秒慢响应），随后立刻切到随机壁纸；
   // 迟到的 Bing 响应不得把后发的选择覆盖掉
   bingDelayMs = 1500;
-  await page.evaluate(() => { Wallpaper.apply(3); }); // 3 = Bing 每日壁纸（不 await，让它在后台慢）
+  await page.evaluate(() => { Wallpaper.apply(Wallpaper.getWallpapers().findIndex(w => w.name === 'Bing 每日壁纸')); }); // Bing（不 await，让它在后台慢）
   await sleep(250);
-  await page.evaluate(() => { Wallpaper.apply(4); }); // 4 = 随机壁纸（同步生效）
+  await page.evaluate(() => { Wallpaper.apply(Wallpaper.getWallpapers().findIndex(w => w.name === '随机壁纸')); }); // 随机壁纸（同步生效）
   await sleep(2600);
   const bgAfter = await page.evaluate(() => document.getElementById('bgLayer').style.backgroundImage || '');
   check('[25] 慢响应不覆盖后发的壁纸选择（P3-6）', /biturl\.top/.test(bgAfter), bgAfter.slice(0, 80));
   bingDelayMs = 0;
+
+  /* ---- [28][34] 内容增长后的主页面布局（UX-01 / UX-07）----
+     核心回归：书签与分类积累到 24-26 个后，flex 居中 + overflow 会把搜索框顶出视口，
+     而且滚到最顶也回不来。用远超临界点的数据量（40/12/12）验证它不会再发生。 */
+  const stress = await page.evaluate(async () => {
+    const bookmarks = Array.from({ length: 40 }, (_, i) => (
+      { id: 'sx' + i, title: '压力站点' + i, url: 'https://e' + i + '.com', sortOrder: i }));
+    const categories = Array.from({ length: 12 }, (_, i) => ({
+      id: 'sy' + i, title: '压力分类' + (i + 1), collapsed: false, sortOrder: i,
+      items: Array.from({ length: 6 }, (_, j) => (
+        { id: 'sz' + i + '-' + j, title: '站点' + (j + 1), url: 'https://s' + i + j + '.com', sortOrder: j }))
+    }));
+    const todos = Array.from({ length: 12 }, (_, i) => (
+      { id: 'st' + i, text: '压力测试待办 ' + (i + 1), done: false, createdAt: i }));
+    await Storage.importData(JSON.stringify({ schemaVersion: 1, bookmarks, categories, todos }));
+    await App.renderBookmarks();
+    await App.renderCategories();
+    await Todos.render();
+    await new Promise(r => setTimeout(r, 600));
+    const mc = document.querySelector('.main-content');
+    mc.scrollTop = 0;
+    const search = document.querySelector('.search-box').getBoundingClientRect();
+    const title = document.querySelector('.site-title').getBoundingClientRect();
+    const cat = document.querySelector('#categoryContainer').getBoundingClientRect();
+    const todoCard = document.querySelector('.todo-card').getBoundingClientRect();
+    const todoList = document.querySelector('.todo-list');
+    return {
+      searchTop: Math.round(search.top), titleTop: Math.round(title.top),
+      catH: Math.round(cat.height), todoH: Math.round(todoCard.height),
+      todoScrollH: todoList ? todoList.scrollHeight : 0,
+      todoClientH: todoList ? todoList.clientHeight : 0,
+      scrollRange: mc.scrollHeight - mc.clientHeight
+    };
+  });
+  // 先确认测试条件真的触发了溢出场景：若内容根本没超出视口，
+  // 下面"搜索框可见"的断言会因为没东西可溢出而永远是绿的（无区分度）
+  check('[28] 压力数据确实使内容超出视口', stress.scrollRange > 0,
+    `可滚 ${stress.scrollRange}px`);
+  check('[28] 40 书签/12 分类下搜索框与标题仍可见（UX-01）',
+    stress.searchTop >= 0 && stress.titleTop >= 0,
+    `搜索框 top=${stress.searchTop}，标题 top=${stress.titleTop}`);
+  check('[34] 待办卡片与分类容器等高（UX-07）', Math.abs(stress.catH - stress.todoH) <= 2,
+    `分类 ${stress.catH}px / 待办 ${stress.todoH}px`);
+  check('[34] 12 条待办在卡片内滚动而非撑高页面（UX-07）',
+    stress.todoScrollH > stress.todoClientH,
+    `scrollHeight=${stress.todoScrollH} clientHeight=${stress.todoClientH}`);
+
+  /* ---- [32] 设置面板 tab 不折行（UX-05）---- */
+  // 前面的用例可能把设置面板留在打开状态，遮罩会挡住主页上的点击，先归位
+  const overlayOpen = await page.evaluate(() =>
+    !!document.getElementById('settingsOverlay') &&
+    document.getElementById('settingsOverlay').classList.contains('open'));
+  if (overlayOpen) { await page.click('#settingsClose'); await sleep(600); }
+  await page.click('#settingsBtn');
+  await sleep(600);
+  const tabMetrics = await page.evaluate(() => [...document.querySelectorAll('.tab-btn')].map(b => {
+    // 用 Range 量文字实际占几行：height/line-height 会把上下 padding 算进行数，
+    // 单行 tab（13px padding + 约 19px 行高）会被误判成两行
+    const range = document.createRange();
+    range.selectNodeContents(b);
+    return { text: b.textContent.trim(), lines: range.getClientRects().length,
+      overflow: b.scrollWidth > b.clientWidth + 1 };
+  }));
+  const wrappedTabs = tabMetrics.filter(t => t.lines > 1);
+  check('[32] 设置面板 tab 不折行（UX-05）', wrappedTabs.length === 0,
+    wrappedTabs.length ? `折行: ${wrappedTabs.map(t => t.text).join('/')}` : `${tabMetrics.length} 个 tab 均为单行`);
+  const overflowTabs = tabMetrics.filter(t => t.overflow);
+  check('[32] 设置面板 tab 文字不溢出按钮', overflowTabs.length === 0,
+    overflowTabs.length ? `溢出: ${overflowTabs.map(t => t.text).join('/')}` : '均在按钮内');
+  await page.click('#settingsClose');
+  await sleep(500);
+
+  /* ---- [33] 书签末行与首行左对齐（UX-06）---- */
+  const align = await page.evaluate(() => {
+    const bm = [...document.querySelectorAll('.bookmark-item')].map(e => e.getBoundingClientRect());
+    const rows = new Map();
+    bm.forEach(r => { const k = Math.round(r.top); rows.set(k, (rows.get(k) || 0) + 1); });
+    const tops = [...rows.keys()].sort((a, b) => a - b);
+    const first = bm.filter(r => Math.round(r.top) === tops[0]);
+    const last = bm.filter(r => Math.round(r.top) === tops[tops.length - 1]);
+    return { rowCount: tops.length, lastRowCount: last.length,
+      firstLeft: Math.round(Math.min(...first.map(r => r.left))),
+      lastLeft: Math.round(Math.min(...last.map(r => r.left))) };
+  });
+  check('[33] 测试条件：书签确实分多行', align.rowCount > 1 && align.lastRowCount < 7,
+    `共 ${align.rowCount} 行，末行 ${align.lastRowCount} 个`);
+  check('[33] 书签末行与首行左对齐（UX-06）', Math.abs(align.firstLeft - align.lastLeft) <= 2,
+    `首行 left=${align.firstLeft} 末行 left=${align.lastLeft}，差 ${Math.abs(align.firstLeft - align.lastLeft)}px`);
+
+  /* ---- [29] 主题可读性（UX-02 / UX-14）----
+     先回到小数据集，保证所有被测元素都在视口内（溢出的元素会被采样器跳过，
+     那样断言会悄悄失去覆盖）。 */
+  await page.evaluate(async () => {
+    await Storage.importData(JSON.stringify({
+      schemaVersion: 1,
+      bookmarks: Array.from({ length: 8 }, (_, i) => ({ id: 'c' + i, title: '站点' + i, url: 'https://c' + i + '.com', sortOrder: i })),
+      categories: [{ id: 'k0', title: '分类一', collapsed: false, sortOrder: 0,
+        items: [{ id: 'k0-0', title: '子站', url: 'https://k.com', sortOrder: 0 }] }],
+      todos: [{ id: 'ct0', text: '对比度采样用待办', done: false, createdAt: 1 }]
+    }));
+  });
+  const CONTRAST_TARGETS = [
+    ['.site-title', '主标题'], ['.site-subtitle', '副标题'], ['.bookmark-title', '书签名称'],
+    ['.category-title', '分类标题'], ['.category-link', '分类链接'], ['.todo-title', '待办标题'],
+    ['.datetime-text', '日期时间'], ['.tool-btn', '底部按钮'], ['.engine-btn', '引擎按钮']
+  ];
+  for (const theme of ['dark', 'light']) {
+    await page.evaluate(t => Storage.updateSettings({ theme: t }), theme);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await sleep(2500);
+    const measured = await contrastRatios(page, CONTRAST_TARGETS);
+    const sampled = measured.filter(x => x.status === 'ok');
+    const bad = sampled.filter(x => !x.pass);
+    check(`[29] ${theme} 主题关键文字对比度达标（UX-02/UX-14）`, bad.length === 0,
+      bad.length ? bad.map(x => `${x.name} ${x.ratio}:1`).join('、') : `${sampled.length} 项全部 ≥ 阈值`);
+    // 防"采样不到任何元素所以永远通过"的假绿
+    check(`[29] ${theme} 主题采样覆盖到全部目标元素`, sampled.length === CONTRAST_TARGETS.length,
+      `采样 ${sampled.length}/${CONTRAST_TARGETS.length} 项`);
+  }
+
+
+  /* ---- [43] 浅色预设壁纸（UX-02 路线 C）----
+     新增一张浅色预设后，"深色主题 + 浅色壁纸"这个此前不存在的组合必须一并兜住，
+     否则就是修好一个组合又引入另一个。保底层强度由 data-theme × data-wallpaper-tone 决定。 */
+  const lightWpInfo = await page.evaluate(async () => {
+    const list = Wallpaper.getWallpapers();
+    const idx = list.findIndex(w => w.name === '晨雾白');
+    if (idx === -1) return { exists: false };
+    await Storage.updateSettings({ theme: 'auto', wallpaperName: '晨雾白' });
+    await Wallpaper.apply(idx);
+    await new Promise(r => setTimeout(r, 1200));
+    return {
+      exists: true, index: idx, themeHint: list[idx].themeHint,
+      theme: document.documentElement.dataset.theme,
+      tone: document.documentElement.dataset.wallpaperTone
+    };
+  });
+  check('[43] 壁纸列表含浅色预设（UX-02 路线 C）', lightWpInfo.exists,
+    lightWpInfo.exists ? `索引 ${lightWpInfo.index}，themeHint=${lightWpInfo.themeHint}` : '未找到「晨雾白」');
+  check('[43] auto 模式选到浅色壁纸时主题跟随变浅（UX-02 路线 C）',
+    lightWpInfo.exists && lightWpInfo.theme === 'light' && lightWpInfo.tone === 'light',
+    `data-theme=${lightWpInfo.theme} data-wallpaper-tone=${lightWpInfo.tone}`);
+
+  // 最不利组合：手动锁深色主题 + 浅色壁纸。此时保底层必须自动加重。
+  if (lightWpInfo.exists) {
+    const worstSetup = await page.evaluate(async () => {
+      await Storage.updateSettings({ theme: 'dark', wallpaperName: '晨雾白' });
+      // 必须显式 applySettings：updateSettings 只写存储，data-theme 不会自己变。
+      // 少了这一步，页面会停留在上一条用例遗留的 light 主题上，
+      // 于是这条"深色主题 + 浅色壁纸"的断言实际上测的是浅色组合 —— 永远绿灯。
+      App.applySettings(await Storage.getSettings());
+      const idx = Wallpaper.getWallpapers().findIndex(w => w.name === '晨雾白');
+      await Wallpaper.apply(idx);
+      await new Promise(r => setTimeout(r, 1500));
+      return {
+        theme: document.documentElement.dataset.theme,
+        tone: document.documentElement.dataset.wallpaperTone
+      };
+    });
+    const worstCase = await contrastRatios(page, CONTRAST_TARGETS);
+    const worstSampled = worstCase.filter(x => x.status === 'ok');
+    const worstBad = worstSampled.filter(x => !x.pass);
+    check('[43] 浅色壁纸 + 深色主题下关键文字仍达标（UX-02 路线 C）',
+      // 前置条件写进断言：主题没切成 dark、或壁纸明度没标记成 light 时直接判失败，
+      // 否则"条件没建立"会伪装成"通过了"
+      worstSetup.theme === 'dark' && worstSetup.tone === 'light'
+        && worstSampled.length === CONTRAST_TARGETS.length && worstBad.length === 0,
+      `前置 theme=${worstSetup.theme} tone=${worstSetup.tone}，采样 ${worstSampled.length}/${CONTRAST_TARGETS.length} 项`
+        + (worstBad.length ? `，不达标：${worstBad.map(x => `${x.name} ${x.ratio}:1`).join('、')}` : '，全部 ≥ 阈值'));
+  } else {
+    check('[43] 浅色壁纸 + 深色主题下关键文字仍达标（UX-02 路线 C）', false, '浅色壁纸不存在，无法验证该组合');
+  }
+
+  /* ---- [35] 待办删除可撤销（UX-08）---- */
+  const undoFlow = await page.evaluate(async () => {
+    const domOrder = () => [...document.querySelectorAll('.todo-item .todo-text')].map(e => e.textContent);
+    await Storage.importData(JSON.stringify({ schemaVersion: 1, todos: [
+      { id: 'u1', text: '明天签约', done: false, createdAt: 1 },
+      { id: 'u2', text: '第二条待办', done: false, createdAt: 2 }
+    ] }));
+    await Todos.render();
+    await new Promise(r => setTimeout(r, 300));
+    const before = domOrder();
+    const btn = document.querySelector('.todo-item .todo-delete-btn');
+    if (!btn) return { error: '找不到删除按钮' };
+    btn.click();
+    await new Promise(r => setTimeout(r, 700));
+    const afterDelete = domOrder();
+    const toastEl = document.querySelector('#toastRoot .toast');
+    const undoBtn = document.querySelector('#toastRoot .toast-action');
+    const toastText = toastEl ? toastEl.innerText : '';
+    if (undoBtn) { undoBtn.click(); await new Promise(r => setTimeout(r, 700)); }
+    return { before, afterDelete, toastText, hasUndo: !!undoBtn, afterUndo: domOrder() };
+  });
+  check('[35] 删除待办后给出可撤销提示（UX-08）',
+    undoFlow.hasUndo && /已删除/.test(undoFlow.toastText || ''),
+    `提示="${undoFlow.toastText || '(无)'}"，撤销按钮=${undoFlow.hasUndo ? '有' : '无'}`);
+  check('[35] 撤销后待办回到原位（UX-08）',
+    // 前置条件不能省：找不到删除按钮时 evaluate 返回 { error }，两边都是 undefined，
+    // JSON.stringify 比较会意外成立，让这条断言在功能缺失时假绿
+    !undoFlow.error && Array.isArray(undoFlow.before) && undoFlow.before.length > 0
+      && JSON.stringify(undoFlow.afterUndo) === JSON.stringify(undoFlow.before),
+    `删除前=${JSON.stringify(undoFlow.before)} 删除后=${JSON.stringify(undoFlow.afterDelete)} 撤销后=${JSON.stringify(undoFlow.afterUndo)}`);
+
+  /* ---- [36] 空状态行动入口（UX-09）---- */
+  const emptyActions = await page.evaluate(async () => {
+    await Storage.importData(JSON.stringify({ schemaVersion: 1, bookmarks: [], categories: [], todos: [] }));
+    await App.renderBookmarks();
+    await App.renderCategories();
+    await new Promise(r => setTimeout(r, 400));
+    return {
+      bookmarkBtns: [...document.querySelectorAll('#bookmarkContainer .empty-actions button')].map(b => b.textContent.trim()),
+      categoryBtns: [...document.querySelectorAll('#categoryContainer .empty-actions button')].map(b => b.textContent.trim())
+    };
+  });
+  check('[36] 书签空状态提供行动入口（UX-09）', emptyActions.bookmarkBtns.length >= 2,
+    emptyActions.bookmarkBtns.join(' / ') || '(无按钮)');
+  check('[36] 分类空状态提供行动入口（UX-09）', emptyActions.categoryBtns.length >= 1,
+    emptyActions.categoryBtns.join(' / ') || '(无按钮)');
+  // 按钮不存在时不能直接 page.click（会抛超时并中断整个用例，
+  // 那样回归失败会表现为"脚本崩溃"而不是"断言变红"）
+  const hasAddBookmarkBtn = await page.evaluate(() =>
+    !!document.querySelector('#bookmarkContainer [data-empty-action="add-bookmark"]'));
+  if (hasAddBookmarkBtn) {
+    await page.click('#bookmarkContainer [data-empty-action="add-bookmark"]');
+    await sleep(800);
+    const emptyOpen = await page.evaluate(() => ({
+      open: document.getElementById('settingsOverlay').classList.contains('open'),
+      tab: (document.querySelector('.tab-btn.active') || {}).dataset ? document.querySelector('.tab-btn.active').dataset.tab : '',
+      form: !!document.querySelector('#bookmarkList .inline-form')
+    }));
+    check('[36] 点击空状态按钮直达"添加书签"表单（UX-09）',
+      emptyOpen.open && emptyOpen.tab === 'bookmarks' && emptyOpen.form,
+      `面板=${emptyOpen.open} tab=${emptyOpen.tab} 表单=${emptyOpen.form}`);
+    await page.click('#settingsClose');
+    await sleep(500);
+  } else {
+    check('[36] 点击空状态按钮直达"添加书签"表单（UX-09）', false, '空状态区没有可点击的行动按钮');
+  }
+
+  /* ---- [38] 壁纸切换有文字反馈（UX-11）---- */
+  const wpFeedback = await page.evaluate(async () => {
+    const before = Wallpaper.currentIndex;
+    document.getElementById('wallpaperBtn').click();
+    await new Promise(r => setTimeout(r, 900));
+    const el = document.querySelector('#toastRoot .toast');
+    return { before, after: Wallpaper.currentIndex, text: el ? el.innerText : '', visible: !!el };
+  });
+  check('[38] 切换壁纸给出文字反馈（UX-11）',
+    wpFeedback.visible && wpFeedback.after !== wpFeedback.before && wpFeedback.text.length > 0,
+    `索引 ${wpFeedback.before}→${wpFeedback.after}，提示="${wpFeedback.text}"`);
+  await sleep(2400);
+  const wpToastGone = await page.evaluate(() => !document.querySelector('#toastRoot .toast'));
+  // 加 visible 前提：否则"提示压根没出现过"也会满足"现在没有提示"，成为无区分度断言
+  check('[38] 壁纸提示到点自动消失（UX-11）', wpFeedback.visible && wpToastGone,
+    wpFeedback.visible ? (wpToastGone ? '已消失' : '仍在显示') : '提示从未出现，无法验证自动消失');
+
+
+  /* ---- [37] 从浏览器导入书签（UX-10）----
+     shim 模式用 chrome.permissions / chrome.bookmarks 替身跑完整流程；
+     预览模式没有这两个 API，验证它给出明确提示而不是静默失败；
+     扩展模式会用真实 API 弹系统授权框，E2E 无法处理，跳过并记录。
+
+     判据是 permissions.request（"能不能申请"），不是 chrome.bookmarks（"能不能读"）——
+     后者在未授权时压根不存在，用它判断会让扩展模式误入"降级提示"分支，
+     进而在 headless 下去弹真实系统授权框、永远等不到回调。 */
+  const canRequestPerm = await page.evaluate(() =>
+    !!(typeof chrome !== 'undefined' && chrome.permissions && chrome.permissions.request));
+
+  if (canRequestPerm && label === 'shim') {
+    const granted = await page.evaluate(async () => {
+      window.__permissionsGranted = true;
+      window.__bookmarksTree = [{
+        id: '0', title: '', children: [
+          { id: '1', title: '书签栏', children: [
+            { id: '10', title: 'GitHub', url: 'https://github.com/' },
+            { id: '11', title: '开发', children: [{ id: '12', title: 'MDN', url: 'https://developer.mozilla.org/' }] }
+          ] },
+          { id: '2', title: '其他书签', children: [
+            { id: '20', title: '重复的 GitHub', url: 'https://github.com/' },
+            { id: '21', title: '浏览器设置页', url: 'chrome://settings' }
+          ] }
+        ]
+      }];
+      // 先放一个"导入前就存在"的分类：这样后面才能验证备份里存的是**导入前**的状态，
+      // 而不是恰好被 importData 顺手写下的那份（否则备份断言没有区分度）
+      await Storage.importData(JSON.stringify({ schemaVersion: 1, bookmarks: [], categories: [
+        { id: 'pre', title: '导入前就有的分类', collapsed: false, sortOrder: 0, items: [] }
+      ], todos: [] }));
+      Settings.open();
+      Settings.switchTab('data');
+      await new Promise(r => setTimeout(r, 300));
+      document.getElementById('importBrowserBookmarksBtn').click();
+      await new Promise(r => setTimeout(r, 1800));
+      const cats = await Storage.getCategories();
+      return {
+        catCount: cats.length,
+        titles: cats.map(c => c.title),
+        items: cats.reduce((n, c) => n + (c.items || []).length, 0),
+        githubCount: cats.reduce((n, c) => n + (c.items || []).filter(i => i.url === 'https://github.com/').length, 0),
+        chromeUrls: cats.reduce((n, c) => n + (c.items || []).filter(i => /^chrome:/.test(i.url)).length, 0),
+        feedback: (document.getElementById('dataFeedback') || {}).textContent || ''
+      };
+    });
+    check('[37] 授权后按文件夹导入为分类（UX-10）',
+      granted.catCount === 2 && granted.titles.includes('导入前就有的分类') && granted.titles.includes('书签栏') && granted.items === 2,
+      `分类=${JSON.stringify(granted.titles)} 链接=${granted.items} 个`);
+    check('[37] 重复地址去重、非 http 地址被过滤（UX-10）',
+      granted.githubCount === 1 && granted.chromeUrls === 0,
+      `github 出现 ${granted.githubCount} 次，chrome:// 出现 ${granted.chromeUrls} 次`);
+    check('[37] 导入结果有文字反馈（UX-10）', /已从浏览器导入 2 个书签/.test(granted.feedback),
+      `反馈="${granted.feedback}"`);
+    const backupWritten = await storageGet(page, 'lastImportBackup-1');
+    check('[37] 导入前自动备份的是导入前状态（可用"恢复最近备份"回滚）（UX-10）',
+      !!(backupWritten && (backupWritten.categories || []).some(c => c.title === '导入前就有的分类')
+        && !(backupWritten.categories || []).some(c => c.title === '书签栏')),
+      backupWritten ? `备份分类=${JSON.stringify((backupWritten.categories || []).map(c => c.title))}` : '未写入备份');
+
+    const denied = await page.evaluate(async () => {
+      window.__permissionsGranted = false;
+      const before = (await Storage.getCategories()).length;
+      document.getElementById('importBrowserBookmarksBtn').click();
+      await new Promise(r => setTimeout(r, 1200));
+      return { before, after: (await Storage.getCategories()).length,
+        feedback: (document.getElementById('dataFeedback') || {}).textContent || '' };
+    });
+    check('[37] 拒绝授权时给出引导且数据不变（UX-10）',
+      denied.before === denied.after && /未授权/.test(denied.feedback),
+      `分类 ${denied.before}→${denied.after}，反馈="${denied.feedback}"`);
+    await page.click('#settingsClose');
+    await sleep(500);
+  } else if (!canRequestPerm) {
+    const degraded = await page.evaluate(async () => {
+      Settings.open();
+      Settings.switchTab('data');
+      await new Promise(r => setTimeout(r, 300));
+      const btn = document.getElementById('importBrowserBookmarksBtn');
+      if (!btn) return { missing: true };
+      btn.click();
+      await new Promise(r => setTimeout(r, 600));
+      return { missing: false, feedback: (document.getElementById('dataFeedback') || {}).textContent || '' };
+    });
+    check('[37] 预览模式明确提示不支持而非静默失败（UX-10）',
+      !degraded.missing && /不支持|读不到/.test(degraded.feedback),
+      degraded.missing ? '按钮不存在' : `反馈="${degraded.feedback}"`);
+    await page.click('#settingsClose');
+    await sleep(500);
+  } else {
+    info('[37] 扩展模式跳过', '真实 chrome.permissions 会弹系统授权框，E2E 无法处理，需人工验证一次');
+  }
+
+
+  /* ---- [39] auto 主题按在线壁纸明度自适应（UX-13）----
+     Bing/随机壁纸的 themeHint 是 null，此前 auto 模式一律落回 dark，
+     浅色壁纸下白字看不清。这里用可控亮度的图片验证采样链路。 */
+  const makePng = (color) => page.evaluate(c => {
+    const cv = document.createElement('canvas');
+    cv.width = 4; cv.height = 4;
+    const cx = cv.getContext('2d');
+    cx.fillStyle = c;
+    cx.fillRect(0, 0, 4, 4);
+    return cv.toDataURL('image/png').split(',')[1];
+  }, color);
+
+  const runAutoWithWallpaper = async (color) => {
+    bingImageBase64 = await makePng(color);
+    return page.evaluate(async () => {
+      await Storage.updateSettings({ theme: 'auto', wallpaperName: 'Bing 每日壁纸', wallpaperApiCache: null });
+      await Wallpaper.apply(Wallpaper.getWallpapers().findIndex(w => w.name === 'Bing 每日壁纸'));
+      await new Promise(r => setTimeout(r, 1200));
+      return document.documentElement.dataset.theme;
+    });
+  };
+
+  const lightFromBright = await runAutoWithWallpaper('#f2f4f8');
+  check('[39] 亮色在线壁纸下 auto 解析为浅色主题（UX-13）', lightFromBright === 'light',
+    `data-theme=${lightFromBright}`);
+
+  const darkFromDark = await runAutoWithWallpaper('#0b0b1c');
+  check('[39] 深色在线壁纸下 auto 仍解析为深色主题（UX-13）', darkFromDark === 'dark',
+    `data-theme=${darkFromDark}`);
+
+  // 采样失败时必须回退到静态 hint，不能把主题留在不确定状态
+  bingImageBase64 = '';
+  const afterBrokenImage = await page.evaluate(async () => {
+    await Storage.updateSettings({ theme: 'auto', wallpaperApiCache: null });
+    await Wallpaper.apply(Wallpaper.getWallpapers().findIndex(w => w.name === 'Bing 每日壁纸'));
+    await new Promise(r => setTimeout(r, 1200));
+    return document.documentElement.dataset.theme;
+  });
+  check('[39] 图片不可采样时回退为深色而非报错（UX-13）', afterBrokenImage === 'dark',
+    `data-theme=${afterBrokenImage}`);
+
+  // 手动选定的主题不受在线壁纸影响（PBI-10 AC2 不被 UX-13 破坏）
+  bingImageBase64 = await makePng('#f2f4f8');
+  const manualKept = await page.evaluate(async () => {
+    await Storage.updateSettings({ theme: 'dark', wallpaperApiCache: null });
+    await Wallpaper.apply(Wallpaper.getWallpapers().findIndex(w => w.name === 'Bing 每日壁纸'));
+    await new Promise(r => setTimeout(r, 1200));
+    return document.documentElement.dataset.theme;
+  });
+  check('[39] 手动主题不被壁纸明度覆盖（UX-13 不破坏 PBI-10 AC2）', manualKept === 'dark',
+    `data-theme=${manualKept}`);
+
+  /* ---- [40] 主页快捷添加书签（UX-12）---- */
+  await page.evaluate(async () => {
+    await Storage.importData(JSON.stringify({ schemaVersion: 1,
+      bookmarks: [
+        { id: 'q1', title: '第一个', url: 'https://keytest.example/', sortOrder: 0 },
+        { id: 'q2', title: '第二个', url: 'https://second.example/', sortOrder: 1 }
+      ], categories: [], todos: [] }));
+    await App.renderBookmarks();
+    await new Promise(r => setTimeout(r, 400));
+  });
+  const tileInfo = await page.evaluate(() => {
+    const el = document.querySelector('#bookmarkContainer [data-quick-add="1"]');
+    if (!el) return { exists: false };
+    return {
+      exists: true,
+      draggable: el.getAttribute('draggable'),
+      inDragSet: [...document.querySelectorAll('#bookmarkContainer [draggable="true"]')].includes(el)
+    };
+  });
+  check('[40] 书签区末尾有快捷添加磁贴（UX-12）', tileInfo.exists,
+    tileInfo.exists ? '存在' : '不存在');
+  check('[40] 磁贴不进入拖拽集合，不会打乱书签顺序（UX-12）',
+    tileInfo.exists && !tileInfo.inDragSet,
+    `draggable=${tileInfo.draggable} 在拖拽集合内=${tileInfo.inDragSet}`);
+  if (tileInfo.exists) {
+    await page.click('#bookmarkContainer [data-quick-add="1"]');
+    await sleep(800);
+    const quickForm = await page.evaluate(() => ({
+      open: document.getElementById('settingsOverlay').classList.contains('open'),
+      tab: (document.querySelector('.tab-btn.active') || {}).dataset ? document.querySelector('.tab-btn.active').dataset.tab : '',
+      form: !!document.querySelector('#bookmarkList .inline-form')
+    }));
+    check('[40] 点击磁贴直达"添加书签"表单（UX-12）',
+      quickForm.open && quickForm.tab === 'bookmarks' && quickForm.form,
+      `面板=${quickForm.open} tab=${quickForm.tab} 表单=${quickForm.form}`);
+    await page.click('#settingsClose');
+    await sleep(500);
+  } else {
+    check('[40] 点击磁贴直达"添加书签"表单（UX-12）', false, '磁贴不存在');
+  }
+
+  /* ---- [42] 主页悬浮删除与撤销（UX-12）----
+     注意拖拽单元从 <a> 迁到了外层 cell：删除按钮必须是 <a> 的兄弟节点
+     （button 嵌在 a 里是无效 HTML，浏览器会把按钮移出去），而 draggable 只有跟着搬到
+     cell 上，拖拽时按钮才会一起走。下面几条断言就是钉住这个结构的。 */
+  const removeInfo = await page.evaluate(() => {
+    const cells = [...document.querySelectorAll('#bookmarkContainer .bookmark-cell')];
+    const btn = document.querySelector('#bookmarkContainer .bookmark-remove');
+    const cs = btn ? getComputedStyle(btn) : null;
+    const anchor = document.querySelector('#bookmarkContainer .bookmark-item');
+    return {
+      cellCount: cells.length,
+      dragCount: document.querySelectorAll('#bookmarkContainer [draggable="true"]').length,
+      cellsHaveId: cells.every(c => !!c.dataset.id),
+      anchorDraggable: anchor ? anchor.getAttribute('draggable') : 'no-anchor',
+      removeExists: !!btn,
+      defaultOpacity: cs ? cs.opacity : null,
+      defaultPointerEvents: cs ? cs.pointerEvents : null,
+      ariaLabel: btn ? (btn.getAttribute('aria-label') || '') : ''
+    };
+  });
+  check('[42] 拖拽单元是 cell 而非 <a>（UX-12）',
+    removeInfo.cellCount > 0 && removeInfo.dragCount === removeInfo.cellCount
+      && removeInfo.cellsHaveId && !removeInfo.anchorDraggable,
+    `cell=${removeInfo.cellCount} draggable=${removeInfo.dragCount} cell带id=${removeInfo.cellsHaveId} <a>上draggable=${removeInfo.anchorDraggable}`);
+  check('[42] 删除按钮默认隐藏且不抢点击（UX-12）',
+    removeInfo.removeExists && removeInfo.defaultOpacity === '0' && removeInfo.defaultPointerEvents === 'none',
+    `opacity=${removeInfo.defaultOpacity} pointer-events=${removeInfo.defaultPointerEvents}`);
+  check('[42] 删除按钮有可读的无障碍名称（UX-12）', /^删除书签 /.test(removeInfo.ariaLabel),
+    `aria-label="${removeInfo.ariaLabel}"`);
+
+  /* 用真实鼠标操作删一次，不用 DOM click()。
+     删除按钮平时是 pointer-events:none（避免挡住书签点击），
+     只有 cell 被 hover/聚焦时才可点 —— DOM click() 会绕过这个判定，
+     测不出"按钮到底能不能点"，属于验证条件与生产不符。 */
+  const titlesOf = () => page.evaluate(() =>
+    [...document.querySelectorAll('#bookmarkContainer .bookmark-cell .bookmark-title')].map(e => e.textContent));
+  const hasRemoveBtn = await page.evaluate(() => !!document.querySelector('#bookmarkContainer .bookmark-remove'));
+  if (hasRemoveBtn) {
+    const beforeRemove = await titlesOf();
+    await page.hover('#bookmarkContainer .bookmark-cell:first-child');
+    await sleep(350);
+    await page.click('#bookmarkContainer .bookmark-cell:first-child .bookmark-remove');
+    await sleep(900);
+    const afterDelete = await titlesOf();
+    const removeToast = await page.evaluate(() => {
+      const el = document.querySelector('#toastRoot .toast');
+      return { text: el ? el.innerText : '', hasUndo: !!document.querySelector('#toastRoot .toast-action') };
+    });
+    check('[42] 主页删除书签后给出可撤销提示（UX-12）',
+      removeToast.hasUndo && /已删除/.test(removeToast.text),
+      `提示="${removeToast.text || '(无)'}"，撤销按钮=${removeToast.hasUndo ? '有' : '无'}`);
+    check('[42] 真实鼠标点击确实删掉了那一条（UX-12）',
+      beforeRemove.length === afterDelete.length + 1 && !afterDelete.includes(beforeRemove[0]),
+      `删除前 ${beforeRemove.length} 条 → 删除后 ${afterDelete.length} 条`);
+
+    await page.click('#toastRoot .toast-action');
+    await sleep(900);
+    const afterUndo = await titlesOf();
+    check('[42] 撤销后书签回到原位（UX-12）',
+      Array.isArray(beforeRemove) && beforeRemove.length > 0
+        && JSON.stringify(afterUndo) === JSON.stringify(beforeRemove),
+      `删除前=${JSON.stringify(beforeRemove)} 删除后=${JSON.stringify(afterDelete)} 撤销后=${JSON.stringify(afterUndo)}`);
+  } else {
+    check('[42] 主页删除书签后给出可撤销提示（UX-12）', false, '书签上找不到删除按钮');
+    check('[42] 真实鼠标点击确实删掉了那一条（UX-12）', false, '书签上找不到删除按钮');
+    check('[42] 撤销后书签回到原位（UX-12）', false, '书签上找不到删除按钮');
+  }
+
+  // 关闭"快捷添加"后磁贴应消失（方案要求该入口可在设置中隐藏）
+  const quickAddToggle = await page.evaluate(async () => {
+    await Storage.updateSettings({ showQuickAdd: false });
+    await App.renderBookmarks();
+    await new Promise(r => setTimeout(r, 500));
+    const hidden = !document.querySelector('[data-quick-add="1"]');
+    await Storage.updateSettings({ showQuickAdd: true });
+    await App.renderBookmarks();
+    await new Promise(r => setTimeout(r, 500));
+    return { hidden, restored: !!document.querySelector('[data-quick-add="1"]') };
+  });
+  check('[42] showQuickAdd=false 时磁贴不渲染、恢复后回来（UX-12）',
+    quickAddToggle.hidden && quickAddToggle.restored,
+    `关闭后隐藏=${quickAddToggle.hidden}，恢复后出现=${quickAddToggle.restored}`);
+
+  // 必须从设置页的开关点进去验一遍：直接写存储只能证明渲染逻辑，证明不了开关接对了线
+  await page.click('#settingsBtn');
+  await sleep(600);
+  await page.click('#tabBtnComponents');
+  await sleep(500);
+  const hasToggle = await page.evaluate(() => !!document.getElementById('showQuickAddToggle'));
+  if (hasToggle) {
+    await page.click('#showQuickAddToggle'); // 取消勾选
+    await sleep(800);
+    const hiddenByUi = await page.evaluate(() => !document.querySelector('[data-quick-add="1"]'));
+    await page.click('#showQuickAddToggle'); // 重新勾选
+    await sleep(800);
+    const restoredByUi = await page.evaluate(() => !!document.querySelector('[data-quick-add="1"]'));
+    check('[42] 设置页开关能真正隐藏并恢复磁贴（UX-12）', hiddenByUi && restoredByUi,
+      `关闭后隐藏=${hiddenByUi}，再开启后出现=${restoredByUi}`);
+  } else {
+    check('[42] 设置页开关能真正隐藏并恢复磁贴（UX-12）', false, '设置页缺少 showQuickAddToggle');
+  }
+  await page.click('#settingsClose');
+  await sleep(500);
+
+  /* ---- [30][31] 搜索输入：网址直跳与输入法回车（UX-03 / UX-04）----
+     放在最后：命中网址时页面会真的导航离开，后续断言不再依赖本页状态。
+     导航目标用固定响应接住并记录，避免打真实外网（与 MOCK_* 的既定做法一致）。 */
+  const homeUrl = page.url();
+  const navTargets = [];
+  const catchNav = r => { navTargets.push(r.request().url()); return r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>mock</body></html>' }); };
+  await page.route(/^https?:\/\/(www\.)?(google|baidu|bing)\.com\//, catchNav);
+  await page.route(/^https?:\/\/(www\.)?github\.com/, catchNav);
+
+  // [31] 输入法合成中的回车是"确认候选词"，不得触发搜索
+  await page.fill('#searchInput', '天气预报');
+  const beforeIme = navTargets.length;
+  await page.evaluate(() => document.getElementById('searchInput')
+    .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true })));
+  await sleep(900);
+  check('[31] 输入法合成中按 Enter 不触发搜索（UX-04）', navTargets.length === beforeIme,
+    navTargets.length > beforeIme ? `误触发导航到 ${navTargets[navTargets.length - 1]}` : '未触发');
+  // 上一条若失败，说明页面已经误导航离开，必须先回到主页：
+  // 否则下面的 page.press 找不到搜索框，失败会表现为脚本超时崩溃而不是断言变红
+  if (navTargets.length > beforeIme) {
+    await page.goto(homeUrl, { waitUntil: 'domcontentloaded' });
+    await sleep(2500);
+  }
+  // 对照组：没有它，"不触发"在搜索功能整体失效时同样是绿的（无区分度断言）
+  await page.press('#searchInput', 'Enter');
+  await sleep(900);
+  check('[31] 对照：正常 Enter 仍能触发搜索', navTargets.length > beforeIme,
+    navTargets.length > beforeIme ? `已导航到 ${navTargets[navTargets.length - 1]}` : '正常回车也未能触发，说明上一条断言是假绿');
+
+  // [30] 网址直跳：输入 github.com 应打开该网站，而不是把它当搜索词
+  await page.goto(homeUrl, { waitUntil: 'domcontentloaded' });
+  await sleep(2500);
+  const beforeUrl = navTargets.length;
+  await page.fill('#searchInput', 'github.com');
+  await page.press('#searchInput', 'Enter');
+  await sleep(1200);
+  const jumpTarget = navTargets.length > beforeUrl ? navTargets[navTargets.length - 1] : '';
+  check('[30] 输入 github.com 直接打开该网站（UX-03）', /^https:\/\/(www\.)?github\.com\/?$/.test(jumpTarget),
+    jumpTarget || '(未发生导航)');
+
+  // [30] 对照：普通查询词仍走搜索（防止"什么都直跳"的过度修复）
+  await page.goto(homeUrl, { waitUntil: 'domcontentloaded' });
+  await sleep(2500);
+  const beforeQuery = navTargets.length;
+  await page.fill('#searchInput', '如何学习 css');
+  await page.press('#searchInput', 'Enter');
+  await sleep(1200);
+  const queryTarget = navTargets.length > beforeQuery ? navTargets[navTargets.length - 1] : '';
+  check('[30] 对照：普通查询词仍走搜索而非直跳', /\/search\?|\/s\?wd=/.test(queryTarget),
+    queryTarget || '(未发生导航)');
+
+  /* ---- [41] 快捷键（UX-15）---- */
+  await page.route(/keytest\.example/, catchNav);
+  await page.goto(homeUrl, { waitUntil: 'domcontentloaded' });
+  await sleep(2500);
+  await page.evaluate(async () => {
+    await Storage.importData(JSON.stringify({ schemaVersion: 1,
+      bookmarks: [
+        { id: 'k1', title: '第一个', url: 'https://keytest.example/', sortOrder: 0 },
+        { id: 'k2', title: '第二个', url: 'https://second.example/', sortOrder: 1 }
+      ], categories: [], todos: [] }));
+    await App.renderBookmarks();
+    await new Promise(r => setTimeout(r, 400));
+  });
+  const navBeforeTyping = navTargets.length;
+  await page.click('#searchInput');
+  await page.keyboard.type('123');
+  const typed = await page.evaluate(() => document.getElementById('searchInput').value);
+  check('[41] 搜索框聚焦时数字键正常输入、不触发跳转（UX-15）',
+    typed === '123' && navTargets.length === navBeforeTyping,
+    `输入框值="${typed}"，新增导航 ${navTargets.length - navBeforeTyping} 次`);
+
+  // 失焦后数字键才打开第 N 个书签。
+  // 新标签页默认 autofocus 在搜索框上，所以"打开即按数字键"确实是输入而非跳转——
+  // 这是有意的取舍：宁可少一个快捷键，也不劫持用户正在输入的字符。
+  await page.evaluate(() => {
+    const el = document.getElementById('searchInput');
+    el.value = '';
+    el.blur();
+  });
+  const beforeKey = navTargets.length;
+  await page.keyboard.press('1');
+  await sleep(1200);
+  const keyTarget = navTargets.length > beforeKey ? navTargets[navTargets.length - 1] : '';
+  check('[41] 失焦后数字键 1 打开第 1 个书签（UX-15）', /keytest\.example/.test(keyTarget),
+    keyTarget || '(未发生导航)');
+
+  // ? 弹出快捷键速查（同样要求非输入态）。
+  // 上一步的数字键已经导航离开主页，这里必须先回主页再失焦搜索框。
+  await page.goto(homeUrl, { waitUntil: 'domcontentloaded' });
+  await sleep(2200);
+  await page.evaluate(() => {
+    const el = document.getElementById('searchInput');
+    if (el) el.blur();
+  });
+  await page.keyboard.press('?');
+  await sleep(600);
+  const helpText = await page.evaluate(() => {
+    const el = document.querySelector('#toastRoot .toast');
+    return el ? el.innerText : '';
+  });
+  check('[41] ? 弹出快捷键速查（UX-15）', /快捷键/.test(helpText) && /1-9/.test(helpText),
+    `提示="${helpText}"`);
 
   return { consoleErrors, pageErrors, requests };
 }
@@ -858,7 +1710,7 @@ async function runFileMode() {
   const fileUrl = 'file://' + path.join(EXT_PATH, 'index.html');
   await page.goto(fileUrl, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(4500);
-  check('[F1] file:// 渲染', await page.locator('.bookmark-item').count() === 8);
+  check('[F1] file:// 渲染', await page.locator('.bookmark-item:not([data-quick-add])').count() === 8);
   const cityOpts = await page.evaluate(() => document.getElementById('weatherCitySelect').options.length);
   check('[F1] file:// 城市降级（US-20 已知行为）', cityOpts <= 1, `实际 ${cityOpts}`);
   check('[F1] file:// 导出可用', await (async () => {

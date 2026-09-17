@@ -60,6 +60,8 @@ const DEFAULT_SETTINGS = {
   weatherCity: '',
   weatherCache: null,
   showBottomBar: true,
+  // UX-12：主页书签区末尾的快捷添加磁贴是否显示（设置页可关）
+  showQuickAdd: true,
   componentVisibility: {},
   version: '1.0.0'
 };
@@ -243,6 +245,58 @@ function escapeHtml(str) {
 
 function escapeAttr(str) {
   return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/* 回车提交判定（UX-04）：中文等输入法用 Enter 确认候选词时不应触发提交。
+   本仓库曾在待办输入框单独修过这个问题（P2-9），搜索框漏改——同类缺陷只修一处。
+   统一抽成共享判定，新增输入框一律走它，避免第三处再漏。 */
+function isCommitEnter(e) {
+  return e.key === 'Enter' && !e.isComposing;
+}
+
+/* UX-10：把 chrome.bookmarks.getTree() 的树转成主页的"分类 + 链接"结构。
+   纯函数：便于单测覆盖深层嵌套、重复 URL、超长标题、空文件夹、非 http 协议等边界，
+   也便于在无扩展环境（预览模式）下离线验证转换逻辑。
+   options.scope：'bar' 只取书签栏（Chrome 中固定 id 为 '1'），'all' 取全部根文件夹。 */
+function bookmarksTreeToCategories(tree, options = {}) {
+  const { scope = 'all', maxItemsPerCategory = 200, maxTitleLength = 60 } = options;
+  if (!Array.isArray(tree)) return [];
+
+  const clean = (text, fallback) => {
+    const s = String(text == null ? '' : text).trim();
+    return (s || fallback).slice(0, maxTitleLength);
+  };
+  // 只导入可在新标签页打开的地址：chrome://、file://、javascript: 等一律丢弃
+  const importable = url => /^https?:\/\//i.test(String(url || ''));
+
+  const seen = new Set();
+  const collect = (node, acc) => {
+    for (const child of (node && node.children) || []) {
+      if (!child || typeof child !== 'object') continue;
+      if (importable(child.url)) {
+        const url = String(child.url);
+        if (seen.has(url)) continue; // 同一地址可能同时存在于书签栏和其他书签，去重
+        if (acc.length >= maxItemsPerCategory) continue;
+        seen.add(url);
+        acc.push({ title: clean(child.title, url), url });
+      } else if (Array.isArray(child.children)) {
+        collect(child, acc); // 文件夹递归展开，层级拉平成一列链接
+      }
+    }
+    return acc;
+  };
+
+  const categories = [];
+  for (const root of tree) {
+    for (const folder of (root && root.children) || []) {
+      if (!folder || typeof folder !== 'object') continue;
+      if (scope === 'bar' && folder.id !== '1') continue;
+      if (importable(folder.url)) continue; // 根节点下散落的书签不构成一个分类
+      const items = collect(folder, []);
+      if (items.length) categories.push({ title: clean(folder.title, '浏览器书签'), items });
+    }
+  }
+  return categories;
 }
 
 /* ---- 存储后端适配：Chrome 扩展 → localStorage 回退 ---- */
@@ -499,6 +553,27 @@ const Storage = {
     }
   },
 
+  /* UX-08：按原 id/createdAt 放回被删的待办，供"撤销删除"使用。
+     不复用 addTodo —— 那会生成新 id 与新的 createdAt，撤销后条目会跳到列表末尾，
+     与用户"刚删掉的那条回到原位"的预期不符。 */
+  async restoreTodo(todo) {
+    if (!todo || typeof todo !== 'object' || typeof todo.id !== 'string') return;
+    const { todos = [] } = await storageGet(['todos']);
+    if (todos.some(t => t.id === todo.id)) return; // 已存在则不重复插入
+    todos.push(todo);
+    await storageSet({ todos });
+  },
+
+  /* UX-12：把删掉的书签按原样放回（含原 id 与 sortOrder），供主页悬浮删除的"撤销"使用。
+     主页按 sortOrder 排序渲染，所以直接 push 到数组末尾也不会打乱显示位置。 */
+  async restoreBookmark(bookmark) {
+    if (!bookmark || typeof bookmark !== 'object' || typeof bookmark.id !== 'string') return;
+    const { bookmarks = [] } = await storageGet(['bookmarks']);
+    if (bookmarks.some(b => b.id === bookmark.id)) return;
+    bookmarks.push(bookmark);
+    await storageSet({ bookmarks });
+  },
+
   async getSettings() {
     try {
       const result = await storageGet(['settings']);
@@ -588,9 +663,24 @@ const Storage = {
     return next;
   },
 
+  /* 导入前自动备份（轮转保留最近 3 份，-1 为最新）。
+     JSON 导入与"从浏览器导入书签"共用，保证两条路径都能用设置页的
+     "恢复最近备份"一键回滚——书签导入同样是批量写入，同样需要后悔药。 */
+  async backupBeforeImport() {
+    const [bookmarks, categories, todos, settings] = await Promise.all([
+      this.getBookmarks(), this.getCategories(), this.getTodos(), this.getSettings()
+    ]);
+    const prev = await storageGet(['lastImportBackup-1', 'lastImportBackup-2']);
+    const backups = {
+      'lastImportBackup-1': { bookmarks, categories, todos, settings, backedUpAt: Date.now() }
+    };
+    if (prev['lastImportBackup-1']) backups['lastImportBackup-2'] = prev['lastImportBackup-1'];
+    if (prev['lastImportBackup-2']) backups['lastImportBackup-3'] = prev['lastImportBackup-2'];
+    await storageSet(backups);
+  },
+
   /* 恢复最近一次导入前的自动备份（lastImportBackup-1），用于误导入后的回滚 */
-  async restoreLastImportBackup() {
-    const result = await storageGet(['lastImportBackup-1']);
+  async restoreLastImportBackup() {    const result = await storageGet(['lastImportBackup-1']);
     const backup = result['lastImportBackup-1'];
     if (!backup) throw new Error('没有可用的导入前备份');
     const next = {
@@ -615,12 +705,12 @@ const Storage = {
  * 读方法（getXxx / exportData）不排队，避免拖慢渲染。
  */
 const SERIALIZED_METHODS = [
-  'addBookmark', 'updateBookmark', 'deleteBookmark', 'reorderBookmarks',
+  'addBookmark', 'updateBookmark', 'deleteBookmark', 'restoreBookmark', 'reorderBookmarks',
   'addCategory', 'updateCategory', 'deleteCategory', 'reorderCategories',
   'addCategoryItem', 'updateCategoryItem', 'deleteCategoryItem',
-  'addTodo', 'toggleTodo', 'deleteTodo',
+  'addTodo', 'toggleTodo', 'deleteTodo', 'restoreTodo',
   'updateSettings',
-  'importData', 'restoreLastImportBackup'
+  'importData', 'restoreLastImportBackup', 'backupBeforeImport'
 ];
 let _writeChain = Promise.resolve();
 for (const _name of SERIALIZED_METHODS) {
@@ -644,6 +734,8 @@ if (typeof module !== 'undefined' && module.exports) {
     normalizeCategories,
     escapeHtml,
     escapeAttr,
+    isCommitEnter,
+    bookmarksTreeToCategories,
     generateId,
     DEFAULT_SETTINGS,
     SUPPORTED_SCHEMA_VERSION

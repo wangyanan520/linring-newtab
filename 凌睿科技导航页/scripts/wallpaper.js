@@ -52,6 +52,28 @@ const WALLPAPERS = [
       accentBorder: 'rgba(220, 130, 50, 0.12)'
     }
   },
+  /* UX-02 路线 C：浅色预设壁纸。
+     此前三张预设底色全是深色，切到浅色主题时只能靠 .bg-layer::after 的白纱把背景"洗亮"
+     （路线 A）——可读性达标了，但壁纸本身的层次也一并被洗掉。
+     这张浅色预设让 light 主题有一条不必依赖白纱的路径：底色本身就亮，
+     白纱叠加后仍是浅色，内容区的对比度和壁纸观感可以同时保住。 */
+  {
+    name: '晨雾白',
+    type: 'preset',
+    themeHint: 'light',
+    css: `
+      radial-gradient(ellipse 70% 55% at 15% 20%, rgba(168, 190, 235, 0.55) 0%, transparent 62%),
+      radial-gradient(ellipse 60% 50% at 85% 18%, rgba(235, 214, 226, 0.50) 0%, transparent 58%),
+      radial-gradient(ellipse 80% 60% at 50% 85%, rgba(206, 224, 240, 0.45) 0%, transparent 55%),
+      linear-gradient(135deg, #eef2f9 0%, #e6ecf6 35%, #f2eef5 65%, #e9eef6 100%)
+    `,
+    colors: {
+      accent: 'rgba(108, 92, 200, 0.75)',
+      accentLight: 'rgba(140, 124, 220, 0.35)',
+      accentGlow: 'rgba(108, 92, 200, 0.12)',
+      accentBorder: 'rgba(108, 92, 200, 0.14)'
+    }
+  },
   /* ---- API 在线壁纸 ---- */
   {
     name: 'Bing 每日壁纸',
@@ -123,6 +145,44 @@ function todayStr() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+/* UX-13：把采样到的相对亮度折算成主题提示。
+   阈值 0.55 取得偏保守——宁可判成 dark（白字压深底）也不要误判成 light，
+   因为深底白字在偏亮壁纸上只是对比度下降，而亮底白字是直接看不见。 */
+function brightnessToThemeHint(luminance, threshold = 0.55) {
+  if (typeof luminance !== 'number' || !Number.isFinite(luminance)) return null;
+  return luminance >= threshold ? 'light' : 'dark';
+}
+
+/* 对在线壁纸做明度采样：降采样到 8×8 后取平均相对亮度（0-1）。
+   为什么用 fetch 而不是 <img> + canvas：跨域图片会污染 canvas，getImageData 直接抛错；
+   扩展页面持有 host_permissions 时 fetch 不受 CORS 限制，blob → bitmap 后是同源的。
+   任何一步失败（网络、跨域、浏览器不支持 createImageBitmap）都返回 null，
+   由调用方回退到壁纸自带的静态 themeHint。 */
+async function sampleImageBrightness(url) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    const bitmap = await createImageBitmap(blob);
+    const cv = document.createElement('canvas');
+    cv.width = 8;
+    cv.height = 8;
+    const cx = cv.getContext('2d');
+    cx.drawImage(bitmap, 0, 0, 8, 8);
+    if (typeof bitmap.close === 'function') bitmap.close();
+    const d = cx.getImageData(0, 0, 8, 8).data;
+    let sum = 0;
+    let n = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      sum += 0.2126 * (d[i] / 255) + 0.7152 * (d[i + 1] / 255) + 0.0722 * (d[i + 2] / 255);
+      n++;
+    }
+    return n ? sum / n : null;
+  } catch {
+    return null;
+  }
+}
+
 /* ---- 壁纸管理器 ---- */
 const Wallpaper = {
   currentIndex: 0,
@@ -138,6 +198,15 @@ const Wallpaper = {
 
   getWallpapers() {
     return WALLPAPERS;
+  },
+
+  /* UX-02：把"壁纸本身的明暗"作为独立属性写到 <html> 上，
+     让保底层强度由 CSS 按「主题 × 壁纸明度」两个属性共同决定
+     （见 main.css 的 .bg-layer::after 规则组）。
+     为什么不在 JS 里算好覆盖色：主题还与"跟随壁纸/手动选择"有关，
+     在 JS 里同时维护两边会引出一堆时序问题；声明式交给 CSS 更稳。 */
+  setWallpaperTone(tone) {
+    document.documentElement.dataset.wallpaperTone = tone === 'light' ? 'light' : 'dark';
   },
 
   applyColors(colors) {
@@ -172,6 +241,8 @@ const Wallpaper = {
 
     this.currentIndex = index;
     this.applyColors(wallpaper.colors);
+    // UX-02：先把壁纸明暗告诉 CSS（预设直接读 themeHint，在线壁纸等采样结果再修正）
+    this.setWallpaperTone(wallpaper.themeHint);
     // PBI-10：主题处于"跟随壁纸"模式时按当前壁纸明度同步（异步读取设置，不阻塞渲染）
     this.syncThemeFromWallpaper();
 
@@ -226,15 +297,28 @@ const Wallpaper = {
 
     if (gen !== this._applyGen) return; // 写缓存期间又被取代
     this.setBgImage(bgLayer, url);
+    // UX-13：图片地址确定后再联动一次主题（预设壁纸在进入 API 分支前已联动过）。
+    // 不 await：采样是附加修正，不应拖慢壁纸显示。
+    this.syncThemeFromWallpaper(url);
   },
 
   /* PBI-10：主题与壁纸联动——仅当设置 theme='auto'（跟随壁纸）时生效；
-     手动选择深/浅后不随壁纸变化（PBI-10 AC2）。API 壁纸明度不可预知，保持当前主题。 */
-  async syncThemeFromWallpaper() {
+     手动选择深/浅后不随壁纸变化（PBI-10 AC2）。
+     UX-13：在线壁纸（Bing 每日 / 随机）的 themeHint 是 null，此前一律落回 dark；
+     若当日壁纸偏亮，白字会看不清。这里在拿到图片地址后补一次明度采样，
+     采样失败（网络/跨域）仍回退到静态 hint，不改变原有行为。 */
+  async syncThemeFromWallpaper(imageUrl) {
     try {
       const settings = await Storage.getSettings();
+      let hint = WALLPAPERS[this.currentIndex].themeHint;
+      // UX-13：在线壁纸 themeHint 为 null，采样一次图片明度补上。
+      // 不论主题是不是 auto 都要采——保底层强度也要用到这个结果。
+      if (!hint && imageUrl) {
+        hint = brightnessToThemeHint(await sampleImageBrightness(imageUrl));
+        if (hint) this.setWallpaperTone(hint);
+      }
+      // PBI-10：只有 auto 模式才让主题跟着壁纸走；手动选定深/浅后不随壁纸变化（AC2）
       if (settings.theme !== 'auto') return;
-      const hint = WALLPAPERS[this.currentIndex].themeHint;
       document.documentElement.dataset.theme = hint === 'light' ? 'light' : 'dark';
     } catch (e) {
       console.error('主题联动失败:', e);
@@ -277,3 +361,8 @@ const Wallpaper = {
     }
   }
 };
+
+/* ---- Node 测试环境导出（UX-13）：浏览器以 <script> 全局加载，module 未定义时不执行 ---- */
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { brightnessToThemeHint, WALLPAPERS };
+}

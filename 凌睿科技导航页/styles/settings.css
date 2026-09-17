@@ -210,12 +210,18 @@
 
 .tab-btn {
   background: none; border: none;
-  color: rgba(255, 255, 255, 0.30); padding: 13px 24px;
+  color: rgba(255, 255, 255, 0.30); padding: 13px 4px;
   cursor: pointer; font-size: 13px;
   font-family: var(--font, -apple-system, "PingFang SC", sans-serif);
   border-bottom: 2px solid transparent;
   transition: all 0.25s ease;
   margin-bottom: -1px; letter-spacing: 0.4px; font-weight: 400;
+  /* UX-05：此前每个 tab 左右各 24px padding，7 个光 padding 就占掉 336px，
+     留给文字的只有 168px（平均 24px/个），而"快捷书签"需要约 54px —— 7 个 tab
+     全部折成两行（"壁纸"显示成"壁/纸"，tab 高 64px 而单行只需约 40px）。
+     改为等分弹性布局：504px / 7 = 每个 72px，文字 54px + padding 8px，余量 10px。 */
+  flex: 1;
+  white-space: nowrap;
 }
 
 .tab-btn:hover { color: rgba(255, 255, 255, 0.55); }

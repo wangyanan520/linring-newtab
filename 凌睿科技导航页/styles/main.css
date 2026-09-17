@@ -1,7 +1,9 @@
 :root {
   --text-primary: #ffffff;
   --text-secondary: rgba(255, 255, 255, 0.78);
-  --text-tertiary: rgba(255, 255, 255, 0.45);
+  /* UX-14：原为 0.45，压在深色壁纸上只有 4.10–4.50:1（副标题、日期时间、引擎按钮、
+     底部按钮四处实测不达标）。0.52 留出余量吸收壁纸渐变的局部提亮。 */
+  --text-tertiary: rgba(255, 255, 255, 0.52);
   --glass-bg: rgba(0, 0, 0, 0.18);
   --glass-bg-hover: rgba(0, 0, 0, 0.28);
   --glass-border: rgba(255, 255, 255, 0.06);
@@ -23,11 +25,17 @@
   --accent-border: rgba(150, 100, 255, 0.12);
 }
 
-/* ===== V3 浅色主题 ===== */
+/* ===== V3 浅色主题 =====
+   UX-02：浅色主题此前只改前景色、不改背景，三个预设壁纸底色都是深色，
+   结果是"深色文字压在深色壁纸上"——实测 10 项关键元素里 8-9 项不达 WCAG AA
+   （副标题 1.34:1、书签名称 1.41:1）。修复分三层，缺一不可：
+   ① 背景层真的变亮（见下面的 .bg-layer::after）
+   ② 文本变量的 alpha 足够（本块，原 0.74/0.52 在纯白底上也分别只有 6.1/3.6:1）
+   ③ 补齐此前完全缺失的选择器级覆盖（见本文件末尾的浅色主题补齐区） */
 [data-theme="light"] {
-  --text-primary: rgba(25, 28, 45, 0.92);
-  --text-secondary: rgba(25, 28, 45, 0.74);
-  --text-tertiary: rgba(25, 28, 45, 0.52);
+  --text-primary: rgba(25, 28, 45, 0.95);
+  --text-secondary: rgba(25, 28, 45, 0.82);
+  --text-tertiary: rgba(25, 28, 45, 0.68);
   --glass-bg: rgba(255, 255, 255, 0.50);
   --glass-bg-hover: rgba(255, 255, 255, 0.68);
   --glass-border: rgba(25, 28, 45, 0.10);
@@ -37,8 +45,29 @@
   --shadow-lg: 0 16px 48px rgba(40, 35, 70, 0.18);
 }
 
+/* UX-02 根因①：.bg-layer 的背景由 wallpaper.js 内联写入（样式表覆盖不了），
+   纯 CSS 唯一可控点就是这个伪元素。原值 rgba(255,255,255,0.16) 叠在深色壁纸上
+   只把底部抬到等效灰阶 40，而卡片底是 121 —— 文字夹在中间必然不可读。 */
 [data-theme="light"] .bg-layer::after {
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(246, 247, 252, 0.88);
+}
+
+/* UX-02 路线 C：保底层强度由「主题 × 壁纸明度」共同决定。
+   data-wallpaper-tone 由 wallpaper.js 写在 <html> 上（预设读 themeHint，在线壁纸用采样结果）。
+   方向一致时保持淡覆盖以留住壁纸观感；方向相反时必须加重，否则文字与背景明度接近、
+   对比度直接塌掉——实测"晨雾白（浅色壁纸）+ 深色主题"下 10 项关键元素全部不达标（最低 1.41:1）。
+
+   这里刻意压到近黑：可读性是底线，而浅色壁纸的最佳观感路径是配浅色主题
+   （auto 模式选到晨雾白会自动切 light，走下面那条 0.45 的规则）。
+   手动坚持"深色主题 + 浅色壁纸"时牺牲壁纸观感、保住文字可读，是两者相权后的选择。 */
+[data-theme="dark"][data-wallpaper-tone="light"] .bg-layer::after {
+  background: rgba(6, 8, 18, 0.85);
+}
+
+/* 浅色壁纸配浅色主题：不必洗到 0.88，45% 就够把底色压进浅色区间，
+   同时保留壁纸本身的层次——这正是新增浅色预设（路线 C）的收益。 */
+[data-theme="light"][data-wallpaper-tone="light"] .bg-layer::after {
+  background: rgba(248, 249, 253, 0.45);
 }
 
 [data-theme="light"] .datetime,
@@ -357,11 +386,20 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  /* UX-01：这里不能用 justify-content: center。
+     内容高度超过视口时，居中会让溢出部分同时向上下两端跑，而滚动只能到达下方那一半，
+     顶部溢出的内容（标题、搜索框）永远滚不回来——实测 28 书签时搜索框 top=-61，
+     滚到顶仍是 -61。改用首/末子元素的 margin: auto 吸收剩余空间：
+     空间充足时两个 auto 平分余量，效果等同居中；空间不足时自动退化为 0，
+     内容从顶部开始并完整可滚。 */
+  justify-content: flex-start;
   gap: 36px;
   padding: 20px 0;
   overflow-y: auto;
 }
+
+.main-content > :first-child { margin-top: auto; }
+.main-content > :last-child { margin-bottom: auto; }
 
 /* ===== 标题 ===== */
 .title-group {
@@ -429,7 +467,9 @@ body {
 .engine-btn {
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.45);
+  /* UX-14：原为硬编码 rgba(255,255,255,0.45)，没有跟随 --text-tertiary，
+     导致深色主题下引擎按钮实测只有 4.15–4.40:1。改用变量后自动跟随主题。 */
+  color: var(--text-tertiary);
   font-size: 12px;
   font-family: var(--font);
   cursor: pointer;
@@ -508,10 +548,25 @@ body {
 }
 
 .links-grid {
-  display: flex;
+  /* UX-06：原为 flex + justify-content:center，换行后**每行独立居中**。
+     容器 max-width 640px、格子 68px、间距 24px，每行恰好放 7 个
+     （7×68 + 6×24 = 620 ≤ 640，8 个需要 712 放不下），于是第 8 个独占一行并居中，
+     与首行左边界差 276px，视觉断层。
+     改用列对齐网格：auto-fit 会折叠空轨道，书签少时网格自然收窄并整体居中（保持原观感）；
+     超过一行时按轨道严格左对齐。用 auto-fit 而非 auto-fill——后者不折叠空轨道，少量书签会左偏。 */
+  display: grid;
+  grid-template-columns: repeat(auto-fit, 68px);
   justify-content: center;
-  flex-wrap: wrap;
   gap: 24px;
+}
+
+/* UX-12：cell 是网格项与拖拽单元，<a> 只负责导航。
+   宽度落在 cell 上，<a> 撑满它——这样删除按钮能相对 cell 定位，且拖拽搬动整个 cell。 */
+.bookmark-cell {
+  position: relative;
+  width: 68px;
+  display: flex;
+  flex-direction: column;
 }
 
 .bookmark-item {
@@ -521,7 +576,7 @@ body {
   gap: 8px;
   text-decoration: none;
   color: var(--text-primary);
-  width: 68px;
+  width: 100%;
   transition: all 0.3s var(--ease-out);
   cursor: pointer;
   position: relative;
@@ -536,9 +591,61 @@ body {
 }
 
 /* V3 拖拽排序：书签拖拽中视觉反馈 */
-.bookmark-item.dragging {
+/* 拖拽中的视觉反馈挂在 cell 上：draggable 已经从 <a> 移到这里 */
+.bookmark-cell.dragging {
   opacity: 0.45;
   transform: scale(0.96);
+}
+
+/* UX-12：悬浮/键盘聚焦时才出现的删除按钮。
+   默认 opacity:0 且 pointer-events:none —— 平时不占视觉、也不抢点击。 */
+.bookmark-remove {
+  position: absolute;
+  top: -6px;
+  right: 2px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(22, 22, 40, 0.92);
+  color: rgba(255, 255, 255, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 2;
+  transition: opacity 0.2s var(--ease-out), background 0.2s ease, color 0.2s ease;
+}
+
+.bookmark-cell:hover .bookmark-remove,
+.bookmark-cell:focus-within .bookmark-remove {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.bookmark-remove:hover,
+.bookmark-remove:focus-visible {
+  background: #c0392b;
+  border-color: #c0392b;
+  color: #ffffff;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+[data-theme="light"] .bookmark-remove {
+  background: rgba(252, 252, 255, 0.96);
+  border-color: rgba(25, 28, 45, 0.16);
+  color: rgba(25, 28, 45, 0.70);
+}
+
+[data-theme="light"] .bookmark-remove:hover,
+[data-theme="light"] .bookmark-remove:focus-visible {
+  background: #c0392b;
+  border-color: #c0392b;
+  color: #ffffff;
 }
 
 .bookmark-icon {
@@ -735,7 +842,13 @@ body {
   border-radius: var(--radius-md);
   padding: 14px 16px;
   transition: all 0.3s var(--ease-out);
-  height: fit-content;
+  /* UX-07：此前是 height: fit-content，待办卡片只有 111px 而相邻分类容器 248px，
+     右列下方留出 141px 空洞。交给 grid 默认的 stretch 与左列等高。
+     margin-top 与 .categories 的 4px 对齐，否则顶部差 4px。 */
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .todo-card:hover {
@@ -776,7 +889,17 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  /* UX-07：待办会随使用无限增长，此前没有高度约束，15 条就能把主网格撑高 400px 以上，
+     直接触发 UX-01 的内容溢出。超过 8 条后改为卡片内部滚动。 */
+  max-height: 240px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
+
+.todo-list::-webkit-scrollbar { width: 4px; }
+.todo-list::-webkit-scrollbar-track { background: transparent; }
+.todo-list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.16); border-radius: 2px; }
+.todo-list::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.26); }
 
 .todo-item {
   display: flex;
@@ -1032,7 +1155,12 @@ body {
     gap: 18px;
   }
 
-  .bookmark-item {
+  /* UX-12：轨道与 cell 宽度同步收窄；<a> 仍是 width:100%，跟着 cell 走 */
+  .links-grid {
+    grid-template-columns: repeat(auto-fit, 60px);
+  }
+
+  .bookmark-cell {
     width: 60px;
   }
 
@@ -1070,7 +1198,7 @@ body {
 /* ===== 滚动条 ===== */
 .main-content::-webkit-scrollbar,
 .settings-body::-webkit-scrollbar {
-  width: 3px;
+  width: 5px;
 }
 
 .main-content::-webkit-scrollbar-track,
@@ -1080,13 +1208,173 @@ body {
 
 .main-content::-webkit-scrollbar-thumb,
 .settings-body::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 2px;
+  /* UX-01：原为 rgba(255,255,255,0.08)（对比度约 1.28:1，等于看不见）。
+     修复后内容超高时靠滚动可达，滚动条本身必须能被看见，否则用户不知道下面还有内容。 */
+  background: rgba(255, 255, 255, 0.20);
+  border-radius: 3px;
 }
 
 .main-content::-webkit-scrollbar-thumb:hover,
 .settings-body::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.32);
+}
+
+/* UX-01：浅色主题此前完全没有滚动条覆盖规则，深浅两套主题都要能看到 */
+[data-theme="light"] .main-content::-webkit-scrollbar-thumb,
+[data-theme="light"] .settings-body::-webkit-scrollbar-thumb,
+[data-theme="light"] .todo-list::-webkit-scrollbar-thumb {
+  background: rgba(25, 28, 45, 0.24);
+}
+
+[data-theme="light"] .main-content::-webkit-scrollbar-thumb:hover,
+[data-theme="light"] .settings-body::-webkit-scrollbar-thumb:hover,
+[data-theme="light"] .todo-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(25, 28, 45, 0.38);
+}
+
+/* UX-12：主页书签区末尾的快捷添加磁贴。
+   保持低视觉权重（不抢已收藏站点的注意力），hover/聚焦时才提亮。
+   刻意不给 draggable 属性——拖拽逻辑按 [draggable="true"] 收集元素，磁贴自然不会参与排序。 */
+.bookmark-tile-add {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--font);
+  opacity: 0.45;
+  transition: all 0.3s var(--ease-out);
+}
+
+.bookmark-tile-add:hover,
+.bookmark-tile-add:focus-visible {
+  opacity: 1;
+  transform: translateY(-3px);
+}
+
+.bookmark-add-icon {
+  border: 1px dashed rgba(255, 255, 255, 0.28);
+  background: rgba(0, 0, 0, 0.10);
+  font-size: 22px;
+  font-weight: 300;
+  color: var(--text-secondary);
+}
+
+.bookmark-tile-add:hover .bookmark-add-icon {
+  border-color: var(--accent-color);
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .bookmark-add-icon {
+  border-color: rgba(25, 28, 45, 0.22);
+  background: rgba(255, 255, 255, 0.42);
+  color: rgba(25, 28, 45, 0.62);
+}
+
+[data-theme="light"] .bookmark-tile-add:hover .bookmark-add-icon {
+  border-color: #6d4bd8;
+  color: rgba(25, 28, 45, 0.92);
+}
+
+/* ===== 操作反馈 toast（UX-08 撤销删除 / UX-11 壁纸切换提示） ===== */
+.toast-root {
+  position: fixed;
+  left: 50%;
+  bottom: 92px; /* 落在底部工具栏上方，不遮挡壁纸/设置按钮 */
+  transform: translateX(-50%);
+  z-index: 1200; /* 高于设置面板（1000），面板打开时也能看到反馈 */
+  display: none;
+  pointer-events: none;
+}
+
+.toast-root.visible { display: block; }
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 10px 9px 18px;
+  border-radius: var(--radius-full);
+  background: rgba(22, 22, 40, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: var(--shadow-md);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 13px;
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.22s var(--ease-out), transform 0.22s var(--ease-out);
+}
+
+.toast.in { opacity: 1; transform: translateY(0); }
+
+.toast-action {
+  background: rgba(255, 255, 255, 0.10);
+  border: none;
+  color: #ffffff;
+  font-size: 12px;
+  font-family: var(--font);
+  padding: 5px 13px;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.toast-action:hover { background: rgba(255, 255, 255, 0.20); }
+
+[data-theme="light"] .toast {
+  background: rgba(252, 252, 255, 0.97);
+  border-color: rgba(25, 28, 45, 0.10);
+  color: rgba(25, 28, 45, 0.92);
+}
+
+[data-theme="light"] .toast-action {
+  background: rgba(25, 28, 45, 0.08);
+  color: rgba(25, 28, 45, 0.92);
+}
+
+[data-theme="light"] .toast-action:hover { background: rgba(25, 28, 45, 0.14); }
+
+/* ===== 空状态行动引导（UX-09） ===== */
+.empty-state-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 22px 8px;
+}
+
+.empty-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.btn-ghost {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: var(--font);
+  padding: 8px 16px;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all 0.2s var(--ease-out);
+}
+
+.btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .btn-ghost {
+  background: rgba(255, 255, 255, 0.62);
+  border-color: rgba(25, 28, 45, 0.12);
+  color: rgba(25, 28, 45, 0.78);
+}
+
+[data-theme="light"] .btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.88);
+  color: rgba(25, 28, 45, 0.95);
 }
 
 /* ===== 天气预报（24h）悬浮卡片 ===== */
@@ -1416,3 +1704,107 @@ body {
 [data-theme="light"] .dhc-countdown {
   color: #b45309;
 }
+
+/* ==========================================================================
+   UX-02 浅色主题补齐区
+   集中放在文件末尾：浅色主题的缺口分散在 1000+ 行的各组件里，逐处插入会让
+   "到底漏了哪个组件"变得无法审计（静态完整性审查一次就找出 30+ 处）。
+   每条对应 10-使用体验优化方案.md 附录 C 的缺口清单，分三组：
+   R4 = 此前完全没有浅色覆盖的硬编码颜色
+   R5 = 已有覆盖但 alpha 仍偏弱（在纯白底上也不足 4.5:1）
+   R6 = --accent-* 由 wallpaper.js 内联写入、CSS 覆盖无效，需给兜底实色
+   ========================================================================== */
+
+/* --- R4：完全缺失的浅色覆盖 --- */
+
+/* 主标题此前是硬编码白字（原 L375），浅色背景下实测仅 1.37:1 */
+[data-theme="light"] .site-title {
+  color: rgba(25, 28, 45, 0.92);
+  text-shadow: 0 2px 16px rgba(255, 255, 255, 0.55);
+}
+
+/* 副标题颜色走变量，但阴影仍是深色，浅底上会糊成灰边 */
+[data-theme="light"] .site-subtitle {
+  text-shadow: 0 1px 8px rgba(255, 255, 255, 0.50);
+}
+
+/* 天气分隔符硬编码 15% 白，浅底下等于不可见 */
+[data-theme="light"] .weather-sep {
+  color: rgba(25, 28, 45, 0.28);
+}
+
+/* 待办"添加"与底部工具按钮的 hover 态是硬编码深色高光，浅底上越 hover 越糊 */
+[data-theme="light"] .todo-add-btn:hover {
+  color: var(--text-primary);
+  background: rgba(25, 28, 45, 0.08);
+}
+
+[data-theme="light"] .tool-btn:hover {
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(25, 28, 45, 0.14);
+}
+
+/* 分类链接的基础态是深色半透明底，浅色下应改为浅色玻璃 */
+[data-theme="light"] .category-link {
+  background: rgba(255, 255, 255, 0.58);
+  border-color: rgba(25, 28, 45, 0.08);
+}
+
+[data-theme="light"] .category-header:hover {
+  background: rgba(25, 28, 45, 0.04);
+}
+
+/* 搜索框图标靠 opacity 压暗：深色图标 × 0.35 在浅底上只有 1.78:1 */
+[data-theme="light"] .search-icon { opacity: 0.55; }
+[data-theme="light"] .search-clear.visible { opacity: 0.62; }
+[data-theme="light"] .tool-btn svg { opacity: 0.78; }
+
+/* --- R5：已有覆盖但 alpha 偏弱 --- */
+[data-theme="light"] .category-title { color: rgba(25, 28, 45, 0.92); }
+[data-theme="light"] .todo-text { color: rgba(25, 28, 45, 0.78); }
+[data-theme="light"] .todo-text.done { color: rgba(25, 28, 45, 0.48); }
+[data-theme="light"] .todo-checkbox { border-color: rgba(25, 28, 45, 0.42); }
+[data-theme="light"] .todo-delete-btn { color: rgba(25, 28, 45, 0.40); }
+[data-theme="light"] .todo-delete-btn:hover { color: rgba(170, 35, 25, 0.95); }
+[data-theme="light"] .todo-input::placeholder { color: rgba(25, 28, 45, 0.42); }
+[data-theme="light"] .feedback-error { color: rgba(170, 35, 25, 0.95); }
+[data-theme="light"] .feedback-success { color: rgba(20, 120, 75, 0.95); }
+/* 空状态提示原本还叠了 opacity:.6，两层淡化后实测 1.07:1，这里一并去掉 */
+[data-theme="light"] .empty-hint { color: rgba(25, 28, 45, 0.62); opacity: 1; }
+[data-theme="light"] .dhc-nav { color: rgba(25, 28, 45, 0.68); }
+[data-theme="light"] .dhc-week,
+[data-theme="light"] .dhc-sub { color: rgba(25, 28, 45, 0.62); }
+[data-theme="light"] .dhc-week.dhc-weekend { color: rgba(25, 28, 45, 0.45); }
+[data-theme="light"] .dhc-cell.dhc-outside .dhc-day,
+[data-theme="light"] .dhc-cell.dhc-outside .dhc-sub { color: rgba(25, 28, 45, 0.36); }
+
+/* --- R6：accent 相关组件的浅色兜底实色 --- */
+[data-theme="light"] .todo-submit-btn {
+  background: #6d4bd8;
+  color: #ffffff;
+}
+
+[data-theme="light"] .todo-checkbox:checked {
+  background: #6d4bd8;
+  border-color: #6d4bd8;
+}
+
+[data-theme="light"] .dhc-cell.dhc-off .dhc-day,
+[data-theme="light"] .dhc-cell.dhc-off .dhc-sub { color: rgba(95, 60, 190, 0.95); }
+
+[data-theme="light"] .dhc-cell.dhc-today {
+  background: linear-gradient(180deg, #5b3fc4, #7a5cf0);
+}
+
+[data-theme="light"] .dhc-cell.dhc-today .dhc-day,
+[data-theme="light"] .dhc-cell.dhc-today .dhc-sub { color: #ffffff; }
+
+[data-theme="light"] .dhc-cell.dhc-work .dhc-day,
+[data-theme="light"] .dhc-cell.dhc-work .dhc-sub { color: rgba(30, 90, 200, 0.95); }
+
+[data-theme="light"] .dhc-badge-off { background: #b45309; }
+[data-theme="light"] .dhc-badge-work { background: #2f6fb0; }
+
+/* 根背景被 .bg-layer 完全遮盖，但浅色主题留深色底会在壁纸解码完成前闪一下黑 */
+[data-theme="light"],
+[data-theme="light"] body { background: #f4f5f9; }

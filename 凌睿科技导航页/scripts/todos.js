@@ -40,8 +40,9 @@ const Todos = {
       if (input) {
         input.focus();
         input.addEventListener('keydown', async (e) => {
-          // isComposing：中文等输入法用 Enter 确认候选词时不应提交待办
-          if (e.key === 'Enter' && !e.isComposing) await this.add();
+          // isCommitEnter：中文等输入法用 Enter 确认候选词时不应提交待办（P2-9，
+          // UX-04 起与搜索框共用同一判定）
+          if (isCommitEnter(e)) await this.add();
         });
         // blur 不再自动添加，仅通过 Enter 键或按钮提交
       }
@@ -61,8 +62,23 @@ const Todos = {
     container.querySelectorAll('.todo-delete-btn').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         const id = e.target.closest('.todo-item').dataset.id;
+        // UX-08：× 一点即删且不可恢复，误删只能重打一遍。
+        // 删除前先留存完整数据（含原 createdAt），撤销时按原样放回而不是当成新条目追加。
+        const todos = await Storage.getTodos();
+        const removed = todos.find(t => t.id === id);
         await Storage.deleteTodo(id);
         await this.render();
+        if (removed && typeof Toast !== 'undefined') {
+          const label = removed.text.length > 12 ? removed.text.slice(0, 12) + '…' : removed.text;
+          Toast.show(`已删除「${label}」`, {
+            actionLabel: '撤销',
+            duration: 5000,
+            onAction: async () => {
+              await Storage.restoreTodo(removed);
+              await this.render();
+            }
+          });
+        }
       });
     });
   },

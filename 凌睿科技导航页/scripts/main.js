@@ -4,6 +4,60 @@ const SEARCH_ENGINES = [
   { name: 'Bing', url: 'https://www.bing.com/search?q={query}' }
 ];
 
+/* ---- 搜索框输入判定（UX-03）----
+   区分"用户想打开一个网站"与"用户想搜索"：placeholder 承诺"搜索或输入网址"，
+   但此前所有输入都被拼成搜索链接，输入 github.com 会跳到 google.com/search?q=github.com。
+   判定原则是**保守优先**——拿不准就当搜索词，避免把用户的搜索意图误判成网址跳走。 */
+const URL_SCHEME_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
+const LOCAL_HOST_RE = /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(:\d+)?([/?#]|$)/i;
+const IPV4_RE = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(:\d+)?([/?#]|$)/;
+/* 域名：标签(含连字符，不以连字符开头结尾) + 顶级域(纯字母 2-24 位) + 可选端口/路径 */
+const DOMAIN_RE = /^([\p{L}\p{N}](?:[\p{L}\p{N}-]*[\p{L}\p{N}])?\.)+([\p{L}]{2,24})(:\d+)?([/?#].*)?$/u;
+/* 常见顶级域白名单：不在表内的（如 1.2.3 的 "3"、文件后缀 .txt）一律走搜索。
+   宁可漏判（用户多按一次回车），不可误判（用户的搜索词被当成网址跳走）。 */
+const COMMON_TLDS = new Set([
+  'com', 'cn', 'org', 'net', 'edu', 'gov', 'mil', 'int', 'io', 'ai', 'dev', 'app',
+  'co', 'me', 'tv', 'cc', 'xyz', 'top', 'site', 'online', 'shop', 'store', 'info',
+  'biz', 'name', 'pro', 'mobi', 'asia', 'tech', 'cloud', 'blog', 'wiki', 'news',
+  'live', 'fun', 'space', 'world', 'life', 'today', 'design', 'studio', 'agency',
+  'digital', 'media', 'group', 'team', 'works', 'tools', 'run', 'sh', 'gg', 'ly',
+  'be', 'it', 'de', 'fr', 'uk', 'us', 'jp', 'kr', 'ru', 'in', 'au', 'ca', 'br',
+  'nl', 'se', 'no', 'fi', 'dk', 'ch', 'at', 'es', 'pt', 'pl', 'tr', 'hk', 'tw',
+  'sg', 'my', 'th', 'vn', 'id', 'ph', 'mx', 'ar', 'za', 'eg', 'nz', 'ie', 'gr',
+  'cz', 'hu', 'ro', 'ua', 'il', 'sa', 'ae', 'link', 'click', 'page', 'host',
+  'lu', 'im', 'so', 'md', 'ws', 'to', 'vc', 'fm', 'am', 'la', 'gd', 'st'
+]);
+
+function isValidIpv4(match) {
+  for (let i = 1; i <= 4; i++) {
+    const n = Number(match[i]);
+    if (n > 255) return false;
+  }
+  return true;
+}
+
+/* 纯函数：返回 { type: 'url' | 'search', target }
+   - url：target 是可直接导航的完整地址（自动补协议）
+   - search：target 是原始查询词（去掉首尾空白） */
+function resolveInput(raw) {
+  const input = String(raw == null ? '' : raw).trim();
+  if (!input) return { type: 'search', target: '' };
+  // 已带协议：原样使用（含 chrome-extension://、file:// 等）
+  if (URL_SCHEME_RE.test(input)) return { type: 'url', target: input };
+  // 本机地址与内网 IP：默认 http（https 在本地开发环境通常不可用）
+  if (LOCAL_HOST_RE.test(input)) return { type: 'url', target: 'http://' + input };
+  const ip = input.match(IPV4_RE);
+  if (ip && isValidIpv4(ip)) return { type: 'url', target: 'http://' + input };
+  // 域名形态：顶级域需在白名单内，或为中文等非 ASCII 顶级域
+  const domain = input.match(DOMAIN_RE);
+  if (domain) {
+    const tld = domain[2].toLowerCase();
+    const isIdn = /[^\x00-\x7F]/.test(tld);
+    if (isIdn || COMMON_TLDS.has(tld)) return { type: 'url', target: 'https://' + input };
+  }
+  return { type: 'search', target: input };
+}
+
 /* ---- V3 组件注册表：主页区块统一按注册表 + 可见性配置渲染 ----
    locked=true 表示常驻组件（搜索框），不可关闭。
    区块定位依赖 index.html 中的 data-component="<id>" 标记（P3-1：此前另用 class/id 选择器，
@@ -159,7 +213,8 @@ const App = {
     const engineBtn = document.getElementById('engineBtn');
 
     searchInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') this.doSearch();
+      // UX-04：输入法合成期间的回车是"确认候选词"，不是"提交搜索"
+      if (isCommitEnter(e)) this.doSearch();
     });
 
     searchInput.addEventListener('input', () => {
@@ -174,14 +229,25 @@ const App = {
 
     engineBtn.addEventListener('click', () => this.cycleEngine());
 
-    document.getElementById('wallpaperBtn').addEventListener('click', () => {
-      Wallpaper.next();
+    document.getElementById('wallpaperBtn').addEventListener('click', async () => {
+      await Wallpaper.next();
+      // UX-11：此前切换壁纸只有背景变化，没有文字反馈，
+      // 用户不知道切到了哪张、也不知道还有没有下一张
+      if (typeof Toast === 'undefined') return;
+      const list = Wallpaper.getWallpapers();
+      const current = list[Wallpaper.currentIndex];
+      if (current) {
+        Toast.show(`壁纸：${current.name} · ${Wallpaper.currentIndex + 1}/${list.length}`, { duration: 2000 });
+      }
     });
 
     // PBI-18 搜索快捷键（US-22）：/ 聚焦搜索框；Esc 清空并失焦；输入聚焦时不冲突
+    // UX-15 扩展：数字键 1-9 打开第 N 个书签；? 弹出快捷键速查
     document.addEventListener('keydown', (e) => {
       const tag = e.target.tagName;
       const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target.isContentEditable === true);
+      const overlay = document.getElementById('settingsOverlay');
+      const settingsOpen = !!(overlay && overlay.classList.contains('open'));
       if (e.key === '/' && !isTyping) {
         e.preventDefault();
         searchInput.focus();
@@ -189,6 +255,15 @@ const App = {
         searchInput.value = '';
         searchClear.classList.remove('visible');
         searchInput.blur();
+      } else if (/^[1-9]$/.test(e.key) && !isTyping && !settingsOpen
+        && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        // 打开第 N 个快捷书签。带修饰键时不拦截，保留浏览器自身的快捷键
+        this.openBookmarkByIndex(Number(e.key) - 1);
+      } else if (e.key === '?' && !isTyping && !settingsOpen) {
+        e.preventDefault();
+        if (typeof Toast !== 'undefined') {
+          Toast.show('快捷键：/ 搜索 · 1-9 打开书签 · Esc 取消', { duration: 4000 });
+        }
       }
     });
 
@@ -212,9 +287,24 @@ const App = {
   doSearch() {
     const query = document.getElementById('searchInput').value.trim();
     if (!query) return;
-    const encoded = encodeURIComponent(query);
+    // UX-03：先判定是网址还是搜索词——placeholder 承诺了"搜索或输入网址"
+    const resolved = resolveInput(query);
+    if (resolved.type === 'url') {
+      window.location.href = resolved.target;
+      return;
+    }
+    const encoded = encodeURIComponent(resolved.target);
     const searchUrl = SEARCH_ENGINES[this.currentEngine].url.replace('{query}', encoded);
     window.location.href = searchUrl;
+  },
+
+  /* UX-15：数字键快捷打开第 N 个书签（按主页当前显示顺序，即 sortOrder） */
+  openBookmarkByIndex(index) {
+    const items = document.querySelectorAll('#bookmarkContainer .bookmark-item');
+    const target = items[index];
+    if (!target || !target.href) return false;
+    window.location.href = target.href;
+    return true;
   },
 
   startClock() {
@@ -268,26 +358,106 @@ const App = {
     const bookmarks = await Storage.getBookmarks();
     bookmarks.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
 
-    // 空状态提示：数据被清空后避免主页留一片无法解释的空白
+    // UX-09：空状态此前只有一行 11px 低对比度小字，没有任何可点的入口，
+    // 新用户（或清空预设数据后）在此处会卡住。改为"说明 + 主行动按钮"。
     if (bookmarks.length === 0) {
-      container.innerHTML = '<div class="empty-hint">还没有书签，点击底部「设置」添加</div>';
+      container.innerHTML = `
+        <div class="empty-state-block">
+          <div class="empty-hint">还没有书签</div>
+          <div class="empty-actions">
+            <button type="button" class="btn-primary" data-empty-action="add-bookmark">添加第一个书签</button>
+            <button type="button" class="btn-ghost" data-empty-action="import-bookmarks">从浏览器导入</button>
+          </div>
+        </div>`;
+      const addBtn = container.querySelector('[data-empty-action="add-bookmark"]');
+      if (addBtn) {
+        addBtn.addEventListener('click', async () => {
+          Settings.open();
+          Settings.switchTab('bookmarks');
+          // 必须等 open() 里那次异步列表渲染完成再插入表单，
+          // 否则 renderBookmarks 的 innerHTML 赋值会把刚 prepend 的表单抹掉
+          await Settings.renderBookmarks();
+          Settings.showAddBookmarkForm();
+        });
+      }
+      const importBtn = container.querySelector('[data-empty-action="import-bookmarks"]');
+      if (importBtn) {
+        importBtn.addEventListener('click', () => {
+          Settings.open();
+          Settings.switchTab('data');
+        });
+      }
       return;
     }
 
+    // UX-12：每个书签包一层 cell —— <a> 负责导航，删除按钮作为兄弟节点绝对定位在右上角。
+    // 不把 <button> 放进 <a> 里：那是无效 HTML，浏览器会把按钮移出链接。
+    // draggable 也从 <a> 移到 cell：拖拽逻辑按 [draggable="true"] 收集元素，
+    // 搬 cell 才能让删除按钮跟着一起走，否则重排后按钮会留在原地。
+    const showQuickAdd = (await Storage.getSettings()).showQuickAdd !== false;
     container.innerHTML = bookmarks.map(bm => {
       const domain = this.extractDomain(bm.url);
       // 属性值上下文用 escapeAttr（escapeHtml 不转义引号，标题首字符为 " 时会提前闭合属性）
       const firstChar = escapeAttr(bm.title.charAt(0));
       return `
-      <a href="${escapeAttr(bm.url)}" class="bookmark-item" title="${escapeAttr(bm.title)}" target="_blank" draggable="true" data-id="${escapeAttr(bm.id)}">
-        <div class="bookmark-icon">
-          <img src="https://favicon.im/${domain}"
-               alt="${escapeAttr(bm.title)}"
-               data-domain="${domain}"
-               data-char="${firstChar}">
-        </div>
-        <span class="bookmark-title">${escapeHtml(bm.title)}</span>
-      </a>`}).join('');
+      <div class="bookmark-cell" draggable="true" data-id="${escapeAttr(bm.id)}">
+        <a href="${escapeAttr(bm.url)}" class="bookmark-item" title="${escapeAttr(bm.title)}" target="_blank">
+          <div class="bookmark-icon">
+            <img src="https://favicon.im/${domain}"
+                 alt="${escapeAttr(bm.title)}"
+                 data-domain="${domain}"
+                 data-char="${firstChar}">
+          </div>
+          <span class="bookmark-title">${escapeHtml(bm.title)}</span>
+        </a>
+        <button type="button" class="bookmark-remove" data-remove-id="${escapeAttr(bm.id)}"
+                aria-label="删除书签 ${escapeAttr(bm.title)}" title="删除">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" width="10" height="10" aria-hidden="true">
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>`}).join('') + (showQuickAdd ? `
+      <button type="button" class="bookmark-item bookmark-tile-add" data-quick-add="1" aria-label="添加书签">
+        <span class="bookmark-icon bookmark-add-icon" aria-hidden="true">+</span>
+        <span class="bookmark-title">添加</span>
+      </button>` : '');
+
+    // UX-12：主页直接添加，不必"设置 → 书签 → 添加 → 填表"四步
+    const quickAdd = container.querySelector('[data-quick-add="1"]');
+    if (quickAdd) {
+      quickAdd.addEventListener('click', async () => {
+        Settings.open();
+        Settings.switchTab('bookmarks');
+        // 等 open() 里那次异步列表渲染完成再插表单，否则会被 innerHTML 赋值抹掉
+        await Settings.renderBookmarks();
+        Settings.showAddBookmarkForm();
+      });
+    }
+
+    // UX-12：主页直接删除，并给 5 秒撤销窗口（与待办删除同一套交互约定）
+    container.querySelectorAll('.bookmark-remove').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        // cell 上有 draggable，不阻止的话点击可能被拖拽逻辑吞掉
+        e.preventDefault();
+        e.stopPropagation();
+        const id = btn.dataset.removeId;
+        const all = await Storage.getBookmarks();
+        const removed = all.find(b => b.id === id);
+        await Storage.deleteBookmark(id);
+        await this.renderBookmarks();
+        if (removed && typeof Toast !== 'undefined') {
+          const label = removed.title.length > 12 ? removed.title.slice(0, 12) + '…' : removed.title;
+          Toast.show(`已删除「${label}」`, {
+            actionLabel: '撤销',
+            duration: 5000,
+            onAction: async () => {
+              await Storage.restoreBookmark(removed);
+              await this.renderBookmarks();
+            }
+          });
+        }
+      });
+    });
 
     container.querySelectorAll('.bookmark-icon img').forEach(img => {
       img.addEventListener('error', function handleError() {
@@ -310,9 +480,24 @@ const App = {
     const categories = await Storage.getCategories();
     categories.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
 
-    // 空状态提示（同书签区）
+    // UX-09：同书签区，空状态给出可直接点击的入口
     if (categories.length === 0) {
-      container.innerHTML = '<div class="empty-hint">还没有分类，可在「设置 → 分类导航」中添加</div>';
+      container.innerHTML = `
+        <div class="empty-state-block">
+          <div class="empty-hint">还没有分类</div>
+          <div class="empty-actions">
+            <button type="button" class="btn-primary" data-empty-action="add-category">添加第一个分类</button>
+          </div>
+        </div>`;
+      const addBtn = container.querySelector('[data-empty-action="add-category"]');
+      if (addBtn) {
+        addBtn.addEventListener('click', async () => {
+          Settings.open();
+          Settings.switchTab('categories');
+          await Settings.renderCategories(); // 同书签区：等渲染完成再插表单
+          Settings.showAddCategoryForm();
+        });
+      }
       return;
     }
 
@@ -434,4 +619,12 @@ const App = {
   /* escapeHtml/escapeAttr 定义在 storage.js */
 };
 
-document.addEventListener('DOMContentLoaded', () => App.init());
+if (typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', () => App.init());
+}
+
+/* ---- Node 测试环境导出（UX-03）：浏览器以 <script> 全局加载，module 未定义时不执行；
+       顶层除上面被守卫的 addEventListener 外无浏览器副作用，Node require 安全 ---- */
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { resolveInput, SEARCH_ENGINES, COMMON_TLDS };
+}

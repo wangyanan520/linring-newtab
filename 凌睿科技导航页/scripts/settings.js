@@ -131,6 +131,7 @@ const Settings = {
         <ul class="privacy-list">
           <li><b>storage</b> — 在浏览器本地保存书签 / 分类 / 待办 / 设置，数据不出本机。</li>
           <li><b>host_permissions（4 个域名）</b> — 仅用于主动访问下列外部数据源，不包含任何埋点或追踪服务。</li>
+          <li><b>bookmarks（可选，默认不申请）</b> — 仅在你点击"从浏览器导入书签"时弹出授权；只读取、不修改、不上传，拒绝不影响任何其他功能。安装时不会请求该权限。</li>
         </ul>
       </div>
       <div class="setting-section">
@@ -141,7 +142,9 @@ const Settings = {
         <div class="setting-section-title">外部数据源</div>
         <p class="setting-section-desc">页面功能运行时仅访问以下服务（均可按需关闭对应组件或更换壁纸源）：</p>
         <ul class="privacy-list">
-          <li><b>wttr.in</b> — 天气查询（天气组件；关闭组件即停止请求）</li>
+          <li><b>wttr.in</b> — 天气查询主源（天气组件；关闭组件即停止请求）</li>
+          <li><b>api.open-meteo.com</b> — 天气查询备用源（仅当主源请求失败时回退，同样随组件关闭而停止）</li>
+          <li><b>ipwho.is</b> — IP 定位兜底（仅在未选择城市且浏览器定位不可用时，取一个城市级经纬度用于查天气；不发送任何本地数据）</li>
           <li><b>cn.bing.com</b> — Bing 每日壁纸（壁纸源）</li>
           <li><b>bing.biturl.top</b> — 随机壁纸（壁纸源）</li>
           <li><b>cdn.jsdelivr.net / raw.githubusercontent.com</b> — 节假日数据（离线时使用内置表）</li>
@@ -174,16 +177,29 @@ const Settings = {
               ${!c.locked && visibility[c.id] !== false ? 'checked' : ''}>
           </label>
         `).join('')}
+        <label class="toggle-row">
+          <span>快捷添加磁贴</span>
+          <input type="checkbox" id="showQuickAddToggle"
+            ${settings.showQuickAdd !== false ? 'checked' : ''}>
+        </label>
+        <p class="setting-section-desc">书签区末尾的「+」磁贴，用于在主页直接添加书签；关闭后仍可从设置面板添加。</p>
         <div class="todo-save-feedback" id="componentFeedback" style="margin-top: 10px;"></div>
       </div>
     `;
 
     tab.querySelectorAll('input[type="checkbox"]').forEach(input => {
       input.addEventListener('change', async () => {
-        const id = input.dataset.componentId;
-        await Storage.setComponentVisible(id, input.checked);
-        const s = await Storage.getSettings();
-        App.applyComponentVisibility(s);
+        // UX-12：快捷添加磁贴不是 COMPONENTS 里的独立区块（它属于书签区的一部分），
+        // 因此单独处理，写 settings.showQuickAdd 而不是 componentVisibility
+        if (input.id === 'showQuickAddToggle') {
+          await Storage.updateSettings({ showQuickAdd: input.checked });
+          await App.renderBookmarks();
+        } else {
+          const id = input.dataset.componentId;
+          await Storage.setComponentVisible(id, input.checked);
+          const s = await Storage.getSettings();
+          App.applyComponentVisibility(s);
+        }
         const fb = document.getElementById('componentFeedback');
         if (fb) {
           fb.textContent = '主页已更新';
@@ -585,6 +601,52 @@ const Settings = {
     this.updateCityDropdown(savedProvince, savedCityQuery);
   },
 
+  /* UX-10：从浏览器书签导入。
+     权限走 optional_permissions，默认不申请——只有用户点这个按钮时才弹授权，
+     拒绝也不影响任何其他功能。读取是只读的，不写回浏览器书签。
+     合并策略：同名分类追加链接，其余作为新分类追加，绝不覆盖用户已有数据。 */
+  async importFromBrowserBookmarks() {
+    if (typeof chrome === 'undefined' || !chrome.permissions || !chrome.bookmarks) {
+      this.showDataFeedback('当前环境读不到浏览器书签（仅扩展安装后可用，预览模式不支持）', 'error');
+      return;
+    }
+    try {
+      const tree = await new Promise((resolve, reject) => {
+        chrome.bookmarks.getTree(result => {
+          const err = chrome.runtime && chrome.runtime.lastError;
+          if (err) reject(new Error(err.message || '读取浏览器书签失败'));
+          else resolve(result);
+        });
+      });
+      const categories = bookmarksTreeToCategories(tree, { scope: 'all' });
+      const itemCount = categories.reduce((n, c) => n + c.items.length, 0);
+      if (!itemCount) {
+        this.showDataFeedback('没有读到可导入的书签（只导入 http/https 地址）', 'error');
+        return;
+      }
+      // 与 JSON 导入共用同一套导入前备份，导入后可用"恢复最近备份"回滚
+      await Storage.backupBeforeImport();
+      const existing = await Storage.getCategories();
+      const byTitle = new Map(existing.map(c => [String(c.title || '').trim(), c]));
+      for (const cat of categories) {
+        const title = cat.title.trim();
+        let target = byTitle.get(title);
+        if (!target) {
+          target = await Storage.addCategory({ title });
+          byTitle.set(title, target);
+        }
+        for (const item of cat.items) {
+          await Storage.addCategoryItem(target.id, { title: item.title, url: item.url });
+        }
+      }
+      await this.renderCategories();
+      App.renderCategories();
+      this.showDataFeedback(`已从浏览器导入 ${itemCount} 个书签，分入 ${categories.length} 个分类`, 'success');
+    } catch (err) {
+      this.showDataFeedback('导入失败：' + (err && err.message ? err.message : err), 'error');
+    }
+  },
+
   async renderDataSettings() {
     const tab = document.getElementById('tabData');
     if (!tab) return;
@@ -592,7 +654,7 @@ const Settings = {
       <div class="setting-section">
         <div class="setting-section-title">数据备份</div>
         <p class="setting-section-desc">导出全部配置（书签 / 分类 / 待办 / 设置）为本地 JSON 文件；导入可完整恢复。备份文件仅保存在本地，不经过任何服务器；页面功能会请求外部数据源（天气 / 壁纸 / 节假日 / 书签图标），无广告、无埋点。</p>
-        <div style="margin-top: 10px; display: flex; gap: 8px; align-items: center;">
+        <div style="margin-top: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
           <button class="btn-primary btn-sm" id="exportDataBtn">导出备份</button>
           <label class="btn-edit btn-sm" style="cursor: pointer; display: inline-flex; align-items: center;">导入恢复
             <input type="file" id="importDataInput" accept="application/json,.json" style="display: none;">
@@ -600,6 +662,13 @@ const Settings = {
           <button class="btn-edit btn-sm" id="restoreBackupBtn" title="恢复到最近一次导入前的数据">恢复最近备份</button>
         </div>
         <div class="todo-save-feedback" id="dataFeedback" style="margin-top: 10px;"></div>
+      </div>
+      <div class="setting-section">
+        <div class="setting-section-title">从浏览器导入</div>
+        <p class="setting-section-desc">把浏览器已有的书签一键搬进来，按原文件夹分好类，不必逐条录入。需要你点击按钮时临时授权读取书签；本扩展只读取、不修改、不上传，拒绝授权不影响其他功能。</p>
+        <div style="margin-top: 10px;">
+          <button class="btn-primary btn-sm" id="importBrowserBookmarksBtn">从浏览器导入书签</button>
+        </div>
       </div>
     `;
 
@@ -692,6 +761,25 @@ const Settings = {
       } catch (err) {
         this.showDataFeedback('恢复失败：' + err.message, 'error');
       }
+    });
+
+    // UX-10：权限申请必须在**用户手势的同步调用栈**中发起，
+    // 所以这里前置不做任何 await（也不先查 contains —— 已授权时 request 会直接回调 true，
+    // 不会重复弹窗）。after 任意 await 再调用会抛
+    // "This function must be called during a user gesture"。
+    document.getElementById('importBrowserBookmarksBtn').addEventListener('click', () => {
+      if (typeof chrome === 'undefined' || !chrome.permissions || !chrome.permissions.request) {
+        this.showDataFeedback('当前环境不支持申请书签权限（仅扩展安装后可用）', 'error');
+        return;
+      }
+      chrome.permissions.request({ permissions: ['bookmarks'] }, granted => {
+        const err = chrome.runtime && chrome.runtime.lastError;
+        if (err || !granted) {
+          this.showDataFeedback('未授权读取浏览器书签，导入已取消（可再次点击重试）', 'error');
+          return;
+        }
+        this.importFromBrowserBookmarks();
+      });
     });
   },
 
