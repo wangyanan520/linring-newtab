@@ -3,7 +3,9 @@
  * PBI-16 可复现打包脚本（US-18）
  *
  * 从 凌睿科技导航页/ 生成干净 zip（排除 .DS_Store / __MACOSX / ._* 垃圾），
- * 输出 dist/lingrui-nav-<version>-<YYYYMMDD>.zip 与 .sha256 校验文件。
+ * 输出 dist/凌睿科技导航.zip 与 .sha256 校验文件。
+ * 采用固定文件名（不带版本/日期）：分发包即"当前源码的快照"，每次覆盖写入，
+ * 从根上杜绝多份包并存导致的"误取过期版本"（P3-12）。版本号见 manifest.json。
  * 零外部依赖：zip 格式（local header + central directory + deflateRaw + crc32）手写实现。
  *
  * 运行：npm run pack:zip（npm run pack 会先跑单测）
@@ -170,18 +172,18 @@ function main() {
   if (files.length === 0) throw new Error('源码目录为空');
 
   const manifest = JSON.parse(fs.readFileSync(path.join(SRC, 'manifest.json'), 'utf8'));
-  const now = new Date();
-  const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-  const outName = `lingrui-nav-v${manifest.version}-${dateStr}.zip`;
+  const outName = '凌睿科技导航.zip';
   const outPath = path.join(OUT_DIR, outName);
 
   const zip = buildZip(files);
   verifyZip(zip, files); // 打包即校验，保证产物与源码一致
 
   fs.mkdirSync(OUT_DIR, { recursive: true });
-  // 清理历史产物（P3-12）：产物名带日期，旧包会不断堆积，且容易让人误取过期版本
+  // 清理历史产物（P3-12）：固定名之外的一切 zip / 校验文件都是陈旧残留
+  // （含旧命名 lingrui-nav-<version>-<date>.zip），一并清除以免误取过期版本
+  const keep = new Set([outName, outName + '.sha256']);
   const stale = fs.readdirSync(OUT_DIR).filter(n =>
-    /^lingrui-nav-.*\.zip(\.sha256)?$/.test(n) && n !== outName && n !== outName + '.sha256'
+    /\.zip(\.sha256)?$/.test(n) && !keep.has(n)
   );
   stale.forEach(n => {
     try { fs.unlinkSync(path.join(OUT_DIR, n)); } catch { /* 忽略清理失败 */ }
@@ -191,7 +193,7 @@ function main() {
   const sha = crypto.createHash('sha256').update(zip).digest('hex');
   fs.writeFileSync(outPath + '.sha256', sha + '  ' + outName + '\n');
 
-  console.log(`打包完成: ${outName}`);
+  console.log(`打包完成: ${outName}（版本 v${manifest.version}）`);
   console.log(`文件数: ${files.length} | 大小: ${(zip.length / 1024).toFixed(1)} KB`);
   console.log(`SHA-256: ${sha}`);
   console.log(`自校验: zip 内容与源码逐文件一致 ✓`);

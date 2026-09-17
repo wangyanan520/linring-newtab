@@ -7,4 +7,4 @@ node_modules/
 dist/
 
 # 发布产物：统一由 npm run pack 生成到 dist/（不再手工打包入库，P2-4）
-凌睿科技导航页.zip
+凌睿科技导航*.zip
