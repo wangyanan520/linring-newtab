@@ -66,16 +66,51 @@ test('天气：WMO 代码映射（Open-Meteo 口径，不得复用 wttr 的 WWO 
   assert.ok(Weather && typeof Weather.refresh === 'function');
 });
 
-test('天气：wttr 码表覆盖实测出现的 137（沙尘暴）与 149（烟霾）', () => {
+test('天气：wttr.in 的扩展代码（霾/沙尘族）已进码表', () => {
   const { WEATHER_CODE_MAP, resolveWwoWeather } = loadWeather();
-  /* 2026-09-17 实测 wttr.in：北京 / 天津 / 广州 / 西安 返回 149「Smoky haze」，
-     兰州返回 137「Sandstorm」，两者原本都不在码表里 —— 而这正是中国最高频的
-     两类天气，中文界面会因此在霾天直接显示英文。 */
-  assert.strictEqual(WEATHER_CODE_MAP[149] && WEATHER_CODE_MAP[149].text, '烟霾');
-  assert.strictEqual(WEATHER_CODE_MAP[137] && WEATHER_CODE_MAP[137].text, '沙尘暴');
+  /* 这 5 个都**不在** WWO 那 47 个标准代码里，是 wttr.in 额外返回的扩展代码，
+     且全部指向中国的霾与沙尘天气。缺任何一个，对应天气就会掉进"未知天气"。
+     首轮修复只补了 137/149，46 城复测又冒出 125/134/140 —— 这条断言就是为了
+     让"再漏一个"必须显式地红灯，而不是悄悄降级。 */
+  const extended = [[125, '霾'], [134, '尘暴'], [137, '沙尘暴'], [140, '强沙尘暴'], [149, '烟霾']];
+  for (const [code, want] of extended) {
+    const got = WEATHER_CODE_MAP[code] && WEATHER_CODE_MAP[code].text;
+    assert.strictEqual(got, want, `码表 code=${code} 应为「${want}」，实际「${got}」`);
+  }
   // 命中码表时图标取自码表，不落进描述映射的通用图标（据此可区分两层修复）
   assert.strictEqual(resolveWwoWeather(149, [{ value: 'Smoky haze' }]).icon, '🌫️');
   assert.strictEqual(resolveWwoWeather(137, [{ value: 'Sandstorm' }]).icon, '🌪️');
+  assert.strictEqual(resolveWwoWeather(140, [{ value: 'Severe sandstorm' }]).icon, '🌪️');
+});
+
+test('天气：46 城实测到的 weatherDesc 必须全部有中文文案', () => {
+  const { resolveWwoWeather } = loadWeather();
+  /* 2026-09-17 采样：46 个城市 ×（current + 3 天 hourly）的真实 wttr.in 响应，
+     去重后 25 种 (weatherCode, weatherDesc) 组合。这是"描述文本"这一侧的完整
+     已知集合，扩样本时若出现新描述，下面的断言会直接红灯。 */
+  const OBSERVED = [
+    [113, 'Sunny'], [113, 'Clear'], [116, 'Partly Cloudy'], [119, 'Cloudy'], [122, 'Overcast'],
+    [125, 'Haze'], [134, 'Dust storm'], [137, 'Sandstorm'], [140, 'Severe sandstorm'],
+    [143, 'Mist'], [149, 'Smoky haze'], [176, 'Patchy rain nearby'],
+    [200, 'Thundery outbreaks in nearby'], [260, 'Freezing fog'], [266, 'Light drizzle'],
+    [296, 'Light rain'], [299, 'Moderate rain at times'], [302, 'Moderate rain'],
+    [311, 'Light freezing rain'], [314, 'Moderate or heavy freezing rain'],
+    [353, 'Light rain shower'], [362, 'Light sleet showers'], [368, 'Light snow showers'],
+    [371, 'Moderate or heavy snow showers'], [386, 'Patchy light rain in area with thunder'],
+  ];
+  const isBad = t => t === '未知天气' || /[A-Za-z]/.test(t);
+
+  // 其一：纯粹考验描述映射 —— 用码表外的代码，否则会被码表兜住而测不到这一层
+  const viaDesc = OBSERVED.filter(([, desc]) => isBad(resolveWwoWeather(9999, [{ value: desc }]).text))
+    .map(([, desc]) => desc);
+  assert.deepStrictEqual(viaDesc, [],
+    '以下真实描述在 WWO_DESC_ZH 里查不到: ' + viaDesc.join(' | '));
+
+  // 其二：端到端 —— 按真实代码查也不得落到"未知天气"或英文
+  const viaCode = OBSERVED.filter(([code, desc]) => isBad(resolveWwoWeather(code, [{ value: desc }]).text))
+    .map(([code, desc]) => `${code}:"${desc}"`);
+  assert.deepStrictEqual(viaCode, [],
+    '以下真实组合未能得到中文文案: ' + viaCode.join(' | '));
 });
 
 test('天气：wttr 未覆盖代码不得把英文描述渲染进中文界面', () => {

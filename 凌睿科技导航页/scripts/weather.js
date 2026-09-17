@@ -31,7 +31,16 @@ const WEATHER_CODE_MAP = {
   116: { icon: '⛅', text: '多云' },
   119: { icon: '☁️', text: '阴天' },
   122: { icon: '☁️', text: '阴' },
+  /* 125/134/137/140/149 是 wttr.in 在 WWO 那 47 个标准代码之外额外返回的扩展代码，
+     且全部指向中国的霾与沙尘天气（已对照 WWO 官方代码表确认标准表里没有这几个）。
+     2026-09-17 用 46 个城市 ×（current + 3 天 hourly）的真实响应采样得到：
+     149 命中北京/天津/广州/西安，137 命中兰州，125 命中 2 城，134 命中 2 城，140 命中 1 城。
+     这类代码只能运行时遇到，"遇到一个补一个"是唯一可行策略 —— 所以兜底必须足够安全，
+     见 resolveWwoWeather 的注释。 */
+  125: { icon: '🌫️', text: '霾' },
+  134: { icon: '🌪️', text: '尘暴' },
   137: { icon: '🌪️', text: '沙尘暴' },
+  140: { icon: '🌪️', text: '强沙尘暴' },
   143: { icon: '🌫️', text: '雾' },
   149: { icon: '🌫️', text: '烟霾' },
   176: { icon: '🌦️', text: '小雨' },
@@ -89,10 +98,16 @@ const WEATHER_CODE_MAP = {
 const WWO_DESC_ZH = {
   'sunny': '晴', 'clear': '晴', 'partly cloudy': '多云', 'cloudy': '阴天', 'overcast': '阴',
   'mist': '薄雾', 'fog': '雾', 'freezing fog': '冻雾',
-  'smoky haze': '烟霾', 'sandstorm': '沙尘暴',
+  /* 霾与沙尘族：这几个描述都来自 wttr.in 的扩展代码（125/134/137/140/149），
+     不在 WWO 标准表内。'haze' 被 125 与 143 共用，靠码表优先区分（143 走"雾"）。 */
+  'haze': '霾', 'smoky haze': '烟霾', 'dust storm': '尘暴',
+  'sandstorm': '沙尘暴', 'severe sandstorm': '强沙尘暴',
   'patchy light drizzle': '局部小毛毛雨', 'light drizzle': '小毛毛雨',
   'freezing drizzle': '冻毛毛雨', 'heavy freezing drizzle': '强冻毛毛雨',
+  /* WWO 官方描述用 "nearby"（如 Patchy rain nearby），wttr.in 早期版本用 "possible"；
+     两套都留着，任一文本进来都能命中（码表未覆盖时才走这里，冗余无害）。 */
   'patchy freezing drizzle possible': '局部冻毛毛雨',
+  'patchy freezing drizzle nearby': '局部冻毛毛雨',
   'patchy rain possible': '局部有雨', 'patchy rain nearby': '局部有雨',
   'patchy light rain': '局部小雨', 'light rain': '小雨', 'light rain shower': '小阵雨',
   'moderate rain at times': '间歇中雨', 'moderate rain': '中雨',
@@ -100,24 +115,39 @@ const WWO_DESC_ZH = {
   'moderate or heavy rain shower': '中到大阵雨', 'torrential rain shower': '暴雨',
   'light freezing rain': '小冻雨', 'moderate or heavy freezing rain': '中到大冻雨',
   'light sleet': '小雨夹雪', 'moderate or heavy sleet': '中到大雨夹雪',
-  'patchy sleet possible': '局部有雨夹雪',
+  'patchy sleet possible': '局部有雨夹雪', 'patchy sleet nearby': '局部有雨夹雪',
   'light sleet showers': '小阵雨夹雪', 'moderate or heavy sleet showers': '中到大阵雨夹雪',
-  'patchy snow possible': '局部有雪', 'patchy light snow': '局部小雪', 'light snow': '小雪',
+  'patchy snow possible': '局部有雪', 'patchy snow nearby': '局部有雪',
+  'patchy light snow': '局部小雪', 'light snow': '小雪',
   'patchy moderate snow': '局部中雪', 'moderate snow': '中雪',
   'patchy heavy snow': '局部大雪', 'heavy snow': '大雪',
   'blowing snow': '风吹雪', 'blizzard': '暴风雪',
   'light snow showers': '小阵雪', 'moderate or heavy snow showers': '中到大阵雪',
   'ice pellets': '冰粒', 'light showers of ice pellets': '小冰粒',
   'moderate or heavy showers of ice pellets': '中到大冰粒',
-  'thundery outbreaks possible': '可能有雷暴',
+  /* 雷暴族同样是两套文本：官方是 "in area with thunder"，早期是 "with thunder" */
+  'thundery outbreaks possible': '可能有雷暴', 'thundery outbreaks in nearby': '可能有雷暴',
   'patchy light rain with thunder': '局部雷阵雨',
+  'patchy light rain in area with thunder': '局部雷阵雨',
   'moderate or heavy rain with thunder': '中到大雷雨',
+  'moderate or heavy rain in area with thunder': '中到大雷雨',
   'patchy light snow with thunder': '局部雷阵雪',
-  'moderate or heavy snow with thunder': '中到大雷阵雪'
+  'patchy light snow in area with thunder': '局部雷阵雪',
+  'moderate or heavy snow with thunder': '中到大雷阵雪',
+  'moderate or heavy snow in area with thunder': '中到大雷阵雪'
 };
 
-/* 主源（wttr.in）的代码 + 描述 → 界面文案。码表优先；
-   未覆盖的代码（137/149 是实测会真实出现的两个）走描述映射，最后中文兜底。
+/* 主源（wttr.in）的代码 + 描述 → 界面文案。码表优先，未覆盖的代码走描述映射，
+   最后落到"未知天气"。
+
+   为什么兜底不直接透传 weatherDesc：那正是 2026-09-17 修掉的缺陷 ——
+   wttr.in 的 `lang=zh` 对 weatherDesc 无效，码表没盖到的代码会把英文原文
+   （"Smoky haze"）直接渲染进中文界面。宁可显示"未知天气"也不泄漏英文。
+
+   为什么不追求"码表一次补全"：wttr.in 会在 WWO 那 47 个标准代码之外返回扩展代码
+   （125/134/137/140/149，全是中国的霾与沙尘族），只能在运行时遇到。
+   因此这里的设计是"遇到一个补一个"＋安全兜底，而不是假设表已经完整。
+
    注意 weatherDesc 结构异常（缺失、空数组、value 非字符串）时不得抛错——
    它被 try 块包着，一旦抛错整轮主源请求就会被判失败而白白让位给备用源。 */
 function resolveWwoWeather(code, weatherDesc) {
