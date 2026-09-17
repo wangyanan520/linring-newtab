@@ -1330,6 +1330,42 @@ async function runCore(page, label) {
     check('[36] 点击空状态按钮直达"添加书签"表单（UX-09）', false, '空状态区没有可点击的行动按钮');
   }
 
+  /* ---- [45] 空状态布局不塌陷（UX-06 的 auto-fit × UX-09 的空状态叠加回归）----
+     书签区用 repeat(auto-fit, 68px)，而 auto-fit 会折叠空轨道：没有任何 bookmark-cell 时
+     grid-template-columns 退化成 `68px 0px 0px 0px 0px 0px 0px`，空状态块被限制在 52px 内 ——
+     文案逐字换行、两个按钮变成 55×144 与 55×120。
+     这里量尺寸而不是"元素是否存在"：塌陷时按钮照样存在、也照样能点，存在性断言测不出来
+     （[36] 就是这么漏掉它的）。分类区不折叠（repeat(2,1fr)），但空状态默认只占左列，
+     所以一并钉住它的跨列宽度。 */
+  const emptyLayout = await page.evaluate(() => {
+    const box = e => { const r = e.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; };
+    const grid = document.getElementById('bookmarkContainer');
+    const catGrid = document.getElementById('categoryContainer');
+    const hint = grid.querySelector('.empty-hint');
+    const btns = [...grid.querySelectorAll('.empty-actions button')];
+    const catBlock = catGrid.querySelector('.empty-state-block');
+    return {
+      cols: getComputedStyle(grid).gridTemplateColumns,
+      gridW: Math.round(grid.getBoundingClientRect().width),
+      hintW: hint ? Math.round(hint.getBoundingClientRect().width) : 0,
+      btns: btns.map(b => ({ t: b.textContent.trim(), ...box(b) })),
+      catGridW: Math.round(catGrid.getBoundingClientRect().width),
+      catBlockW: catBlock ? Math.round(catBlock.getBoundingClientRect().width) : 0
+    };
+  });
+  // 阈值取"占容器 90% 以上"而不是绝对值：塌陷时是 52/640 ≈ 8%，
+  // 修复后是 624/640 ≈ 98%，与视口宽度无关，也不会因为布局微调而误报
+  check('[45] 空状态提示占满容器宽度，不被 auto-fit 折叠压成竖排',
+    emptyLayout.gridW > 0 && emptyLayout.hintW >= emptyLayout.gridW * 0.9,
+    `提示 ${emptyLayout.hintW}px / 容器 ${emptyLayout.gridW}px（列模板 ${emptyLayout.cols}）`);
+  check('[45] 空状态按钮不被压成窄条',
+    emptyLayout.btns.length >= 2 && emptyLayout.btns.every(b => b.w >= 100 && b.h <= 60),
+    emptyLayout.btns.length ? emptyLayout.btns.map(b => `${b.t}=${b.w}×${b.h}`).join(' / ') : '(无按钮)');
+  // 分类区是两列：跨列后应占满容器，未跨列时只有约 49%
+  check('[45] 分类空状态跨满两列，不偏在左列',
+    emptyLayout.catGridW > 0 && emptyLayout.catBlockW >= emptyLayout.catGridW * 0.9,
+    `分类空状态块 ${emptyLayout.catBlockW}px / 容器 ${emptyLayout.catGridW}px`);
+
   /* ---- [38] 壁纸切换有文字反馈（UX-11）---- */
   const wpFeedback = await page.evaluate(async () => {
     const before = Wallpaper.currentIndex;

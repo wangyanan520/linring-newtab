@@ -29,10 +29,10 @@ URL 误报、存储层并发写竞态、无障碍支持、打包卫生、输入�
 |------|------|
 | `npm test` | 单元测试（node:test，66 项） |
 | `npm run test:coverage` | 覆盖率（storage.js 行覆盖约 96%，仅统计被单测加载的模块） |
-| `npm run test:e2e` | E2E 全量四模式：preview + file:// + shim + 扩展（合计 380 项断言） |
-| `npm run test:e2e:preview` | 仅 http 预览模式（headless，125 项断言） |
-| `npm run test:e2e:shim` | 仅 chrome.storage 模拟模式（headless，128 项断言） |
-| `node scripts/ux-audit.js` | **体验体检**：布局 / 溢出 / 主题对比度 / 交互，不达标时退出码 1 |
+| `npm run test:e2e` | E2E 全量四模式：preview + file:// + shim + 扩展（合计 389 项断言） |
+| `npm run test:e2e:preview` | 仅 http 预览模式（headless，128 项断言） |
+| `npm run test:e2e:shim` | 仅 chrome.storage 模拟模式（headless，131 项断言） |
+| `node scripts/ux-audit.js` | **体验体检**：布局 / 溢出 / 对比度 / 交互 / 空状态，不达标时退出码 1 |
 | `npm run pack` | 单测 + 可复现打包到 `dist/`（排除测试文件、固定时间戳） |
 | `node scripts/gen-city-coords.js --dry-run\|--write` | 重建城市经纬度（天气备用源用），构建期工具 |
 

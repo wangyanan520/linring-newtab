@@ -464,18 +464,59 @@ async function checkExtension() {
   await ctx.close();
 }
 
+/* ---------- 检查 5：空状态布局（内容量为 0 的边界） ----------
+
+   与 checkOverflow 正好是内容量梯度的两端。此前只覆盖了"内容变多"，
+   于是书签区空状态塌陷一直没被发现：.links-grid 用 repeat(auto-fit, 68px)，
+   而 auto-fit 会折叠空轨道 —— 0 个书签时实测列模板退化成
+   `68px 0px 0px 0px 0px 0px 0px`，空状态块被压进 52px，文案逐字换行、
+   两个行动按钮变成 55×144 与 55×120（UX-06 的 auto-fit 与 UX-09 的空状态叠加）。
+   判据用"占容器 90% 以上"而非绝对值：与视口宽度无关，布局微调也不会误报。 */
+async function checkEmptyState(browser) {
+  const page = await newPage(browser);
+  await seed(page, { bookmarks: [], categories: [], todos: [] });
+  const m = await page.evaluate(() => {
+    const rect = e => { const b = e.getBoundingClientRect(); return { w: Math.round(b.width), h: Math.round(b.height) }; };
+    const grid = document.getElementById('bookmarkContainer');
+    const catGrid = document.getElementById('categoryContainer');
+    const hint = grid.querySelector('.empty-hint');
+    const btns = [...grid.querySelectorAll('.empty-actions button')];
+    const catBlock = catGrid.querySelector('.empty-state-block');
+    return {
+      cols: getComputedStyle(grid).gridTemplateColumns,
+      gridW: Math.round(grid.getBoundingClientRect().width),
+      hintW: hint ? Math.round(hint.getBoundingClientRect().width) : 0,
+      btns: btns.map(b => ({ t: b.textContent.trim(), ...rect(b) })),
+      catGridW: Math.round(catGrid.getBoundingClientRect().width),
+      catBlockW: catBlock ? Math.round(catBlock.getBoundingClientRect().width) : 0
+    };
+  });
+  raw.empty = m;
+  check('[空状态] 书签空状态提示占满容器（不被 auto-fit 折叠压成竖排）',
+    m.gridW > 0 && m.hintW >= m.gridW * 0.9,
+    `提示 ${m.hintW}px / 容器 ${m.gridW}px（列模板 ${m.cols}）`);
+  check('[空状态] 书签空状态按钮尺寸正常（不是逐字换行的窄条）',
+    m.btns.length >= 2 && m.btns.every(b => b.w >= 100 && b.h <= 60),
+    m.btns.length ? m.btns.map(b => `${b.t}=${b.w}×${b.h}`).join(' / ') : '(无按钮)');
+  check('[空状态] 分类空状态跨满两列（不偏在左列）',
+    m.catGridW > 0 && m.catBlockW >= m.catGridW * 0.9,
+    `分类空状态块 ${m.catBlockW}px / 容器 ${m.catGridW}px`);
+  await closePage(page);
+}
+
 /* ---------- 主流程 ---------- */
 
 const REPORTS = {
   layout: '一、多视口布局与设置面板 tab',
   overflow: '二、内容量梯度下的溢出临界点',
   contrast: '三、主题 × 壁纸对比度（像素级）',
-  interact: '四、交互行为'
+  interact: '四、交互行为',
+  empty: '五、空状态布局（0 书签 / 0 分类）'
 };
 
 (async () => {
   const argv = process.argv.slice(2);
-  const only = ['layout', 'overflow', 'contrast', 'interact', 'extension'].filter(k => argv.includes('--' + k));
+  const only = ['layout', 'overflow', 'contrast', 'interact', 'empty', 'extension'].filter(k => argv.includes('--' + k));
   const run = k => only.length === 0 || only.includes(k);
   const asJson = argv.includes('--json');
 
@@ -486,14 +527,15 @@ const REPORTS = {
   });
 
   try {
-    if (run('layout') || run('overflow') || run('contrast') || run('interact')) {
+    if (run('layout') || run('overflow') || run('contrast') || run('interact') || run('empty')) {
       server = await startServer();
     }
     if (run('layout')) { console.log('\n== ' + REPORTS.layout + ' =='); await checkLayout(browser); }
     if (run('overflow')) { console.log('\n== ' + REPORTS.overflow + ' =='); await checkOverflow(browser); }
     if (run('contrast')) { console.log('\n== ' + REPORTS.contrast + ' =='); await checkContrast(browser); }
     if (run('interact')) { console.log('\n== ' + REPORTS.interact + ' =='); await checkInteract(browser); }
-    if (run('extension')) { console.log('\n== 五、扩展模式 =='); await checkExtension(); }
+    if (run('empty')) { console.log('\n== ' + REPORTS.empty + ' =='); await checkEmptyState(browser); }
+    if (run('extension')) { console.log('\n== 六、扩展模式 =='); await checkExtension(); }
   } finally {
     await browser.close();
     if (server) server.close();

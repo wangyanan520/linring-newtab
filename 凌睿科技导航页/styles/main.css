@@ -1340,6 +1340,21 @@ body {
   align-items: center;
   gap: 14px;
   padding: 22px 8px;
+  /* 这个块才是网格项（UX-09 起空状态被它包了一层，.empty-hint 上原有的
+     grid-column:1/-1 因此失效）。分类区是 repeat(2, 1fr)，不跨列的话空状态
+     只落在左列、视觉明显偏左，所以在这里跨满整行。 */
+  grid-column: 1 / -1;
+}
+
+/* 书签区空状态：.links-grid 用 repeat(auto-fit, 68px)，而 auto-fit 会折叠空轨道 ——
+   没有任何 bookmark-cell 时实测 grid-template-columns 变成 `68px 0px 0px 0px 0px 0px 0px`，
+   上面那条 grid-column:1/-1 只跨到剩下的一条 68px 轨道，空状态被压进 52px：
+   文案逐字换行、按钮变成 55×144 与 55×120（UX-06 的 auto-fit 与 UX-09 的空状态叠加所致，
+   前者只考虑了"书签少"，没想到"0 个"）。
+   此时切回单列流式，让空状态占满容器宽度。
+   不能用 auto-fill 回避：它不折叠空轨道，少量书签会整体左偏（见 .links-grid 上方 UX-06 注释）。 */
+.links-grid:has(> .empty-state-block) {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .empty-actions {
