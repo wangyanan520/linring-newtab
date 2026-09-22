@@ -10,6 +10,12 @@
  *
  * 运行：npm run pack:zip（npm run pack 会先跑单测）
  * 自校验：打包后立即解压并与源码目录逐文件字节比对，不一致则失败。
+ *
+ * 可复现性的边界（2026-09-22 实测）：文件顺序、时间戳、CRC 均已固定，但 deflate 字节流
+ * 由 Node 内置 zlib 决定——同一份源码在 Node v24.4（zlib 1.2.12）与 v24.18（zlib 1.3.2.1）
+ * 下 SHA-256 不同（74839cd… vs c5e91dd…），而解压后内容逐字节一致。所以 SHA 只在同一
+ * Node 主版本内可作发布指纹横向核对；跨版本请比对解压内容或先统一 Node。CI 固定在 Node 20，
+ * 本机若不同，报告指纹时必须连 Node 版本一起给出（脚本已打印）。
  */
 'use strict';
 const fs = require('fs');
@@ -42,10 +48,15 @@ const ZIP_TIMESTAMP = (() => {
   return new Date(1980, 0, 1, 0, 0, 0); // zip 纪元起点，稳定且合法
 })();
 
-/* ---- 遍历源码目录，返回 [{ path, buffer }]（zip 内路径为相对 SRC） ---- */
+/* ---- 遍历源码目录，返回 [{ path, buffer }]（zip 内路径为相对 SRC） ----
+ * 顺序显式按名称字典序固定：readdirSync 的返回顺序由文件系统决定（APFS / ext4 /
+ * git checkout 各不相同），不排序就谈不上"同一份源码产出一致字节流"。
+ * 注意必须传比较函数——默认 sort 会把对象元素转成字符串比较。 */
 function collectFiles(dir, base) {
   const out = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+  const entries = fs.readdirSync(dir, { withFileTypes: true })
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  for (const entry of entries) {
     if (isJunk(entry.name)) continue;
     const abs = path.join(dir, entry.name);
     const rel = path.join(base, entry.name);
@@ -196,6 +207,7 @@ function main() {
   console.log(`打包完成: ${outName}（版本 v${manifest.version}）`);
   console.log(`文件数: ${files.length} | 大小: ${(zip.length / 1024).toFixed(1)} KB`);
   console.log(`SHA-256: ${sha}`);
+  console.log(`运行时: Node ${process.version} / zlib ${process.versions.zlib}（换 Node 版本 SHA 会变，核对指纹请连此版本一并给出）`);
   console.log(`自校验: zip 内容与源码逐文件一致 ✓`);
   console.log(`垃圾文件: 已排除（.DS_Store/__MACOSX/._*）`);
   console.log(`历史产物: 已清理 ${stale.length} 个旧文件`);
