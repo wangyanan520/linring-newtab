@@ -12,7 +12,7 @@
 ## EXEC（执行 agent，每个任务包 1 个）
 
 - 独立负责一个任务包（如 PKG-01），只修改任务说明中白名单声明的文件。
-- 收到任务后先阅读 `docs/product/task-allocation.md` 对应小节，再开始工作。
+- 收到任务后先阅读 `docs/process/task-allocation.md` 对应小节，再开始工作。
 - 完成后报告：改动摘要、验收标准逐条核验结果（附证据）、遗留问题。
 - 禁止：
   - 创建、派生或委派任何子 agent（只有 root 可以 spawn）；

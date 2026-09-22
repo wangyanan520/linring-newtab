@@ -3,13 +3,13 @@
  *
  * 运行方式：
  *   # 扩展模式（需要 Chrome for Testing + GUI 会话；验证 CSP/chrome.storage/newtab 覆盖）
- *   node scripts/__tests__/e2e/nav-e2e.js --extension
+ *   node tests/e2e/nav-e2e.js --extension
  *   # 预览模式（headless，无需 GUI；http + file:// 双模式）
- *   node scripts/__tests__/e2e/nav-e2e.js --preview
+ *   node tests/e2e/nav-e2e.js --preview
  *   # chrome.storage 路径回归（headless，无需 GUI；注入模拟 chrome.storage 走生产后端代码路径）
- *   node scripts/__tests__/e2e/nav-e2e.js --shim
+ *   node tests/e2e/nav-e2e.js --shim
  *   # 全部
- *   node scripts/__tests__/e2e/nav-e2e.js
+ *   node tests/e2e/nav-e2e.js
  *
  * 前置条件：本机已安装 playwright（npm i -D playwright）并下载浏览器：
  *   npx playwright install chromium
@@ -17,18 +17,18 @@
  *
  * 环境变量：
  *   CFT_PATH    Chrome for Testing 可执行文件路径（默认自动探测 ms-playwright 缓存）
- *   EXT_PATH    扩展源码目录（默认本仓库 凌睿科技导航页/）
+ *   EXT_PATH    扩展源码目录（默认本仓库 src/）
  *   PORT        预览模式 http 端口（默认 8899）
  */
 'use strict';
 const { chromium } = require('playwright');
-const { isAllowed } = require('../../network-audit.js');
+const { isAllowed } = require('../../src/scripts/network-audit.js');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
 
-// 扩展源码目录：脚本位于 凌睿科技导航页/scripts/__tests__/e2e/，向上三级即扩展目录
-const EXT_PATH = process.env.EXT_PATH || path.resolve(__dirname, '..', '..', '..');
+// 扩展源码目录：本脚本位于 tests/e2e/，向上两级到仓库根再进 src/
+const EXT_PATH = process.env.EXT_PATH || path.resolve(__dirname, '..', '..', 'src');
 const PORT = parseInt(process.env.PORT || '8899', 10);
 
 function findCft() {
@@ -308,7 +308,7 @@ function startStaticServer() {
 }
 
 /* ---- 像素级对比度采样（[29] 用）----
-   与 scripts/ux-audit.js 同一口径：背景取元素矩形内的像素众数色，前景取 computed color
+   与 tools/ux-audit.js 同一口径：背景取元素矩形内的像素众数色，前景取 computed color
    （含祖先 opacity 累积）。后者是外部可复跑的工具（全壁纸×主题矩阵），
    这里是 CI 内嵌版，只覆盖默认壁纸下的深浅两档，避免 E2E 耗时翻倍。
    注意不能改成"断言 data-theme 属性值"——那个断言在文字完全不可读时同样是绿的。 */
@@ -1028,7 +1028,7 @@ async function runCore(page, label) {
   const tpOk = fs.existsSync(tpPath)
     && /MIT License/.test(fs.readFileSync(tpPath, 'utf8'))
     && /lunar-javascript/.test(fs.readFileSync(tpPath, 'utf8'));
-  check('[21] 第三方组件台账含来源与许可证', tpOk, '凌睿科技导航页/THIRD-PARTY.md');
+  check('[21] 第三方组件台账含来源与许可证', tpOk, 'src/THIRD-PARTY.md');
 
   // [22] 组件隐藏后初始化不得再发起请求（P2-10 残余）
   // init() 在两次 await 之后才收尾，若该窗口内组件被隐藏，后续的定位与天气请求不应再发出

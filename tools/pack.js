@@ -2,7 +2,7 @@
 /**
  * PBI-16 可复现打包脚本（US-18）
  *
- * 从 凌睿科技导航页/ 生成干净 zip（排除 .DS_Store / __MACOSX / ._* 垃圾），
+ * 从 src/ 生成干净 zip（排除 .DS_Store / __MACOSX / ._* 垃圾），
  * 输出 dist/凌睿科技导航.zip 与 .sha256 校验文件。
  * 采用固定文件名（不带版本/日期）：分发包即"当前源码的快照"，每次覆盖写入，
  * 从根上杜绝多份包并存导致的"误取过期版本"（P3-12）。版本号见 manifest.json。
@@ -24,7 +24,7 @@ const zlib = require('zlib');
 const crypto = require('crypto');
 
 const ROOT = path.resolve(__dirname, '..');
-const SRC = path.join(ROOT, '凌睿科技导航页');
+const SRC = path.join(ROOT, 'src');
 const OUT_DIR = path.join(ROOT, 'dist');
 
 /* ---- 垃圾与非发布文件过滤（US-18 AC2：无 .DS_Store / __MACOSX） ---- */

@@ -8,13 +8,13 @@
  * 本脚本用真浏览器把这些体验维度量化，供 10-使用体验优化方案.md 的结论复现与回归。
  *
  * 用法：
- *   node scripts/ux-audit.js              # 跑全部检查
- *   node scripts/ux-audit.js --layout     # 只看多视口布局
- *   node scripts/ux-audit.js --overflow   # 只看内容量梯度下的溢出临界点
- *   node scripts/ux-audit.js --contrast   # 只看主题对比度（像素级）
- *   node scripts/ux-audit.js --interact   # 只看交互行为（网址直跳 / 输入法回车 / 待办撤销）
- *   node scripts/ux-audit.js --extension  # 扩展模式加载与 autofocus（需要 Chrome for Testing）
- *   node scripts/ux-audit.js --json       # 附加输出 JSON 结果
+ *   node tools/ux-audit.js              # 跑全部检查
+ *   node tools/ux-audit.js --layout     # 只看多视口布局
+ *   node tools/ux-audit.js --overflow   # 只看内容量梯度下的溢出临界点
+ *   node tools/ux-audit.js --contrast   # 只看主题对比度（像素级）
+ *   node tools/ux-audit.js --interact   # 只看交互行为（网址直跳 / 输入法回车 / 待办撤销）
+ *   node tools/ux-audit.js --extension  # 扩展模式加载与 autofocus（需要 Chrome for Testing）
+ *   node tools/ux-audit.js --json       # 附加输出 JSON 结果
  *
  * 退出码：发现不达标项时为 1，全部通过为 0（可用于后续接入 CI）。
  *
@@ -36,7 +36,7 @@ try {
 }
 
 const ROOT = path.resolve(__dirname, '..');
-const EXT_PATH = path.join(ROOT, '凌睿科技导航页');
+const EXT_PATH = path.join(ROOT, 'src');
 const PORT = parseInt(process.env.PORT || '8901', 10);
 
 /* ---------- 浏览器探测：本机缓存版本可能与 playwright 期望的 revision 不一致 ---------- */

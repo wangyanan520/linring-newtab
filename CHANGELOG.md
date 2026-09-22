@@ -10,7 +10,7 @@
 - **次**：向后兼容的功能新增
 - **修订**：向后兼容的缺陷修复
 
-**每次对外分发前必须递增 `凌睿科技导航页/manifest.json` 的 `version`**，并在此文件补一节。
+**每次对外分发前必须递增 `src/manifest.json` 的 `version`**，并在此文件补一节。
 Chrome Web Store 与 Edge 加载项商店都要求每次提交的版本号**严格递增**，重复或回退都会被拒。
 打包产物名固定为 `dist/凌睿科技导航.zip`，版本号以 `manifest.json` 为准（`npm run pack` 会打印）。
 
@@ -21,7 +21,7 @@ Chrome Web Store 与 Edge 加载项商店都要求每次提交的版本号**严�
 ### 新增
 
 - **天气双源容灾**：wttr.in 主源请求失败时自动回退 Open-Meteo 备用源。备用源只认经纬度，
-  坐标来自 `data/cities.json`（342 城，`scripts/gen-city-coords.js` 生成）与 IP 定位兜底
+  坐标来自 `data/cities.json`（342 城，`tools/gen-city-coords.js` 生成）与 IP 定位兜底
   （`ipwho.is`，仅在未选城市且浏览器定位不可用时请求一次）。起因是 2026-09-15 wttr.in 的
   Let's Encrypt 证书过期，导致全新安装的设备完全拿不到天气
 - **从浏览器导入书签**（UX-10）：经用户主动授权后才申请可选的 `bookmarks` 权限，

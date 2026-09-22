@@ -10,7 +10,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 
-const { bookmarksTreeToCategories } = require('../storage.js');
+const { bookmarksTreeToCategories } = require('../../src/scripts/storage.js');
 
 /* chrome.bookmarks.getTree() 的真实形状：单个根节点，下挂书签栏(id=1)/其他书签(id=2)/移动设备(id=3) */
 const tree = () => ([{

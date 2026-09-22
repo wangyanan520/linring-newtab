@@ -22,7 +22,7 @@ URL 误报、存储层并发写竞态、无障碍支持、打包卫生、输入�
 对所有文件返回 `text/html`，导致 preview/shim 模式的 CSS 从未被加载、**所有样式类断言
 都测不到东西**（详见方案 §9.3）。未完成项与原因见方案 §9.4。
 
-完整评估结论、三轮自审记录与修复证据见 `docs/项目评估报告.md`。
+完整评估结论、三轮自审记录与修复证据见 `docs/reviews/项目评估报告.md`。
 
 ## 常用命令
 
@@ -33,9 +33,9 @@ URL 误报、存储层并发写竞态、无障碍支持、打包卫生、输入�
 | `npm run test:e2e` | E2E 全量四模式：preview + file:// + shim + 扩展（合计 389 项断言） |
 | `npm run test:e2e:preview` | 仅 http 预览模式（headless，128 项断言） |
 | `npm run test:e2e:shim` | 仅 chrome.storage 模拟模式（headless，131 项断言） |
-| `node scripts/ux-audit.js` | **体验体检**：布局 / 溢出 / 对比度 / 交互 / 空状态，不达标时退出码 1 |
+| `node tools/ux-audit.js` | **体验体检**：布局 / 溢出 / 对比度 / 交互 / 空状态，不达标时退出码 1 |
 | `npm run pack` | 单测 + 可复现打包到 `dist/`（排除测试文件、固定时间戳） |
-| `node scripts/gen-city-coords.js --dry-run\|--write` | 重建城市经纬度（天气备用源用），构建期工具 |
+| `node tools/gen-city-coords.js --dry-run\|--write` | 重建城市经纬度（天气备用源用），构建期工具 |
 
 > 扩展模式 E2E 需要 Chrome for Testing 与 GUI 会话；CI 只跑 preview 与 shim 两种 headless 模式。
 > **改动 `--shim` 的存储替身时先读 `nav-e2e.js` 中 `CHROME_STORAGE_SHIM` 的注释**：
@@ -48,21 +48,30 @@ URL 误报、存储层并发写竞态、无障碍支持、打包卫生、输入�
 > 跑 E2E `[44]`，并注意 mock 若把 `weatherDesc` 直接写成中文，这条路径就测不到。
 > **改动 E2E 静态服务器时先读 `startStaticServer` 上方注释**：`Content-Type` 必须按扩展名
 > 给对，否则 preview/shim 两种模式会静默失去全部样式，样式类断言变成永远通过的绿灯。
-> **改动主题或配色时**跑 `node scripts/ux-audit.js --contrast`：对比度用真实截图采样
+> **改动主题或配色时**跑 `node tools/ux-audit.js --contrast`：对比度用真实截图采样
 > （背景取像素众数色、前景取 computed color），不能只断言 `data-theme` 属性值。
 
 ## 目录结构
 
-- `凌睿科技导航页/`：扩展源码（`index.html`、`scripts/`、`styles/`、`manifest.json`、`data/`）
-  - `scripts/__tests__/`：单元与 E2E 测试，**不进入分发包**（`pack.js` 会过滤）
+- `src/`：扩展本体，**Chrome 直接加载此目录**（`chrome://extensions` 开发者模式选它）——
+  `manifest.json`、`index.html`、`scripts/`（运行时 JS）、`styles/`、`data/`、`THIRD-PARTY.md`
+- `tests/unit/`：单元测试（`node:test`，`*.test.js`）；`tests/e2e/nav-e2e.js`：E2E 四模式
+  脚本。测试全在 `src/` 之外，天然不进入分发包
+- `tools/`：构建期与检查脚本
+  - `pack.js`：可复现打包；产物 `dist/凌睿科技导航.zip` + `.sha256`（已 gitignore）
+  - `ux-audit.js`：体验体检（布局 / 溢出 / 对比度 / 交互 / 空状态）
+  - `gen-city-coords.js`：城市经纬度生成（调用 Open-Meteo Geocoding），产物写入
+    `src/data/cities.json`，**不进入分发包**
 - `docs/product/`：V3 产品文档链（用户画像、故事、用例、旅程、PRD、MVP、待办、线路、
-  甘特图）+ 审查报告 + 任务分配
-- `docs/项目评估报告.md`：独立评估报告（发现项、三轮对抗式自审、修复进展与验证证据）
-- `scripts/pack.js`：可复现打包脚本；产物 `dist/凌睿科技导航.zip` + `.sha256`（已 gitignore）
-- `scripts/gen-city-coords.js`：城市经纬度生成脚本（构建期，调用 Open-Meteo Geocoding）；
-  产物写入 `凌睿科技导航页/data/cities.json`，**不进入分发包**
+  甘特图、使用体验优化方案）+ `assets/` 截图
+- `docs/reviews/`：独立评估报告与审查报告（含三轮对抗式自审、修复证据）
+- `docs/process/`：协作过程记录（任务分配等历史文档）+ 目录重组方案
 - `.agents/`：多 agent 协作规范（角色 / 规则 / 流程 / 技能）
 - `.github/workflows/ci.yml`：CI（单元测试 + 覆盖率 + preview/shim 两种 E2E）
+
+> 目录重组于 2026-09-22 完成（`凌睿科技导航页/` → `src/`、`scripts/` → `tools/`、
+> `__tests__/` → `tests/`）。分发包字节未变（SHA-256 保持 `c5e91dd…`），详见
+> `docs/process/2026-09-22-目录重组方案.md`。
 
 ## 全局规则
 
@@ -73,7 +82,7 @@ URL 误报、存储层并发写竞态、无障碍支持、打包卫生、输入�
    （回退被测代码应红灯）、验证条件须匹配生产、测试替身时序须匹配。本项目已多次出现
    "测试全绿但测不到东西"的情况，新增断言前务必先读该节。
 4. 工作区中已有的未提交改动（可能来自其他任务包）一律保留，禁止回退。
-5. **对外分发前必须递增 `凌睿科技导航页/manifest.json` 的 `version`，并在 `CHANGELOG.md` 补一节**。
+5. **对外分发前必须递增 `src/manifest.json` 的 `version`，并在 `CHANGELOG.md` 补一节**。
    Chrome Web Store 与 Edge 加载项商店都要求版本号严格递增，重复或回退会被拒。
    版本语义（主/次/修订）与判定标准见 `CHANGELOG.md` 开头。当前版本：**1.1.0**。
 
@@ -84,6 +93,6 @@ URL 误报、存储层并发写竞态、无障碍支持、打包卫生、输入�
 - 标准流程：`.agents/workflow.md`
 - 核心原则：root 是唯一调度者；执行 agent 独立负责一个任务包；禁止 agent 间互相
   spawn；文件交集非空的任务包禁止并行。
-- 任务来源：V3 MVP 的 PKG-01~05 已全部完成，`docs/product/task-allocation.md` 作为
+- 任务来源：V3 MVP 的 PKG-01~05 已全部完成，`docs/process/task-allocation.md` 作为
   历史记录保留（其验收标准仍可作为回归清单使用）；新任务按实际需求，依
   `.agents/workflow.md` 的流程分派。

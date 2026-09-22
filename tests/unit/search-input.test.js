@@ -11,8 +11,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 
-const { resolveInput } = require('../main.js');
-const { isCommitEnter } = require('../storage.js');
+const { resolveInput } = require('../../src/scripts/main.js');
+const { isCommitEnter } = require('../../src/scripts/storage.js');
 
 /* ---------- UX-03 resolveInput ---------- */
 

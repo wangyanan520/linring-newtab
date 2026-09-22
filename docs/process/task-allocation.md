@@ -27,8 +27,8 @@
 **目标**：让书签、分类、分类内链接统一使用 sortOrder 语义，并提供可测试的 reorder 纯函数。
 
 **涉及文件**：
-- 修改：`凌睿科技导航页/scripts/storage.js`
-- 新增：`凌睿科技导航页/scripts/__tests__/sorting.test.js`（可选，Phase 1 允许手动验证）
+- 修改：`src/scripts/storage.js`
+- 新增：`tests/unit/sorting.test.js`（可选，Phase 1 允许手动验证）
 
 **实施要点**：
 - 在 storage.js 增加 `reorder(items, fromIndex, toIndex)` 纯函数（返回新数组，不修改入参）。
@@ -51,9 +51,9 @@
 **目标**：主页书签与分类卡片支持鼠标拖拽换位，提供键盘上移/下移替代。
 
 **涉及文件**：
-- 修改：`凌睿科技导航页/scripts/main.js`（渲染 + 拖拽事件）
-- 修改：`凌睿科技导航页/scripts/settings.js`（键盘替代按钮）
-- 修改：`凌睿科技导航页/styles/main.css`（拖拽中视觉反馈样式）
+- 修改：`src/scripts/main.js`（渲染 + 拖拽事件）
+- 修改：`src/scripts/settings.js`（键盘替代按钮）
+- 修改：`src/styles/main.css`（拖拽中视觉反馈样式）
 
 **实施要点**：
 - 使用 HTML5 Drag and Drop：拖拽源设置 `draggable`，放置位设置占位/高亮。
@@ -77,11 +77,11 @@
 **目标**：主页区块（搜索/书签/分类/待办/天气/农历/壁纸按钮）改为注册表驱动，设置页可开关组件。
 
 **涉及文件**：
-- 修改：`凌睿科技导航页/scripts/main.js`（注册表 + 按配置渲染）
-- 修改：`凌睿科技导航页/index.html`（区块加 data-component 标记）
-- 修改：`凌睿科技导航页/scripts/settings.js`（组件管理 UI）
-- 修改：`凌睿科技导航页/scripts/storage.js`（组件可见性持久化，默认全开）
-- 修改：`凌睿科技导航页/styles/settings.css`（组件列表样式）
+- 修改：`src/scripts/main.js`（注册表 + 按配置渲染）
+- 修改：`src/index.html`（区块加 data-component 标记）
+- 修改：`src/scripts/settings.js`（组件管理 UI）
+- 修改：`src/scripts/storage.js`（组件可见性持久化，默认全开）
+- 修改：`src/styles/settings.css`（组件列表样式）
 
 **实施要点**：
 - 定义 `COMPONENTS` 注册表：`{ id, title, render, defaultVisible }`，覆盖搜索、快捷书签、分类、待办、天气、农历日历、壁纸设置入口。
@@ -104,9 +104,9 @@
 **目标**：设置面板支持一键导出 JSON 备份、导入恢复（校验 + 失败回滚）。
 
 **涉及文件**：
-- 修改：`凌睿科技导航页/scripts/settings.js`（数据区块 UI）
-- 修改：`凌睿科技导航页/scripts/storage.js`（导出/导入/校验函数）
-- 修改：`凌睿科技导航页/styles/settings.css`（按钮与提示样式）
+- 修改：`src/scripts/settings.js`（数据区块 UI）
+- 修改：`src/scripts/storage.js`（导出/导入/校验函数）
+- 修改：`src/styles/settings.css`（按钮与提示样式）
 
 **实施要点**：
 - 导出：收集 bookmarks/categories/settings/todos + schemaVersion，生成文件名 `lingrui-nav-backup-YYYY-MM-DD.json` 下载。
@@ -130,10 +130,10 @@
 **目标**：设置面板提供浅色/深色主题选项，CSS 变量驱动，即时生效并持久化。
 
 **涉及文件**：
-- 修改：`凌睿科技导航页/styles/main.css`（浅色变量集 + data-theme 覆盖）
-- 修改：`凌睿科技导航页/styles/settings.css`（设置面板主题适配）
-- 修改：`凌睿科技导航页/scripts/main.js`（applySettings 应用主题）
-- 修改：`凌睿科技导航页/scripts/settings.js`（主题选项 UI）
+- 修改：`src/styles/main.css`（浅色变量集 + data-theme 覆盖）
+- 修改：`src/styles/settings.css`（设置面板主题适配）
+- 修改：`src/scripts/main.js`（applySettings 应用主题）
+- 修改：`src/scripts/settings.js`（主题选项 UI）
 
 **实施要点**：
 - 在 `:root` 定义浅色/深色两套语义变量（背景、文字、玻璃卡片、边框、滚动条）。

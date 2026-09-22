@@ -14,13 +14,13 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 
-const CITIES = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'data', 'cities.json'), 'utf8'));
+const CITIES = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'data', 'cities.json'), 'utf8'));
 
 /* weather.js 是浏览器全局脚本：require 前先补上它运行期依赖的全局符号。
    注意每次调用都会清缓存重新加载，一个测试里只能调一次，
    否则 Weather 与 loadCityData 会来自两个互不相干的模块实例。 */
 function loadWeather() {
-  const modPath = require.resolve('../weather.js');
+  const modPath = require.resolve('../../src/scripts/weather.js');
   delete require.cache[modPath];
   global.Storage = global.Storage || {
     updateSettings: async () => {},

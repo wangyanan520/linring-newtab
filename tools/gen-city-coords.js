@@ -18,15 +18,15 @@
  *   6. 任何最终无法确认的城市都会在末尾列出，脚本以非零码退出
  *
  * 用法：
- *   node scripts/gen-city-coords.js --dry-run   # 只报告，不改文件
- *   node scripts/gen-city-coords.js --write     # 写入 凌睿科技导航页/data/cities.json
+ *   node tools/gen-city-coords.js --dry-run   # 只报告，不改文件
+ *   node tools/gen-city-coords.js --write     # 写入 src/data/cities.json
  */
 'use strict';
 const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
-const CITIES_PATH = path.join(ROOT, '凌睿科技导航页', 'data', 'cities.json');
+const CITIES_PATH = path.join(ROOT, 'src', 'data', 'cities.json');
 
 const CONCURRENCY = 4;
 const GEO_API = 'https://geocoding-api.open-meteo.com/v1/search';

@@ -16,8 +16,8 @@ root（编排者）分派执行 agent 完成 V3 MVP 任务包的场景。
 
 - 根目录 `AGENTS.md`：项目全局规则入口，所有 agent 进入仓库后优先读取（含当前状态、
   常用命令、目录结构）
-- `docs/项目评估报告.md`：独立评估结论与修复进展，接手任务前可先了解已知问题与已修项
-- `docs/product/task-allocation.md`：V3 MVP 任务包定义（PKG-01~05，已全部完成），
+- `docs/reviews/项目评估报告.md`：独立评估结论与修复进展，接手任务前可先了解已知问题与已修项
+- `docs/process/task-allocation.md`：V3 MVP 任务包定义（PKG-01~05，已全部完成），
   作为历史记录与回归清单保留
 
 ## 核心原则

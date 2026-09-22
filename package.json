@@ -4,13 +4,13 @@
   "private": true,
   "description": "凌睿科技导航页 — Chrome MV3 新标签页扩展（原生 JS，无运行时构建；含单测 / E2E / 可复现打包）",
   "scripts": {
-    "test": "node --test \"凌睿科技导航页/scripts/__tests__/*.test.js\"",
-    "test:coverage": "node --experimental-test-coverage --test \"凌睿科技导航页/scripts/__tests__/*.test.js\"",
-    "test:e2e": "node 凌睿科技导航页/scripts/__tests__/e2e/nav-e2e.js",
-    "test:e2e:preview": "node 凌睿科技导航页/scripts/__tests__/e2e/nav-e2e.js --preview",
-    "test:e2e:shim": "node 凌睿科技导航页/scripts/__tests__/e2e/nav-e2e.js --shim",
-    "pack": "npm test && node scripts/pack.js",
-    "pack:zip": "node scripts/pack.js"
+    "test": "node --test \"tests/unit/*.test.js\"",
+    "test:coverage": "node --experimental-test-coverage --test \"tests/unit/*.test.js\"",
+    "test:e2e": "node tests/e2e/nav-e2e.js",
+    "test:e2e:preview": "node tests/e2e/nav-e2e.js --preview",
+    "test:e2e:shim": "node tests/e2e/nav-e2e.js --shim",
+    "pack": "npm test && node tools/pack.js",
+    "pack:zip": "node tools/pack.js"
   },
   "devDependencies": {
     "playwright": "^1.57.0"

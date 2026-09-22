@@ -52,7 +52,7 @@ function makeLocalStorageMock() {
 }
 
 /* ---- 模块加载：清缓存 + 注入全局后重新 require ---- */
-const modPath = require.resolve('../storage.js');
+const modPath = require.resolve('../../src/scripts/storage.js');
 function freshRequire() {
   delete require.cache[modPath];
   return require(modPath);

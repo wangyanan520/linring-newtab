@@ -1,6 +1,6 @@
 /**
  * PKG-01/PKG-04 核心纯函数断言测试（node:test）
- * 运行：npm test（或 node --test "凌睿科技导航页/scripts/__tests__/*.test.js"）
+ * 运行：npm test（或 node --test "tests/unit/*.test.js"）
  *
  * storage.js 已提供 Node 导出（UMD 尾部，浏览器 <script> 全局加载不受影响），
  * 此处直接 require，覆盖率可真实统计被测代码（PBI-15/P2-7）。
@@ -12,7 +12,7 @@ const {
   ensureSortOrder,
   validateBackup,
   normalizeCategories
-} = require('../storage.js');
+} = require('../../src/scripts/storage.js');
 
 test('PKG-01 reorder：中间/首/尾边界', () => {
   const abcd = ['a', 'b', 'c', 'd'];

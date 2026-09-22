@@ -3,7 +3,7 @@
 ## 1. 任务准备（ROOT）
 
 1. 确认仓库基线：当前分支、工作树状态、已知未提交改动清单。
-2. 从 `docs/product/task-allocation.md` 读取任务包定义（PKG-XX、依赖、验收标准）。
+2. 从 `docs/process/task-allocation.md` 读取任务包定义（PKG-XX、依赖、验收标准）。
 3. 生成任务说明：目标、文件白名单/黑名单、验收标准、报告要求，消息独立完整。
 
 ## 2. 批次派发（ROOT）
@@ -14,7 +14,7 @@
 
 ## 3. 执行（EXEC）
 
-1. 读取任务说明，并阅读 `docs/product/task-allocation.md` 对应小节。
+1. 读取任务说明，并阅读 `docs/process/task-allocation.md` 对应小节。
 2. 只修改白名单文件；保留其他未提交产物。
 3. 按验收标准完成验证（测试 / 静态检查 / 手动冒烟），记录证据。
 4. 产出最终报告：改动摘要、验收逐条核验结果、遗留问题。
@@ -29,7 +29,7 @@
 ## 5. 完成（ROOT）
 
 1. 所有任务包验收通过后，汇总结果报告用户。
-2. 更新 `docs/product/task-allocation.md` 中的执行状态（如适用）。
+2. 更新 `docs/process/task-allocation.md` 中的执行状态（如适用）。
 
 ## 提交消息格式
 

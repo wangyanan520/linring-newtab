@@ -9,7 +9,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const { NETWORK_ALLOWLIST, isAllowed, matchHost } = require('../network-audit.js');
+const { NETWORK_ALLOWLIST, isAllowed, matchHost } = require('../../src/scripts/network-audit.js');
 
 const PAGE_URL = 'chrome-extension://fkapmejgokgfcbkehkcklneoidjgccdm/index.html';
 
@@ -77,7 +77,7 @@ test('PBI-14 matchHost：精确与子域通配', () => {
 });
 
 test('PBI-14 manifest 一致性：host_permissions 与 CSP connect-src ⊆ 注册表（US-16 AC3）', () => {
-  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'manifest.json'), 'utf8'));
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'manifest.json'), 'utf8'));
   const hosts = NETWORK_ALLOWLIST.map(e => e.host.replace(/^\*\./, ''));
   const checkHost = (h) => hosts.some(r => matchHost(r.startsWith('*.') ? r : r, h));
   // host_permissions 中的域名必须已在注册表注册

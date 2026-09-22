@@ -98,7 +98,7 @@ A3 无兜底文案（E2E 证实）、A4 壁纸回退到预设非「上一张」+
 
 **E2E 运行验证了 43 项正面行为，并稳定复现 4 项审查结论（A1/A3/A8/A10）、1 项文档承诺落空（US-20 预览模式）、1 项静态审查漏掉的真实 bug（N1 键盘排序主页不刷新）。** 两轮对抗式再审查修正了原报告 2 处事实错误、6 项定级膨胀、2 处措辞过强，补报 4 项遗漏；最终无 P1 阻塞项，7 项 P2 建议在 MVP 验收放行前优先处理（P2-5 一行可修、P2-3 一行可修、P2-6 一处文案）。
 
-**建议下一步**：修复 P2-5/P2-3/P2-6（各一行级改动）后，在真实 Chrome 扩展环境（GUI 会话）补跑扩展模式冒烟（CSP 实际拦截、newtab 覆盖、chrome.storage 真路径），并将 E2E 脚本收敛入库（`凌睿科技导航页/scripts/__tests__/e2e/`）作为 PBI-15 的起点。
+**建议下一步**：修复 P2-5/P2-3/P2-6（各一行级改动）后，在真实 Chrome 扩展环境（GUI 会话）补跑扩展模式冒烟（CSP 实际拦截、newtab 覆盖、chrome.storage 真路径），并将 E2E 脚本收敛入库（`tests/e2e/`）作为 PBI-15 的起点。
 
 ---
 
@@ -108,24 +108,24 @@ A3 无兜底文案（E2E 证实）、A4 壁纸回退到预设非「上一张」+
 
 ### P2-5 已修复：键盘排序后主页不刷新（this 解绑 TypeError）
 
-- **改动**：`凌睿科技导航页/scripts/settings.js` `moveItem()` 中 `appRerender` 由解构方法引用改为箭头函数包装（`() => App.renderBookmarks()`），保持 `this` 绑定。
+- **改动**：`src/scripts/settings.js` `moveItem()` 中 `appRerender` 由解构方法引用改为箭头函数包装（`() => App.renderBookmarks()`），保持 `this` 绑定。
 - **验证**：E2E 新增断言「[5] N1 主页顺序随键盘排序同步」PASS（修复前该路径稳定抛 `TypeError: this.extractDomain is not a function`，主页不刷新）；页面 pageerror 总数由 2 → 0。
 
 ### P2-3 已修复：恶意 id 致编辑崩溃（导入校验白名单）
 
-- **改动**：`凌睿科技导航页/scripts/storage.js` `validateBackup()` 新增 `idSafe` 白名单（`^[A-Za-z0-9_-]+$`），覆盖 bookmarks / categories / 分类链接 / todos 四类 id；与 `generateId` 及全部预设 id 格式兼容，不误伤现有数据。
+- **改动**：`src/scripts/storage.js` `validateBackup()` 新增 `idSafe` 白名单（`^[A-Za-z0-9_-]+$`），覆盖 bookmarks / categories / 分类链接 / todos 四类 id；与 `generateId` 及全部预设 id 格式兼容，不误伤现有数据。
 - **验证**：
   - 单测新增 4 条断言（`sorting.test.js`），34/34 通过；
   - E2E「[9] 恶意 id 被校验拒绝」（`bookmarks[0] id 含不支持的字符…现有数据未受影响`）PASS、「[9] 无新增 pageerror（不再崩溃）」PASS、「合法 id 备份正常导入」PASS（白名单不误伤）。
 
 ### P2-6 已修复：隐私文案误导
 
-- **改动**：`凌睿科技导航页/scripts/settings.js` 数据 tab 文案由「数据全程保存在本地，不经过任何服务器」改为「**备份文件仅保存在本地，不经过任何服务器；页面功能会请求外部数据源（天气 / 壁纸 / 节假日 / 书签图标），无广告、无埋点**」——准确区分"备份文件本地化"与"运行时外部数据源"，与 US-15 AC2 声明口径一致。
+- **改动**：`src/scripts/settings.js` 数据 tab 文案由「数据全程保存在本地，不经过任何服务器」改为「**备份文件仅保存在本地，不经过任何服务器；页面功能会请求外部数据源（天气 / 壁纸 / 节假日 / 书签图标），无广告、无埋点**」——准确区分"备份文件本地化"与"运行时外部数据源"，与 US-15 AC2 声明口径一致。
 - **验证**：E2E「[6] 隐私文案明示外部数据源」PASS。
 
 ### P2-4 已修复：导入后设置面板 UI 不同步（A10 剩余部分）
 
-- **改动**：`凌睿科技导航页/scripts/settings.js` `refreshAllAfterDataChange()` 在原有 themeSelect 同步之外，补充：
+- **改动**：`src/scripts/settings.js` `refreshAllAfterDataChange()` 在原有 themeSelect 同步之外，补充：
   - `showBottomBarToggle.checked = s.showBottomBar !== false`（undefined 视为默认 true，兼容旧备份）；
   - `wallpaperSourceSelect.value` 同步（仅当导入值在壁纸源选项内时更新，损坏数据不破坏 UI）；
   - `refreshWallpaperBtn` 可见性随壁纸类型（api/preset）同步。
@@ -147,7 +147,7 @@ A3 无兜底文案（E2E 证实）、A4 壁纸回退到预设非「上一张」+
 
 ### E2E 脚本收敛入库（PBI-15 起点）
 
-- 新增 `凌睿科技导航页/scripts/__tests__/e2e/nav-e2e.js`：自包含三模式（扩展 / http 预览 / file:// 预览），内嵌静态服务，自动探测 Chrome for Testing 与 headless shell 路径（`CFT_PATH`/`EXT_PATH`/`PORT` 环境变量可覆盖），存储断言统一探测 chrome.storage / localStorage。
+- 新增 `tests/e2e/nav-e2e.js`：自包含三模式（扩展 / http 预览 / file:// 预览），内嵌静态服务，自动探测 Chrome for Testing 与 headless shell 路径（`CFT_PATH`/`EXT_PATH`/`PORT` 环境变量可覆盖），存储断言统一探测 chrome.storage / localStorage。
 - 运行：`node scripts/__tests__/e2e/nav-e2e.js [--extension | --preview]`；前置 `npm i -D playwright` + `npx playwright install chromium`。
 - 入库版实测 **64 PASS / 0 FAIL**（P2-4 修复后 A10 全部断言转绿，预览 + file + 扩展三模式全通过）。
 - 注意：扩展模式需 GUI 会话（headful）；无 GUI 环境可用 `--preview` 跑预览模式回归。
@@ -188,7 +188,7 @@ A3 无兜底文案（E2E 证实）、A4 壁纸回退到预设非「上一张」+
 
 ### PBI-16 完成（2026-09-01，可复现打包）
 
-- `scripts/pack.js`：零依赖（zip 格式手写：local header + central directory + deflateRaw + crc32），`npm run pack` = 单测 + 打包。
+- `tools/pack.js`：零依赖（zip 格式手写：local header + central directory + deflateRaw + crc32），`npm run pack` = 单测 + 打包。
 - 产物 `dist/lingrui-nav-v1.0.0-<date>.zip` + `.sha256`；排除 .DS_Store/__MACOSX/._*。
 - 自校验：打包即解压与源码逐文件字节比对；外部验证：系统 unzip 解压后与源码 diff 为空。
 - 可复现性实测：连续两次打包 SHA-256 一致（d6b9f323…）。
