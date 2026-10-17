@@ -276,3 +276,146 @@ test('天气容灾链：无城市且无坐标时不请求备用源（避免发�
   assert.ok(!seen.some(u => u.includes('api.open-meteo.com')), '没有经纬度时不应请求备用源');
   assert.strictEqual(Weather._failed, true);
 });
+
+/* ---- ADV-03：缓存版本与结构校验 ---- */
+
+const VALID_CACHE = {
+  temp: '25', icon: '⛅', desc: '多云', todayHigh: 31, todayLow: 23,
+  timestamp: Date.now(), version: 7,
+  hourly: [{ hour: 10, temp: 24, rain: 10, icon: '🌦️' }]
+};
+
+test('ADV-03 旧版本或畸形天气缓存被校验拒绝（否则会渲染 NaN）', () => {
+  const { isValidWeatherCache } = loadWeather();
+  assert.strictEqual(isValidWeatherCache(VALID_CACHE), true, '合法缓存应通过');
+  assert.strictEqual(isValidWeatherCache({ ...VALID_CACHE, version: 6 }), false,
+    '旧版本缓存必须丢弃（CACHE_VERSION 只写不读的原缺陷）');
+  assert.strictEqual(isValidWeatherCache({ ...VALID_CACHE, version: undefined }), false,
+    '无 version 的旧缓存必须丢弃');
+  assert.strictEqual(isValidWeatherCache({ ...VALID_CACHE, hourly: [{ hour: 1 }] }), false,
+    '缺 temp/icon 的 hourly 元素必须拒绝（会渲染 NaN）');
+  assert.strictEqual(isValidWeatherCache({ ...VALID_CACHE, hourly: [{ hour: 1, temp: 20, rain: 'x', icon: '☀️' }] }), false,
+    '非数值降水必须拒绝');
+  assert.strictEqual(isValidWeatherCache({ ...VALID_CACHE, temp: null }), false);
+  assert.strictEqual(isValidWeatherCache(null), false);
+});
+
+test('ADV-03 init 恢复缓存前校验版本：旧缓存不进入渲染', async () => {
+  const { Weather } = loadWeather();
+  const origGet = global.Storage.getSettings;
+  global.fetch = async (url) => {
+    if (String(url).includes('cities.json')) return { ok: true, json: async () => CITIES };
+    throw new Error('unexpected ' + url);
+  };
+  global.Storage.getSettings = async () => ({
+    weatherCache: { ...VALID_CACHE, version: 6 },
+    weatherCity: 'Shenzhen'
+  });
+  Weather._inited = false;
+  Weather.cache = null;
+  Weather.render = () => {};
+  Weather._initAsync = async () => {};
+  Weather.startRefresh = () => {};
+  try {
+    await Weather.init();
+    assert.strictEqual(Weather.cache, null, '旧版本缓存不得恢复，应由下一轮 refresh 重建');
+  } finally {
+    global.Storage.getSettings = origGet;
+  }
+});
+
+/* ---- ADV-02：悬停卡片转义与数值收敛 ---- */
+
+test('ADV-02 悬停卡片对缓存字段转义，且非数值降水不产出 NaN', () => {
+  const { Weather } = loadWeather();
+  const prevEscape = global.escapeHtml;
+  global.escapeHtml = s => String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  try {
+    Weather.selectedCityQuery = 'Shenzhen';
+    Weather.cache = {
+      temp: '<b>1</b>', icon: '<svg onload=alert(1)>', desc: '晴',
+      todayHigh: 30, todayLow: 20, timestamp: Date.now(), version: 7,
+      hourly: [
+        { hour: 10, temp: '<img src=x onerror=alert(1)>', rain: 'not-a-number', icon: '<svg onload=alert(1)>' },
+        { hour: 11, temp: 20, rain: 10, icon: '☀️' }
+      ]
+    };
+    const html = Weather.renderHoverCard();
+    assert.ok(!html.includes('<svg'), '图标不得原样输出标签');
+    assert.ok(!html.includes('<img src=x'), '温度不得原样输出标签');
+    assert.ok(!html.includes('NaN'), '非数值降水不得产出 NaN 样式');
+    assert.ok(html.includes('&lt;svg'), '恶意图标应被转义为文本');
+  } finally {
+    global.escapeHtml = prevEscape;
+  }
+});
+
+/* ---- ADV-04：快速切换城市的响应乱序 ---- */
+
+function wttrResponse(temp) {
+  return {
+    current_condition: [{
+      temp_C: String(temp),
+      weatherCode: '113',
+      weatherDesc: [{ value: 'Sunny' }],
+      localObsDateTime: '2026-09-15 10:00 AM'
+    }],
+    weather: [{
+      maxtempC: String(temp + 5),
+      mintempC: String(temp - 3),
+      hourly: [
+        { time: '1200', tempC: String(temp), chanceofrain: '0', weatherCode: '113' },
+        { time: '1500', tempC: String(temp + 1), chanceofrain: '10', weatherCode: '113' },
+        { time: '1800', tempC: String(temp + 2), chanceofrain: '20', weatherCode: '113' }
+      ]
+    }]
+  };
+}
+
+test('ADV-04 快速切换城市：慢响应不得覆盖后选城市的数据', async () => {
+  const { Weather, loadCityData } = loadWeather();
+  const pending = {};
+  global.fetch = (url) => {
+    const u = String(url);
+    if (u.includes('cities.json')) return Promise.resolve({ ok: true, json: async () => CITIES });
+    if (u.includes('wttr.in')) {
+      const query = /wttr\.in\/([^?]+)/.exec(u)[1];
+      return new Promise((resolve) => {
+        pending[query] = () => resolve({
+          ok: true,
+          json: async () => wttrResponse(query === 'Shenzhen' ? 11 : 22)
+        });
+      });
+    }
+    throw new Error('unexpected ' + u);
+  };
+  await loadCityData();
+
+  Weather.cache = null;
+  Weather._failed = false;
+  Weather.render = () => {};
+  Weather._reqGen = 0;
+  const origUpdate = global.Storage.updateSettings;
+  global.Storage.updateSettings = async () => {};
+  try {
+    const pA = Weather.setCity('Shenzhen');
+    await new Promise(r => setTimeout(r, 0)); // 让 A 的请求先发出（慢响应）
+    assert.ok(pending.Shenzhen, 'A 城请求应已发出');
+
+    const pB = Weather.setCity('Beijing');
+    await new Promise(r => setTimeout(r, 0)); // B 后发但先返回
+    assert.ok(pending.Beijing, 'B 城请求应已发出');
+
+    pending.Beijing();
+    await pB;
+    pending.Shenzhen(); // 旧城市的迟到响应
+    await pA;
+
+    assert.strictEqual(Weather.selectedCityQuery, 'Beijing');
+    assert.strictEqual(Weather.cache.temp, '22', '最终缓存必须是后选的北京数据，而不是迟到的深圳数据');
+  } finally {
+    global.Storage.updateSettings = origUpdate;
+  }
+});

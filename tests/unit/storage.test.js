@@ -9,17 +9,28 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 
-/* ---- mock：chrome.storage.local ---- */
+/* ---- mock：chrome.storage.local ----
+ * 真实 Chrome 的错误模型是「回调照常触发 + runtime.lastError 置位」，
+ * 不是同步 throw（ADV-06）。mock 必须复刻这一语义，否则回滚路径测不到。 */
 function makeChromeMock(initial = {}) {
   const store = { ...initial };
   let failGet = false;
-  return {
+  let failSetKey = null;
+  let failSetOnce = false;
+  const mock = {
     _store: store,
     _failGet(v) { failGet = v; },
+    _failSetOn(key, once = false) { failSetKey = key; failSetOnce = once; },
+    runtime: { lastError: null },
     storage: {
       local: {
         get(keys, cb) {
-          if (failGet) throw new Error('storage read failed (mock)');
+          if (failGet) {
+            mock.runtime.lastError = { message: 'storage read failed (mock)' };
+            cb(undefined);
+            mock.runtime.lastError = null;
+            return;
+          }
           if (keys === null || keys === undefined) { cb({ ...store }); return; }
           const keyList = Array.isArray(keys) ? keys : [keys];
           const result = {};
@@ -27,12 +38,21 @@ function makeChromeMock(initial = {}) {
           cb(result);
         },
         set(data, cb) {
+          const shouldFail = failSetKey && Object.prototype.hasOwnProperty.call(data, failSetKey);
+          if (shouldFail) {
+            if (failSetOnce) { failSetKey = null; failSetOnce = false; }
+            mock.runtime.lastError = { message: 'storage write failed (mock)' };
+            if (cb) cb();
+            mock.runtime.lastError = null;
+            return;
+          }
           Object.assign(store, data);
           if (cb) cb();
         }
       }
     }
   };
+  return mock;
 }
 
 /* ---- mock：localStorage（回退分支；可动态开启 setItem 失败） ---- */
@@ -363,6 +383,68 @@ test('Storage 读取失败防御：catch 路径不崩溃（chrome 分支）', as
     assert.deepEqual(await Storage.getTodos(), [], '待办读取失败返回空数组');
     const s = await Storage.getSettings();
     assert.equal(s.theme, 'dark', '设置读取失败回退默认值');
+  } finally { cleanupGlobals(); }
+});
+
+test('ADV-06 读取失败经 lastError 拒绝：init 抛可读错误而非 TypeError', async () => {
+  try {
+    const { Storage, chromeMock } = withChrome({ settings: { version: '1.0.0' } });
+    chromeMock._failGet(true);
+    // 旧实现（不读 lastError）会 resolve(undefined) → init 里 result.settings 报 TypeError；
+    // 修复后应 reject 出真实根因
+    await assert.rejects(Storage.init(), /storage read failed/);
+  } finally { cleanupGlobals(); }
+});
+
+test('ADV-06 写入失败经 lastError 拒绝并回滚（chrome 分支）', async () => {
+  try {
+    const { Storage, chromeMock } = withChrome();
+    await Storage.init();
+    // 只让下一次含 bookmarks 的写入失败：data 写入失败、回滚写入成功。
+    // 旧实现不读 lastError → Promise 永远 resolve → 不抛错也不回滚，本测试红灯。
+    chromeMock._failSetOn('bookmarks', true);
+    await assert.rejects(
+      Storage.importData(JSON.stringify({
+        schemaVersion: 1,
+        bookmarks: [{ id: 'i1', title: 'I', url: 'https://i.com' }]
+      })),
+      /写入失败，已恢复原有数据/
+    );
+    assert.equal((await Storage.getBookmarks()).length, 8, '回滚后原数据保留');
+  } finally { cleanupGlobals(); }
+});
+
+test('ADV-01 校验遍历全部条目：第 9 条恶意书签不会被错误上限跳过', () => {
+  try {
+    withChrome();
+    const { validateBackup } = freshRequire();
+    // 8 个诱饵各产生 1 条「缺 title」错误，恰好填满旧实现的错误上限
+    const decoys = Array.from({ length: 8 }, (_, i) => ({
+      id: `d${i}`, title: '   ', url: 'https://example.com'
+    }));
+    const evil = { id: 'x"onmouseover="alert(1)', title: 'e', url: 'javascript:alert(1)//' };
+    const errors = validateBackup({ bookmarks: [...decoys, evil] });
+    assert.ok(errors.some(e => e.startsWith('bookmarks[8]')), '第 9 条必须被校验（旧实现会 break）');
+    assert.ok(errors.some(e => e.startsWith('bookmarks[8]') && e.includes('协议')), '恶意协议被白名单拦截');
+    assert.ok(errors.some(e => e.startsWith('bookmarks[8]') && e.includes('id 含不支持')), '恶意 id 被字符白名单拦截');
+  } finally { cleanupGlobals(); }
+});
+
+test('ADV-01 前一类别错误占满后，后续类别仍被校验', () => {
+  try {
+    withChrome();
+    const { validateBackup } = freshRequire();
+    const decoys = Array.from({ length: 8 }, (_, i) => ({
+      id: `d${i}`, title: '  ', url: 'https://example.com'
+    }));
+    const errors = validateBackup({
+      bookmarks: decoys,
+      categories: [{
+        id: 'c1', title: 'C',
+        items: [{ id: 'i1', title: 'I', url: 'data:text/html,<script>alert(1)</script>' }]
+      }]
+    });
+    assert.ok(errors.some(e => e.startsWith('categories[0].items[0]')), '后续类别仍被校验（旧实现直接 break）');
   } finally { cleanupGlobals(); }
 });
 

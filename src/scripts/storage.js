@@ -132,8 +132,9 @@ function validateBackup(data) {
     errors.push('备份文件中不包含任何数据字段');
   }
 
-  // 字段级校验：必填字段、类型、重复 id（每类最多报 8 条，避免错误列表过长）
-  const limit = (list) => { if (list.length >= 8) return true; return false; };
+  // 字段级校验：必填字段、类型、重复 id。
+  // 校验必须遍历全部条目——错误上限只用于展示（末尾截断），不能在循环里 break：
+  // 否则攻击者放 8 条"无害但报错"的诱饵，第 9 条起的恶意内容就完全不校验（ADV-01）。
   // url 协议白名单：仅允许 http/https/chrome-extension，拒绝 javascript: 等可执行协议
   const urlProtoAllowed = (url) => {
     try {
@@ -148,7 +149,6 @@ function validateBackup(data) {
   if (Array.isArray(data.bookmarks)) {
     const ids = new Set();
     for (let i = 0; i < data.bookmarks.length; i++) {
-      if (limit(errors)) break;
       const bm = data.bookmarks[i];
       if (!bm || typeof bm !== 'object' || Array.isArray(bm)) {
         errors.push(`bookmarks[${i}] 不是有效对象`);
@@ -169,7 +169,6 @@ function validateBackup(data) {
     const ids = new Set();
     const itemIds = new Set();
     for (let i = 0; i < data.categories.length; i++) {
-      if (limit(errors)) break;
       const cat = data.categories[i];
       if (!cat || typeof cat !== 'object' || Array.isArray(cat)) {
         errors.push(`categories[${i}] 不是有效对象`);
@@ -185,7 +184,6 @@ function validateBackup(data) {
       }
       if (Array.isArray(cat.items)) {
         for (let j = 0; j < cat.items.length; j++) {
-          if (limit(errors)) break;
           const item = cat.items[j];
           if (!item || typeof item !== 'object' || Array.isArray(item)) {
             errors.push(`categories[${i}].items[${j}] 不是有效对象`);
@@ -207,7 +205,6 @@ function validateBackup(data) {
   if (Array.isArray(data.todos)) {
     const ids = new Set();
     for (let i = 0; i < data.todos.length; i++) {
-      if (limit(errors)) break;
       const todo = data.todos[i];
       if (!todo || typeof todo !== 'object' || Array.isArray(todo)) {
         errors.push(`todos[${i}] 不是有效对象`);
@@ -222,6 +219,8 @@ function validateBackup(data) {
       }
     }
   }
+  // 返回全部校验结果供调用方判断；展示时的条数上限由 importData 负责，
+  // 校验本身不得截断——否则错误位置靠后的恶意条目会被跳过（ADV-01）
   return errors;
 }
 
@@ -304,7 +303,16 @@ const hasChromeStorage = typeof chrome !== 'undefined' && chrome.storage && chro
 
 async function storageGet(keys) {
   if (hasChromeStorage) {
-    return new Promise(resolve => chrome.storage.local.get(keys, resolve));
+    return new Promise((resolve, reject) => {
+      chrome.storage.local.get(keys, (result) => {
+        // Chrome 的错误模型是「回调照常触发 + runtime.lastError 置位」，不是同步抛异常。
+        // 若不检查 lastError，Promise 会永远 resolve(undefined)：上层所有 catch/回滚
+        // 在真实扩展后端全部不可达，且真正的根因不会出现在日志里（ADV-06）。
+        const err = chrome.runtime && chrome.runtime.lastError;
+        if (err) reject(new Error(err.message || String(err)));
+        else resolve(result);
+      });
+    });
   }
   const keyList = Array.isArray(keys) ? keys : [keys];
   const result = {};
@@ -319,7 +327,15 @@ async function storageGet(keys) {
 
 async function storageSet(data) {
   if (hasChromeStorage) {
-    return new Promise(resolve => chrome.storage.local.set(data, resolve));
+    return new Promise((resolve, reject) => {
+      chrome.storage.local.set(data, () => {
+        // 与 storageGet 同理：写入失败时回调照常触发，必须读 lastError 才能 reject，
+        // 否则「写入失败自动回滚」在生产后端永远不会执行（ADV-06）。
+        const err = chrome.runtime && chrome.runtime.lastError;
+        if (err) reject(new Error(err.message || String(err)));
+        else resolve();
+      });
+    });
   }
   for (const [k, v] of Object.entries(data)) {
     localStorage.setItem(k, JSON.stringify(v));
@@ -632,7 +648,10 @@ const Storage = {
     }
     const errors = validateBackup(data);
     if (errors.length > 0) {
-      throw new Error('校验失败：' + errors.join('；'));
+      // 校验已遍历全部条目；仅在展示时截断，避免错误列表过长
+      const shown = errors.slice(0, 8).join('；');
+      const more = errors.length > 8 ? `（另有 ${errors.length - 8} 项）` : '';
+      throw new Error('校验失败：' + shown + more);
     }
 
     // 迁移兼容：缺字段时保留现有数据，不覆盖

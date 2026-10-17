@@ -258,6 +258,29 @@ function buildOpenMeteoCache(data) {
   };
 }
 
+/* 缓存结构校验（ADV-03）：CACHE_VERSION 此前只写不读，结构演进后旧缓存仍被恢复，
+   缺 hourly[].rain 等字段会在渲染时产出 NaN（opacity/height 无效、布局塌陷）。
+   恢复前校验版本与关键字段形状，不符则丢弃并由下一次 refresh 重建。
+   注意：缓存还可经备份导入注入，因此这里也是恶意结构的入口闸。 */
+function isValidWeatherCache(cache) {
+  if (!cache || typeof cache !== 'object' || Array.isArray(cache)) return false;
+  if (cache.version !== CACHE_VERSION) return false;
+  if (cache.temp == null || String(cache.temp).trim() === '' || !Number.isFinite(Number(cache.temp))) return false;
+  if (typeof cache.icon !== 'string' || typeof cache.desc !== 'string') return false;
+  if (cache.timestamp != null && !Number.isFinite(cache.timestamp)) return false;
+  if (cache.hourly != null) {
+    if (!Array.isArray(cache.hourly)) return false;
+    for (const h of cache.hourly) {
+      if (!h || typeof h !== 'object' || Array.isArray(h)) return false;
+      if (!Number.isFinite(Number(h.hour))) return false;
+      if (!Number.isFinite(Number(h.temp))) return false;
+      if (h.rain != null && !Number.isFinite(Number(h.rain))) return false;
+      if (typeof h.icon !== 'string') return false;
+    }
+  }
+  return true;
+}
+
 function findCityByQuery(query) {
   for (const prov of WEATHER_PROVINCES) {
     const city = prov.cities.find(c => c.query === query);
@@ -361,7 +384,9 @@ const Weather = {
     const settings = await Storage.getSettings();
     this.selectedCityQuery = settings.weatherCity || '';
     if (settings.weatherCache) {
-      this.cache = settings.weatherCache;
+      // ADV-03：旧版本/字段缺失的缓存直接丢弃，避免把 NaN 渲染进界面；
+      // 丢弃后不写存储，下一轮 refresh 成功时会自然覆盖
+      this.cache = isValidWeatherCache(settings.weatherCache) ? settings.weatherCache : null;
       this.render();
     }
     // 异步启动位置检测 + 天气刷新，不阻塞页面渲染
@@ -483,13 +508,19 @@ const Weather = {
   },
 
   async setCity(query) {
+    // ADV-04：入口即开启新一代请求。若在 await 期间用户又切了城市，
+    // 旧调用恢复后直接退出——不再发出旧城市的请求，更不能覆盖新城市的数据。
+    // （此前没有代次校验：慢响应会覆盖快响应，界面城市名与温度错位并持久化）
+    const gen = (this._reqGen = (this._reqGen || 0) + 1);
     this.selectedCityQuery = query;
     this.cache = null;
     this._failed = false;
     await Storage.updateSettings({ weatherCity: query, weatherCache: null });
+    if (gen !== this._reqGen) return;
     // 从具体城市切回"自动定位"时需要重新取一次坐标，否则备用源无坐标可用
     if (!query && !this.coords) await this.detectLocation();
-    await this.refresh();
+    if (gen !== this._reqGen) return;
+    await this._refreshWithGen(gen);
   },
 
   /* 主源 wttr.in。retries 默认为 0：失败后立即让位给备用源，
@@ -580,20 +611,30 @@ const Weather = {
   },
 
   async refresh() {
+    // 定时刷新与手动刷新也纳入同一代次体系：任何新请求都会让在途的旧请求作废
+    const gen = (this._reqGen = (this._reqGen || 0) + 1);
+    return this._refreshWithGen(gen);
+  },
+
+  async _refreshWithGen(gen) {
     // PBI-18：首次失败即渲染降级文案（5s 内），后续源成功自动恢复（US-21 AC1/AC3）
     let data = await this.fetchWeather(0, () => {
+      if (gen !== this._reqGen) return; // 已切城市/已有更新请求，旧降级态不得上屏
       this._failed = true;
       this.render();
     });
+    if (gen !== this._reqGen) return;
     // 主源不可用 → 回退备用源。两者是独立服务、独立证书、独立网络路径，
     // 2026-09-15 的 wttr.in 证书过期就是靠这条链路兜住的
     if (!data) {
       data = await this.fetchOpenMeteoWeather();
     }
+    if (gen !== this._reqGen) return;
     if (data) {
       this.cache = data;
       this._failed = false;
       await Storage.updateSettings({ weatherCache: data });
+      if (gen !== this._reqGen) return; // 写缓存期间又切了城市，迟到的缓存不得渲染
     }
     this.render();
   },
@@ -683,29 +724,32 @@ const Weather = {
     const high = this.cache.todayHigh;
     const low = this.cache.todayLow;
     const range = (high != null && low != null) ? `今日 ${low}° ~ ${high}°` : '';
-    // PBI-18：有缓存时标注数据时间
+    // PBI-18：有缓存时标注数据时间。ADV-02/03：非法时间戳不得产出 "NaN:NaN"
     let updated = '';
-    if (this.cache.timestamp) {
-      const d = new Date(this.cache.timestamp);
+    if (Number.isFinite(Number(this.cache.timestamp))) {
+      const d = new Date(Number(this.cache.timestamp));
       updated = `更新于 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
     }
-    const header = [display, range, updated].filter(Boolean).join(' &middot; ');
+    const header = [display, range, updated].filter(Boolean).map(escapeHtml).join(' &middot; ');
 
     const bars = hourly.map((h, idx) => {
       const showLabel = idx === 0 || idx % 3 === 0;
       const showIcon = idx === 0 || idx % 3 === 0;
-      const heightPct = Math.max(6, h.rain);
-      const opacity = 0.35 + (h.rain / 100) * 0.65;
+      // ADV-02：缓存可经备份导入注入，字段必须先收敛/转义再拼 innerHTML。
+      // 降水值限定在 0-100，避免非数值产出 NaN 的 height/opacity 破坏布局。
+      const rain = Math.max(0, Math.min(100, Number(h.rain) || 0));
+      const heightPct = Math.max(6, Math.round(rain));
+      const opacity = 0.35 + (rain / 100) * 0.65;
       const hourLabel = idx === 0 ? '现在' : String(h.hour).padStart(2, '0');
       const nowClass = idx === 0 ? ' whc-now' : '';
       return `
         <div class="whc-col${nowClass}">
-          <div class="whc-icon">${showIcon ? h.icon : ''}</div>
-          <div class="whc-temp">${showIcon ? h.temp + '°' : ''}</div>
+          <div class="whc-icon">${showIcon ? escapeHtml(h.icon) : ''}</div>
+          <div class="whc-temp">${showIcon ? escapeHtml(String(h.temp)) + '°' : ''}</div>
           <div class="whc-bar-wrap">
             <div class="whc-bar" style="height:${heightPct}%; opacity:${opacity.toFixed(2)}"></div>
           </div>
-          <div class="whc-hour">${showLabel ? hourLabel : ''}</div>
+          <div class="whc-hour">${showLabel ? escapeHtml(hourLabel) : ''}</div>
         </div>
       `;
     }).join('');
@@ -727,6 +771,7 @@ if (typeof module !== 'undefined' && module.exports) {
     WEATHER_CODE_MAP,
     WWO_DESC_ZH,
     resolveWwoWeather,
+    isValidWeatherCache,
     buildHourlyFromOpenMeteo,
     buildOpenMeteoCache,
     buildHourly24,
