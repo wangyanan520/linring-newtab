@@ -433,6 +433,8 @@ async function runCore(page, label) {
   check('[1] 预设书签 8 个', await page.locator('.bookmark-item:not([data-quick-add])').count() === 8);
   check('[1] 预设分类 4 个', await page.locator('.category-card').count() === 4);
   check('[1] 待办/天气/时钟可见', await page.locator('.todo-card').isVisible() && await page.locator('.weather-widget').isVisible() && await page.locator('#datetime').isVisible());
+  const defaultEngine = (await page.locator('#engineBtn').textContent()).trim();
+  check('[1] 默认搜索引擎为百度', defaultEngine === '百度', defaultEngine);
 
   // [2] 存储初始化 + 数据隔离
   if (label === 'extension') {

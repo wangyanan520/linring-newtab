@@ -81,7 +81,9 @@ const COMPONENTS = [
 ];
 
 const App = {
-  currentEngine: 0,
+  // 默认百度：与 storage.js 的 DEFAULT_SETTINGS.searchEngine 保持一致。
+  // 已有用户保存过的引擎不会被覆盖（init 会按 settings 重新定位）。
+  currentEngine: Math.max(0, SEARCH_ENGINES.findIndex(e => e.name === '百度')),
 
   async init() {
     await Storage.init();

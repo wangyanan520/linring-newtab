@@ -2,7 +2,7 @@
 
 > 本文档是对仓库代码的结构化导览：整体架构、模块职责、关键对象与函数、数据模型、
 > 依赖关系、运行与测试方式。面向首次接手本仓库的开发者与 AI 编程代理。
-> 内容基于源码逐文件核对，最后更新对应版本 **1.1.4**。
+> 内容基于源码逐文件核对，最后更新对应版本 **1.2.0**。
 > 产品背景与需求文档见 `docs/product/`，评估与审查记录见 `docs/reviews/`。
 
 ---
@@ -44,7 +44,7 @@
 | 平台 | Chrome Extension **Manifest V3**（Edge 等 Chromium 浏览器同样可加载） |
 | 技术栈 | 原生 HTML / CSS / JavaScript，**无前端框架、无运行时构建步骤** |
 | 数据 | 全部保存在本地（`chrome.storage.local`，`localStorage` 回退）；无后端、无账号、无云同步、无埋点 |
-| 当前版本 | 1.1.4（版本号以 `src/manifest.json` 为准） |
+| 当前版本 | 1.2.0（版本号以 `src/manifest.json` 为准） |
 | 分发形态 | 直接加载 `src/` 目录；或用 `npm run pack` 生成 `dist/凌睿科技导航.zip` |
 
 **功能一览**：搜索框（Google/百度/Bing 切换、网址直跳、快捷键）、快捷书签（增删改、
@@ -237,7 +237,7 @@ sequenceDiagram
 
 - `PRESET_BOOKMARKS`：8 个内置快捷书签（百度/知乎/GitHub/B 站…）。
 - `PRESET_CATEGORIES`：4 个内置分类（工具导航/新闻资讯/社交社区/影音娱乐），共 20 条链接。
-- `DEFAULT_SETTINGS`：默认设置（壁纸“深邃星空”、搜索引擎 Google、深色主题、
+- `DEFAULT_SETTINGS`：默认设置（壁纸“深邃星空”、搜索引擎 百度、深色主题、
   `showBottomBar/showQuickAdd` 为真、`componentVisibility: {}`、`version: '1.0.0'`）。
 - `SUPPORTED_SCHEMA_VERSION = 1`：备份格式版本闸门。
 
@@ -718,7 +718,7 @@ Toast 撤销（5s）→ restore 原 id 归位”。
 Node 可直接 require 业务脚本的前提：顶层无浏览器副作用（chrome/document 只在
 函数体内引用）。
 
-### 11.2 E2E（`tests/e2e/nav-e2e.js`，Playwright，四模式 395 项断言）
+### 11.2 E2E（`tests/e2e/nav-e2e.js`，Playwright，四模式 398 项断言）
 
 | 模式 | 命令 | 环境 | 价值 |
 |------|------|------|------|

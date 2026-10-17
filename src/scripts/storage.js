@@ -55,7 +55,7 @@ const PRESET_CATEGORIES = [
 const DEFAULT_SETTINGS = {
   wallpaperName: '深邃星空',
   wallpaperApiCache: null,
-  searchEngine: 'Google',
+  searchEngine: '百度',
   theme: 'dark',
   weatherCity: '',
   weatherCache: null,

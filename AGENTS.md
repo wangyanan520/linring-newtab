@@ -15,9 +15,10 @@ PBI-15 测试工程+CI、PBI-16 可复现打包、PBI-17 兼容性评估）均�
 （ADV-01 校验绕过、ADV-02 天气悬停转义、ADV-03 缓存版本校验、ADV-04 城市竞态、
 ADV-05 随机壁纸采样、ADV-06 存储错误模型）。**ADV-14 已修复**：内置兜底改由
 lunar 1.7.7 的 `HolidayUtil` 生成；年度数据由运行时 `holiday-cn` + 过期缓存自动更新，
-**lunar 升级是可选项，不需要每年手动升级**。当前版本 1.1.4
-（天气双源容灾、导入书签、主页快捷编辑、快捷键扩展，详见 `CHANGELOG.md`），
-**未上架应用商店**（`06-MVP.md` 3.2 战略排除项，属既定决策而非未完成）。
+**lunar 升级是可选项，不需要每年手动升级**。当前版本 1.2.0
+（天气双源容灾、导入书签、主页快捷编辑、快捷键扩展、搜索默认百度，
+详见 `CHANGELOG.md`），**未上架应用商店**（`06-MVP.md` 3.2 战略排除项，
+属既定决策而非未完成）。
 
 **V4 使用体验优化已实施（2026-09-15）**：`docs/product/10-使用体验优化方案.md` 的 15 项
 （UX-01~15）全部落地，包括修掉 4 项 P0——内容增长后搜索框被挤出视口且滚不回来、浅色主题
@@ -36,9 +37,9 @@ lunar 1.7.7 的 `HolidayUtil` 生成；年度数据由运行时 `holiday-cn` + �
 |------|------|
 | `npm test` | 单元测试（node:test，80 项） |
 | `npm run test:coverage` | 覆盖率（storage.js 行覆盖约 96%，仅统计被单测加载的模块） |
-| `npm run test:e2e` | E2E 全量四模式：preview + file:// + shim + 扩展（合计 395 项断言） |
-| `npm run test:e2e:preview` | 仅 http 预览模式（headless，130 项断言） |
-| `npm run test:e2e:shim` | 仅 chrome.storage 模拟模式（headless，133 项断言） |
+| `npm run test:e2e` | E2E 全量四模式：preview + file:// + shim + 扩展（合计 398 项断言） |
+| `npm run test:e2e:preview` | 仅 http 预览模式（headless，131 项断言） |
+| `npm run test:e2e:shim` | 仅 chrome.storage 模拟模式（headless，134 项断言） |
 | `node tools/ux-audit.js` | **体验体检**：布局 / 溢出 / 对比度 / 交互 / 空状态，不达标时退出码 1 |
 | `npm run pack` | 单测 + 可复现打包到 `dist/`（排除测试文件、固定时间戳） |
 | `node tools/gen-city-coords.js --dry-run\|--write` | 重建城市经纬度（天气备用源用），构建期工具 |
@@ -101,7 +102,7 @@ lunar 1.7.7 的 `HolidayUtil` 生成；年度数据由运行时 `holiday-cn` + �
 4. 工作区中已有的未提交改动（可能来自其他任务包）一律保留，禁止回退。
 5. **对外分发前必须递增 `src/manifest.json` 的 `version`，并在 `CHANGELOG.md` 补一节**。
    Chrome Web Store 与 Edge 加载项商店都要求版本号严格递增，重复或回退会被拒。
-   版本语义（主/次/修订）与判定标准见 `CHANGELOG.md` 开头。当前版本：**1.1.4**。
+   版本语义（主/次/修订）与判定标准见 `CHANGELOG.md` 开头。当前版本：**1.2.0**。
 
 ## 多 Agent 协作
 

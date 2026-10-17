@@ -109,6 +109,7 @@ test('Storage.init：全新环境写入预设（chrome 分支）', async () => {
     const s = await Storage.getSettings();
     assert.equal(s.version, '1.0.0');
     assert.equal(s.theme, 'dark');
+    assert.equal(s.searchEngine, '百度', '全新安装默认搜索引擎为百度');
   } finally { cleanupGlobals(); }
 });
 
