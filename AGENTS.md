@@ -11,10 +11,10 @@
 **当前状态（2026-10-17）**：V3 的 Phase 1/2 与 Phase 3 工程化项（PBI-14 网络审计、
 PBI-15 测试工程+CI、PBI-16 可复现打包、PBI-17 兼容性评估）均已实现并提交。经独立
 评估（含三轮对抗式自审）后，**P0 / P1 缺陷已全部清零**；第四轮对抗式审查
-（`docs/reviews/review-report-adversarial-r4.md`）发现 6 项 P2，其中 5 项已在 1.1.1 修复
+（`docs/reviews/review-report-adversarial-r4.md`）发现的 **6 项 P2 已全部修复**
 （ADV-01 校验绕过、ADV-02 天气悬停转义、ADV-03 缓存版本校验、ADV-04 城市竞态、
-ADV-06 存储错误模型），**ADV-05（随机壁纸源明度采样）待产品决策**；
-ADV-14（节假日内置兜底表最晚 2026-10-10）需纳入年底发布检查单。当前版本 1.1.1
+ADV-05 随机壁纸采样、ADV-06 存储错误模型）。ADV-14（节假日内置兜底表最晚
+2026-10-10）需纳入年底发布检查单。当前版本 1.1.2
 （天气双源容灾、导入书签、主页快捷编辑、快捷键扩展，详见 `CHANGELOG.md`），
 **未上架应用商店**（`06-MVP.md` 3.2 战略排除项，属既定决策而非未完成）。
 
@@ -33,11 +33,11 @@ ADV-14（节假日内置兜底表最晚 2026-10-10）需纳入年底发布检查
 
 | 命令 | 用途 |
 |------|------|
-| `npm test` | 单元测试（node:test，75 项） |
+| `npm test` | 单元测试（node:test，77 项） |
 | `npm run test:coverage` | 覆盖率（storage.js 行覆盖约 96%，仅统计被单测加载的模块） |
-| `npm run test:e2e` | E2E 全量四模式：preview + file:// + shim + 扩展（合计 389 项断言） |
-| `npm run test:e2e:preview` | 仅 http 预览模式（headless，128 项断言） |
-| `npm run test:e2e:shim` | 仅 chrome.storage 模拟模式（headless，131 项断言） |
+| `npm run test:e2e` | E2E 全量四模式：preview + file:// + shim + 扩展（合计 392 项断言） |
+| `npm run test:e2e:preview` | 仅 http 预览模式（headless，129 项断言） |
+| `npm run test:e2e:shim` | 仅 chrome.storage 模拟模式（headless，132 项断言） |
 | `node tools/ux-audit.js` | **体验体检**：布局 / 溢出 / 对比度 / 交互 / 空状态，不达标时退出码 1 |
 | `npm run pack` | 单测 + 可复现打包到 `dist/`（排除测试文件、固定时间戳） |
 | `node tools/gen-city-coords.js --dry-run\|--write` | 重建城市经纬度（天气备用源用），构建期工具 |
@@ -58,6 +58,9 @@ ADV-14（节假日内置兜底表最晚 2026-10-10）需纳入年底发布检查
 > **改动天气缓存或切城市逻辑时**：恢复缓存前必须过 `isValidWeatherCache`（版本 +
 > 字段形状），城市切换/刷新必须走 `_reqGen` 代次——否则旧结构会渲染出 NaN，
 > 慢响应会覆盖后选城市（ADV-03/ADV-04）。
+> **改动壁纸明度采样时**：优先 `<img crossOrigin>` + canvas（Canvas 只认服务端 CORS 头，
+> **不认扩展 host_permissions**），`fetch` 只适合已有 host 权限的域；随机壁纸源不在
+> manifest 白名单里，若改回 fetch，`auto` 主题会再次对该源静默失效（ADV-05）。
 
 ## 目录结构
 
@@ -93,7 +96,7 @@ ADV-14（节假日内置兜底表最晚 2026-10-10）需纳入年底发布检查
 4. 工作区中已有的未提交改动（可能来自其他任务包）一律保留，禁止回退。
 5. **对外分发前必须递增 `src/manifest.json` 的 `version`，并在 `CHANGELOG.md` 补一节**。
    Chrome Web Store 与 Edge 加载项商店都要求版本号严格递增，重复或回退会被拒。
-   版本语义（主/次/修订）与判定标准见 `CHANGELOG.md` 开头。当前版本：**1.1.1**。
+   版本语义（主/次/修订）与判定标准见 `CHANGELOG.md` 开头。当前版本：**1.1.2**。
 
 ## 多 Agent 协作
 

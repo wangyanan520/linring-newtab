@@ -397,6 +397,7 @@ async function runCore(page, label) {
   // UX-13：图片请求与实际 API 请求分开 mock —— 前者返回可控亮度的图片（供明度采样），
   // 后者返回 JSON。默认给一张深色图，保证既有断言（如 [25] 壁纸代次）行为不变。
   let bingImageBase64 = '';
+  let randomImageBase64 = '';
   await page.route(/cn\.bing\.com/, async r => {
     if (/th\?id=/.test(r.request().url())) {
       return r.fulfill({
@@ -411,6 +412,13 @@ async function runCore(page, label) {
       body: JSON.stringify({ images: [{ urlbase: '/th?id=OHR.MockWallpaper' }] })
     });
   });
+  // ADV-05：随机壁纸源不在 host_permissions，扩展页 fetch 必失败；
+  // 真实服务返回 ACAO: *，所以这里必须带 CORS 头，才能验证 <img crossOrigin> 通道。
+  await page.route(/bing\.biturl\.top/, r => r.fulfill({
+    status: 200, contentType: 'image/png',
+    headers: { 'Access-Control-Allow-Origin': '*' },
+    body: randomImageBase64 ? Buffer.from(randomImageBase64, 'base64') : Buffer.from([137, 80, 78, 71])
+  }));
 
   if (label === 'extension') {
     await page.waitForTimeout(4500); // newtab 已覆盖为扩展页
@@ -1529,6 +1537,21 @@ async function runCore(page, label) {
   });
   check('[39] 手动主题不被壁纸明度覆盖（UX-13 不破坏 PBI-10 AC2）', manualKept === 'dark',
     `data-theme=${manualKept}`);
+
+  // ADV-05：随机壁纸源此前直接 return，auto 主题永远落 dark。
+  // 修复后与 Bing 一样采样；回退 wallpaper.js 的随机分支时本条会红灯。
+  const runAutoWithRandom = async (color) => {
+    randomImageBase64 = await makePng(color);
+    return page.evaluate(async () => {
+      await Storage.updateSettings({ theme: 'auto', wallpaperName: '随机壁纸', wallpaperApiCache: null });
+      await Wallpaper.apply(Wallpaper.getWallpapers().findIndex(w => w.name === '随机壁纸'));
+      await new Promise(r => setTimeout(r, 1200));
+      return document.documentElement.dataset.theme;
+    });
+  };
+  const lightFromRandom = await runAutoWithRandom('#f2f4f8');
+  check('[39] 随机壁纸亮图下 auto 解析为浅色（ADV-05）', lightFromRandom === 'light',
+    `data-theme=${lightFromRandom}`);
 
   /* ---- [40] 主页快捷添加书签（UX-12）---- */
   await page.evaluate(async () => {

@@ -153,12 +153,52 @@ function brightnessToThemeHint(luminance, threshold = 0.55) {
   return luminance >= threshold ? 'light' : 'dark';
 }
 
-/* 对在线壁纸做明度采样：降采样到 8×8 后取平均相对亮度（0-1）。
-   为什么用 fetch 而不是 <img> + canvas：跨域图片会污染 canvas，getImageData 直接抛错；
-   扩展页面持有 host_permissions 时 fetch 不受 CORS 限制，blob → bitmap 后是同源的。
-   任何一步失败（网络、跨域、浏览器不支持 createImageBitmap）都返回 null，
-   由调用方回退到壁纸自带的静态 themeHint。 */
-async function sampleImageBrightness(url) {
+/* 平均相对亮度：把 8×8 降采样后的像素按 sRGB 系数加权。
+   与 brightnessToThemeHint 的阈值配套；纯函数便于单测覆盖。 */
+function averageLuminance(data) {
+  let sum = 0;
+  let n = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    sum += 0.2126 * (data[i] / 255) + 0.7152 * (data[i + 1] / 255) + 0.0722 * (data[i + 2] / 255);
+    n++;
+  }
+  return n ? sum / n : null;
+}
+
+/* 采样通道一：<img crossOrigin> + canvas。
+   图片加载不受扩展 host_permissions 限制，只要服务端返回 CORS 头
+   （Access-Control-Allow-Origin），canvas 就不会被污染。
+   实测（2026-10-17）：随机壁纸源 307 → www.bing.com/th 与 cn.bing.com/th
+   均返回 ACAO: *，因此随机源无需新增 host 权限也能采样（ADV-05）。
+   失败（无 CORS 头 / 加载失败）返回 null，由 fetch 通道兜底。 */
+function sampleByImage(url) {
+  if (typeof Image === 'undefined' || typeof document === 'undefined') {
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous'; // 必须在 src 之前设置
+    img.onload = () => {
+      try {
+        const cv = document.createElement('canvas');
+        cv.width = 8;
+        cv.height = 8;
+        const cx = cv.getContext('2d');
+        cx.drawImage(img, 0, 0, 8, 8);
+        resolve(averageLuminance(cx.getImageData(0, 0, 8, 8).data));
+      } catch {
+        resolve(null); // canvas 被污染（服务端未发 CORS 头）
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+}
+
+/* 采样通道二：fetch → blob → ImageBitmap。
+   适用于扩展持有 host_permissions 的域（如 cn.bing.com）——即使服务端不发
+   CORS 头也能取到响应；但 fetch 对无 host 权限的域必然失败（ADV-05 的根因）。 */
+async function sampleByFetch(url) {
   try {
     const res = await fetch(url);
     if (!res.ok) return null;
@@ -170,17 +210,22 @@ async function sampleImageBrightness(url) {
     const cx = cv.getContext('2d');
     cx.drawImage(bitmap, 0, 0, 8, 8);
     if (typeof bitmap.close === 'function') bitmap.close();
-    const d = cx.getImageData(0, 0, 8, 8).data;
-    let sum = 0;
-    let n = 0;
-    for (let i = 0; i < d.length; i += 4) {
-      sum += 0.2126 * (d[i] / 255) + 0.7152 * (d[i + 1] / 255) + 0.0722 * (d[i + 2] / 255);
-      n++;
-    }
-    return n ? sum / n : null;
+    return averageLuminance(cx.getImageData(0, 0, 8, 8).data);
   } catch {
     return null;
   }
+}
+
+/* 对在线壁纸做明度采样：降采样到 8×8 后取平均相对亮度（0-1）。
+   为什么用 <img crossOrigin> 优先：Canvas 的跨域规则只认 CORS 头，不认扩展权限；
+   而 fetch 在扩展页严格受 host_permissions 约束。随机壁纸源不在 manifest 的
+   6 个域名里，旧实现 fetch 必失败，于是 auto 主题对该源永远落 dark。
+   两条通道互补：img 覆盖"公开且有 CORS 头"的图片，fetch 覆盖"有 host 权限
+   但服务端不发 CORS 头"的图片。任何一步失败都返回 null，由调用方回退静态 hint。 */
+async function sampleImageBrightness(url) {
+  const viaImage = await sampleByImage(url);
+  if (viaImage != null) return viaImage;
+  return sampleByFetch(url);
 }
 
 /* ---- 壁纸管理器 ---- */
@@ -260,8 +305,11 @@ const Wallpaper = {
     bgLayer.style.background = 'none';
 
     if (wallpaper.apiType === 'random') {
-      // 随机壁纸：直接使用 URL，无需 fetch
-      this.setBgImage(bgLayer, getRandomWallpaperUrl());
+      // ADV-05：随机源此前直接 return，auto 主题永远落 dark；
+      // 现在与 Bing 一样，拿到图片地址后做一次明度采样
+      const randomUrl = getRandomWallpaperUrl();
+      this.setBgImage(bgLayer, randomUrl);
+      this.syncThemeFromWallpaper(randomUrl);
       return;
     }
 
@@ -341,9 +389,13 @@ const Wallpaper = {
     if (wallpaper.type !== 'api') return;
 
     if (wallpaper.apiType === 'random') {
-      // 随机壁纸：重新设置即可（新时间戳 = 新图片）
+      // 随机壁纸：重新设置即可（新时间戳 = 新图片），同样补一次明度采样
       const bgLayer = document.getElementById('bgLayer');
-      if (bgLayer) this.setBgImage(bgLayer, getRandomWallpaperUrl());
+      if (bgLayer) {
+        const url = getRandomWallpaperUrl();
+        this.setBgImage(bgLayer, url);
+        this.syncThemeFromWallpaper(url);
+      }
       return;
     }
 
@@ -364,5 +416,5 @@ const Wallpaper = {
 
 /* ---- Node 测试环境导出（UX-13）：浏览器以 <script> 全局加载，module 未定义时不执行 ---- */
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { brightnessToThemeHint, WALLPAPERS };
+  module.exports = { brightnessToThemeHint, averageLuminance, WALLPAPERS };
 }

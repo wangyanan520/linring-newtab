@@ -220,7 +220,7 @@ return new Promise((resolve, reject) => chrome.storage.local.get(keys, (r) => {
 
 ## 7. 修复状态（2026-10-17）
 
-本轮 P2 中 5 项已修复并完成区分性验证，版本 1.1.1：
+本轮 P2 共 6 项，已全部修复并完成区分性验证，版本 1.1.2：
 
 | 编号 | 状态 | 验证 |
 |---|---|---|
@@ -228,8 +228,8 @@ return new Promise((resolve, reject) => chrome.storage.local.get(keys, (r) => {
 | ADV-02 悬停卡片未转义 | ✅ 已修复 | 与主 render 同一套 escapeHtml，降水值收敛到 0–100，非法时间戳不再产出 NaN:NaN。新增注入用例，回退后红灯 |
 | ADV-03 CACHE_VERSION 只写不读 | ✅ 已修复 | 新增 `isValidWeatherCache`，init 恢复前校验版本与字段形状。新增旧版本/畸形缓存用例，回退后红灯 |
 | ADV-04 切城市响应乱序 | ✅ 已修复 | 沿用壁纸的 `_applyGen` 代次模式：setCity 入口开启 `_reqGen`，refresh 走 `_refreshWithGen`。新增「慢深圳 / 快北京」乱序用例，回退后红灯 |
-| ADV-05 随机壁纸明度采样 | ⏳ 待产品决策 | 需先定「扩 host 权限 / canvas 采样 / 对随机源禁用 auto」，不阻塞本次安全修复 |
+| ADV-05 随机壁纸明度采样 | ✅ 已修复 | 改用 `<img crossOrigin="anonymous">` + canvas（Canvas 只认服务端 CORS 头，不认扩展 host_permissions），fetch 保留为有权限域的回退通道。实测随机源 307 后 `www.bing.com/th` 与 `cn.bing.com/th` 均返回 ACAO: *；E2E [39] 新增随机亮图断言，回退 wallpaper.js 后红灯。未新增任何 host 权限 |
 | ADV-06 lastError 未处理 | ✅ 已修复 | storageGet/Set 在回调内检查 `chrome.runtime.lastError` 并 reject；单测 mock 改为「回调 + lastError」语义，新增 chrome 分支回滚用例，回退后红灯 |
 
-**验证结果**：单测 75/75、preview E2E 128/128、shim E2E 131/131、体验体检 49 项通过 / 0 项不通过。
+**验证结果**：单测 77/77、preview E2E 129/129、shim E2E 132/132、E2E 全量四模式 392/392、体验体检 49 项通过 / 0 项不通过。
 ADV-07~18（P3）未在本轮处理；其中 ADV-14（节假日内置兜底表最晚 2026-10-10）需纳入年底发布检查单。

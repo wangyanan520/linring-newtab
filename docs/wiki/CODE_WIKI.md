@@ -2,7 +2,7 @@
 
 > 本文档是对仓库代码的结构化导览：整体架构、模块职责、关键对象与函数、数据模型、
 > 依赖关系、运行与测试方式。面向首次接手本仓库的开发者与 AI 编程代理。
-> 内容基于源码逐文件核对，最后更新对应版本 **1.1.1**。
+> 内容基于源码逐文件核对，最后更新对应版本 **1.1.2**。
 > 产品背景与需求文档见 `docs/product/`，评估与审查记录见 `docs/reviews/`。
 
 ---
@@ -44,7 +44,7 @@
 | 平台 | Chrome Extension **Manifest V3**（Edge 等 Chromium 浏览器同样可加载） |
 | 技术栈 | 原生 HTML / CSS / JavaScript，**无前端框架、无运行时构建步骤** |
 | 数据 | 全部保存在本地（`chrome.storage.local`，`localStorage` 回退）；无后端、无账号、无云同步、无埋点 |
-| 当前版本 | 1.1.1（版本号以 `src/manifest.json` 为准） |
+| 当前版本 | 1.1.2（版本号以 `src/manifest.json` 为准） |
 | 分发形态 | 直接加载 `src/` 目录；或用 `npm run pack` 生成 `dist/凌睿科技导航.zip` |
 
 **功能一览**：搜索框（Google/百度/Bing 切换、网址直跳、快捷键）、快捷书签（增删改、
@@ -86,11 +86,12 @@ Open-Meteo 备源、24 小时曲线、城市选择/IP 定位）、壁纸（4 套
 │   ├── images/icons/           # 16/48/128 扩展图标
 │   └── THIRD-PARTY.md          # 第三方组件与数据服务条款声明
 ├── tests/
-│   ├── unit/                   # node:test 单元测试（6 个文件，75 项）
+│   ├── unit/                   # node:test 单元测试（7 个文件，77 项）
 │   │   ├── storage.test.js
 │   │   ├── sorting.test.js
 │   │   ├── search-input.test.js
 │   │   ├── weather.test.js
+│   │   ├── wallpaper.test.js
 │   │   ├── bookmark-import.test.js
 │   │   └── network-audit.test.js
 │   └── e2e/
@@ -441,10 +442,12 @@ Node 导出：`Weather`、两套码表、`resolveWwoWeather`、`buildHourly24`�
 - 在线壁纸工具：`fetchBingUrl()`（cn.bing.com 的 HPImageArchive 接口，校验
   `urlbase` 形态，拼 1920×1080，8s 超时）、`getRandomWallpaperUrl()`
   （bing.biturl.top，时间戳防缓存）、`fetchApiWallpaperUrl(type)`。
-- 明度采样：`sampleImageBrightness(url)` 用 `fetch → blob → createImageBitmap →
-  8×8 canvas` 计算平均相对亮度（用 fetch 而非 `<img>` 是为规避跨域 canvas 污染；
-  扩展持有 host_permissions 时不受 CORS 限制）；`brightnessToThemeHint()` 以保守
-  阈值 0.55 判 light/dark，任何失败返回 null。
+- 明度采样：`sampleImageBrightness(url)` 优先用 `<img crossOrigin="anonymous">` +
+  8×8 canvas 计算平均相对亮度（Canvas 的跨域规则只认服务端 CORS 头，不认扩展
+  host_permissions；随机壁纸源不在 manifest 白名单，这正是 ADV-05 的修复点），
+  失败后回退 `fetch → blob → createImageBitmap`（覆盖“有 host 权限但服务端不发
+  CORS 头”的图片）；`brightnessToThemeHint()` 以保守阈值 0.55 判 light/dark，
+  任何失败返回 null。
 - `Wallpaper` 对象：
   - `init / apply(index) / set / next / refreshCurrent / getWallpapers`；
   - `apply` 用**代次标记 `_applyGen`** 防止在线壁纸的慢响应覆盖用户后发的切换
@@ -694,7 +697,7 @@ Toast 撤销（5s）→ restore 原 id 归位”。
 
 ## 11. 测试体系
 
-### 11.1 单元测试（`npm test`，node:test，75 项）
+### 11.1 单元测试（`npm test`，node:test，77 项）
 
 | 文件 | 覆盖点 |
 |------|--------|
@@ -702,13 +705,14 @@ Toast 撤销（5s）→ restore 原 id 归位”。
 | `sorting.test.js` | `reorder/ensureSortOrder/validateBackup/normalizeCategories` 边界（含协议与 id 白名单） |
 | `search-input.test.js` | `resolveInput` 十余个判定场景 + `isCommitEnter` |
 | `weather.test.js` | WMO/WWO 码表、扩展码中文文案、46 城描述映射、Open-Meteo 结构归一、`resolveCoords` 优先级、**双源容灾链与全失败不覆盖缓存**、缓存结构校验（ADV-03）、hover 转义（ADV-02）、城市乱序（ADV-04） |
+| `wallpaper.test.js` | 平均相对亮度（黑/白/中灰/空数组）与 `brightnessToThemeHint` 阈值边界、非法输入（ADV-05） |
 | `bookmark-import.test.js` | 书签树拍平、scope、去重、协议过滤、空文件夹、标题截断/兜底、数量上限、异常输入 |
 | `network-audit.test.js` | 白名单/通配/同源/相对 URL/favicon 例外，以及 **manifest host_permissions 与 CSP ⊆ 注册表** 一致性 |
 
 Node 可直接 require 业务脚本的前提：顶层无浏览器副作用（chrome/document 只在
 函数体内引用）。
 
-### 11.2 E2E（`tests/e2e/nav-e2e.js`，Playwright，四模式 389 项断言）
+### 11.2 E2E（`tests/e2e/nav-e2e.js`，Playwright，四模式 392 项断言）
 
 | 模式 | 命令 | 环境 | 价值 |
 |------|------|------|------|
@@ -721,7 +725,7 @@ Node 可直接 require 业务脚本的前提：顶层无浏览器副作用（chr
   主题、组件开关、键盘排序、导入导出与备份、恶意 id/协议拒绝、日历、快捷键、
   天气缓存/降级/容灾/语种、**网络白名单全量比对 [12]**、控制台零错误、超时生效、
   无障碍（名称/dialog/tab/焦点）、监听器生命周期、跨标签同步、壁纸慢响应代次、
-  输入法回车、网址直跳对照、空状态、像素级对比度等。
+  **随机壁纸明度采样**、输入法回车、网址直跳对照、空状态、像素级对比度等。
 - 第三方响应通过 `page.route` 按 `weatherMode/openMeteoMode/ipLocateMode/
   holidayMode/bingDelayMs` 开关 mock 成功/失败/挂起。
 - **内嵌静态服务器必须按扩展名给对 Content-Type**：历史上一律 `text/html` 导致

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "凌睿科技导航页",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "美观实用的新标签页导航",
   "chrome_url_overrides": {
     "newtab": "index.html"
