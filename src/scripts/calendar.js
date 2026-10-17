@@ -1,47 +1,29 @@
 const HOLIDAY_CACHE_KEY = 'holidayCacheV1';
 const HOLIDAY_CACHE_DURATION = 24 * 60 * 60 * 1000;
 
-const HOLIDAY_FALLBACK = {
-  '2026-01-01': { name: '元旦', off: true },
-  '2026-01-02': { name: '元旦', off: true },
-  '2026-01-03': { name: '元旦', off: true },
-  '2026-02-15': { name: '春节', off: false },
-  '2026-02-16': { name: '春节', off: true },
-  '2026-02-17': { name: '春节', off: true },
-  '2026-02-18': { name: '春节', off: true },
-  '2026-02-19': { name: '春节', off: true },
-  '2026-02-20': { name: '春节', off: true },
-  '2026-02-21': { name: '春节', off: true },
-  '2026-02-22': { name: '春节', off: true },
-  '2026-02-23': { name: '春节', off: true },
-  '2026-02-24': { name: '春节', off: true },
-  '2026-02-28': { name: '春节', off: false },
-  '2026-04-04': { name: '清明节', off: true },
-  '2026-04-05': { name: '清明节', off: true },
-  '2026-04-06': { name: '清明节', off: true },
-  '2026-05-01': { name: '劳动节', off: true },
-  '2026-05-02': { name: '劳动节', off: true },
-  '2026-05-03': { name: '劳动节', off: true },
-  '2026-05-04': { name: '劳动节', off: true },
-  '2026-05-05': { name: '劳动节', off: true },
-  '2026-04-26': { name: '劳动节', off: false },
-  '2026-05-09': { name: '劳动节', off: false },
-  '2026-06-19': { name: '端午节', off: true },
-  '2026-06-20': { name: '端午节', off: true },
-  '2026-06-21': { name: '端午节', off: true },
-  '2026-09-25': { name: '中秋节', off: true },
-  '2026-09-26': { name: '中秋节', off: true },
-  '2026-09-27': { name: '中秋节', off: true },
-  '2026-10-01': { name: '国庆节', off: true },
-  '2026-10-02': { name: '国庆节', off: true },
-  '2026-10-03': { name: '国庆节', off: true },
-  '2026-10-04': { name: '国庆节', off: true },
-  '2026-10-05': { name: '国庆节', off: true },
-  '2026-10-06': { name: '国庆节', off: true },
-  '2026-10-07': { name: '国庆节', off: true },
-  '2026-10-08': { name: '国庆节', off: true },
-  '2026-10-10': { name: '国庆节', off: false }
-};
+/* 内置兜底数据由 lunar-javascript 的 HolidayUtil 生成（ADV-14）。
+   lunar 1.7.7 内置 2018-2026 的法定节假日/调休数据，随库升级获得新年份；
+   不再手工维护 2026 表（旧表与国务院公告有 5 处不一致，见 CHANGELOG 1.1.3）。
+   范围取「当前年 -1 ~ 当前年 +1」：跨年时仍有上一年的历史标记，
+   下一年公告发布后升级库即可补上。 */
+function buildHolidayFallback(baseYear = new Date().getFullYear()) {
+  const map = {};
+  if (typeof HolidayUtil === 'undefined' || !HolidayUtil) return map;
+  for (let y = baseYear - 1; y <= baseYear + 1; y++) {
+    let list = [];
+    try { list = HolidayUtil.getHolidays(y) || []; } catch { list = []; }
+    for (const h of list) {
+      if (!h || typeof h.getDay !== 'function') continue;
+      map[h.getDay()] = {
+        // HolidayUtil 的调休名称带「调休」后缀，UI 已有「今日调休上班」前缀，去掉避免重复
+        name: String(h.getName() || '').replace(/调休$/, ''),
+        off: !h.isWork()
+      };
+    }
+  }
+  return map;
+}
+const HOLIDAY_FALLBACK = buildHolidayFallback();
 
 const Calendar = {
   holidays: {},
@@ -139,7 +121,7 @@ const Calendar = {
         }));
       } catch {}
     } else {
-      // 两源均失败：保持内置 2026 兜底表，不报错（静默降级 + 浮层标注）
+      // 两源均失败：保持内置兜底表（由 HolidayUtil 生成），不报错（静默降级 + 浮层标注）
       this.holidays = Object.assign({}, HOLIDAY_FALLBACK);
     }
   },
@@ -334,4 +316,10 @@ const Calendar = {
   }
 };
 
-window.Calendar = Calendar;
+if (typeof window !== 'undefined') window.Calendar = Calendar;
+
+/* Node 单测入口：buildHolidayFallback 是纯函数（依赖全局 HolidayUtil），
+   单独导出便于验证内置兜底数据与国务院公告一致（ADV-14） */
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { Calendar, buildHolidayFallback };
+}

@@ -65,22 +65,24 @@
 | 作者 | 6tail &lt;6tail@6tail.cn&gt; |
 | 许可证 | MIT |
 | 文件 | `scripts/lunar.min.js` |
-| 体积 | 约 425 KB，占扩展总体积约 62% |
+| 体积 | 约 426 KB，占扩展总体积约 62% |
 
 ### 版本说明
 
-入库时**未记录版本号**，压缩文件内也不含版本或许可证头。经 API 特征比对
-（`Lunar` / `Solar` / `fromYmd` / `getJieQi` / `EightChar` 等）确认为 lunar-javascript；
-比对时上游最新版本为 1.7.7。
+**当前版本：1.7.7**（2026-10-17 从上游 npm 包 `lunar-javascript@1.7.7` 升级并补记）。
+此前的入库版本未记录版本号，压缩文件内也不含版本或许可证头；经 API 特征比对
+（`Lunar` / `Solar` / `fromYmd` / `getJieQi` / `EightChar` 等）确认为 lunar-javascript。
 
-**后续升级请在此处补记目标版本**，并重新确认 `calendar.js` 实际使用的 API
-（当前仅 `Solar.fromYmd`）在新版本中仍然兼容——库与调用方之间没有版本锁，属于隐式契约。
+1.7.7 内置 2018-2026 年法定节假日/调休数据（`HolidayUtil`），`calendar.js` 的内置兜底
+即由它生成，不再手工维护年度表。下一年数据随上游发版更新；升级时需重新确认
+`calendar.js` 使用的 `Solar.fromYmd` 与 `HolidayUtil.getHolidays/getDay/getName/isWork`
+仍然兼容——库与调用方之间没有版本锁，属于隐式契约。
 
 ### 已知优化空间
 
-当前引入的是完整构建，而实际只用到 `Solar.fromYmd` 一个 API；库中的八字（`EightChar`）、
-佛历/道历、彭祖百忌等能力均未使用。若需压缩体积，可考虑按需构建，或自行实现所需的最小
-农历换算逻辑。
+当前引入的是完整构建，而实际只用到 `Solar.fromYmd` 与 `HolidayUtil` 两组 API；库中的
+八字（`EightChar`）、佛历/道历、彭祖百忌等能力均未使用。若需压缩体积，可考虑按需构建，
+或自行实现所需的最小农历换算与节假日数据逻辑。
 
 ### 许可证全文
 
