@@ -231,7 +231,8 @@ return new Promise((resolve, reject) => chrome.storage.local.get(keys, (r) => {
 | ADV-05 随机壁纸明度采样 | ✅ 已修复 | 改用 `<img crossOrigin="anonymous">` + canvas（Canvas 只认服务端 CORS 头，不认扩展 host_permissions），fetch 保留为有权限域的回退通道。实测随机源 307 后 `www.bing.com/th` 与 `cn.bing.com/th` 均返回 ACAO: *；E2E [39] 新增随机亮图断言，回退 wallpaper.js 后红灯。未新增任何 host 权限 |
 | ADV-06 lastError 未处理 | ✅ 已修复 | storageGet/Set 在回调内检查 `chrome.runtime.lastError` 并 reject；单测 mock 改为「回调 + lastError」语义，新增 chrome 分支回滚用例，回退后红灯 |
 
-**验证结果**：单测 79/79、preview E2E 129/129、shim E2E 132/132、E2E 全量四模式 392/392、体验体检 49 项通过 / 0 项不通过。
+**验证结果**：单测 80/80、preview E2E 130/130、shim E2E 133/133、E2E 全量四模式 395/395、体验体检 49 项通过 / 0 项不通过。
 
-**P3 进展**：ADV-14 已修复——内置节假日兜底改由 lunar 1.7.7 的 `HolidayUtil` 生成，
-删除与国务院公告不一致的手工 2026 表；2027 数据待公告后升级库。其余 ADV-07~18 未处理。
+**P3 进展**：ADV-14 已修复——内置兜底改由 lunar 1.7.7 的 `HolidayUtil` 生成，删除与
+国务院公告不一致的手工 2026 表；年度数据由运行时 `holiday-cn` 自动更新，缓存过期也
+保留作兜底，**lunar 升级不再是年度运维要求**。其余 ADV-07~18 未处理。

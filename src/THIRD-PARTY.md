@@ -73,8 +73,9 @@
 此前的入库版本未记录版本号，压缩文件内也不含版本或许可证头；经 API 特征比对
 （`Lunar` / `Solar` / `fromYmd` / `getJieQi` / `EightChar` 等）确认为 lunar-javascript。
 
-1.7.7 内置 2018-2026 年法定节假日/调休数据（`HolidayUtil`），`calendar.js` 的内置兜底
-即由它生成，不再手工维护年度表。下一年数据随上游发版更新；升级时需重新确认
+1.7.7 内置 2018-2026 年法定节假日/调休数据（`HolidayUtil`），`calendar.js` 的**首次离线兜底**
+即由它生成，不再手工维护年度表。**年度数据由运行时 `holiday-cn` 自动更新，lunar 升级是
+可选项**：只有希望首次离线安装也覆盖到新年份时才需要升级。升级时需重新确认
 `calendar.js` 使用的 `Solar.fromYmd` 与 `HolidayUtil.getHolidays/getDay/getName/isWork`
 仍然兼容——库与调用方之间没有版本锁，属于隐式契约。
 

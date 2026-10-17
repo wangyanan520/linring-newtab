@@ -391,6 +391,7 @@ async function runCore(page, label) {
     : r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_IP_LOCATE) }));
   await page.route(/holiday-cn/, r => {
     if (holidayMode === 'hang') return; // 不响应：模拟请求卡在响应体阶段
+    if (holidayMode === 'fail') return r.fulfill({ status: 500, body: 'err', contentType: 'text/plain' });
     return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_HOLIDAY) });
   });
   bingDelayMs = 0;
@@ -817,6 +818,29 @@ async function runCore(page, label) {
   await sleep(3500);
   const clockText = await page.evaluate(() => (document.getElementById('datetime').textContent || '').trim());
   check('[17] 节假日请求挂起时时钟仍显示', clockText.length > 0, `#datetime="${clockText.slice(0, 24)}"`);
+  holidayMode = 'ok';
+  await page.reload();
+  await sleep(2500);
+
+  // [17.1] 过期缓存优先于内置表（ADV-14）：年度数据跟随运行时数据源，
+  // 不依赖每年升级 lunar。缓存故意设成 25 小时前，且写入一个 lunar 还没有的
+  // 2027 日期；双源快速失败后仍应使用这份缓存，而不是回退到只有 2026 的内置表。
+  holidayMode = 'fail';
+  await page.evaluate(() => {
+    localStorage.setItem('holidayCacheV1', JSON.stringify({
+      timestamp: Date.now() - 25 * 60 * 60 * 1000,
+      data: { '2027-01-01': { name: '元旦', off: true } }
+    }));
+  });
+  await page.reload();
+  await sleep(2500);
+  const staleCache = await page.evaluate(() => ({
+    has: !!(window.Calendar && Calendar.holidays && Calendar.holidays['2027-01-01']),
+    source: window.Calendar && Calendar.holidaySource
+  }));
+  check('[17.1] 过期缓存 + 双源失败时仍使用缓存数据（ADV-14）',
+    staleCache.has && staleCache.source === 'cache',
+    `has=${staleCache.has} source=${staleCache.source}`);
   holidayMode = 'ok';
   await page.reload();
   await sleep(2500);

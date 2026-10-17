@@ -2,9 +2,11 @@
  * 内置节假日兜底数据测试（node:test）
  * 运行：npm test
  *
- * ADV-14：手工维护的 2026 兜底表与国务院公告有 5 处不一致。
+ * ADV-14：手工维护的 2026 兜底表有 7 个日期与国务院公告不一致。
  * 修复改为从 lunar-javascript 1.7.7 的 HolidayUtil 生成；这里锁定
  * 2026 年春节/国庆/元旦的关键放假日与调休上班日，防止回退或库降级。
+ * 另覆盖「过期缓存优先于内置表」：年度数据由运行时 holiday-cn 自动更新，
+ * lunar 不需要每年升级。
  */
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -13,7 +15,7 @@ const lunar = require('../../src/scripts/lunar.min.js');
 global.HolidayUtil = lunar.HolidayUtil;
 global.window = {};
 
-const { buildHolidayFallback } = require('../../src/scripts/calendar.js');
+const { buildHolidayFallback, mergeHolidayFallback } = require('../../src/scripts/calendar.js');
 
 test('ADV-14 内置兜底由 HolidayUtil 生成：2026 春节/国庆/元旦与公告一致', () => {
   const fb = buildHolidayFallback(2026);
@@ -48,3 +50,21 @@ test('ADV-14 调休名称去掉后缀，且未公告年份不产生假数据', (
   assert.strictEqual(next['2027-01-01'], undefined, '2027 年不得出现推测数据');
   assert.strictEqual(next['2027-10-01'], undefined, '2027 年不得出现推测数据');
 });
+
+test('ADV-14 过期缓存优先于内置表：lunar 不升级也能用最近一次成功的数据', () => {
+  const merged = mergeHolidayFallback(
+    { '2027-01-01': { name: '元旦', off: true } },
+    { '2026-01-01': { name: '元旦', off: true } }
+  );
+  assert.strictEqual(merged['2027-01-01'].off, true, '缓存里的新一年数据应保留');
+  assert.strictEqual(merged['2026-01-01'].off, true, '内置历史数据不应丢失');
+
+  const override = mergeHolidayFallback(
+    { '2026-02-15': { name: '春节', off: true } },
+    { '2026-02-15': { name: '旧表', off: false } }
+  );
+  assert.strictEqual(override['2026-02-15'].off, true, '同名日期以缓存为准');
+  assert.strictEqual(override['2026-02-15'].name, '春节');
+  assert.deepStrictEqual(mergeHolidayFallback(null, null), {}, '空输入安全');
+});
+

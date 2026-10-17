@@ -25,6 +25,15 @@ function buildHolidayFallback(baseYear = new Date().getFullYear()) {
 }
 const HOLIDAY_FALLBACK = buildHolidayFallback();
 
+/* 合并兜底数据：上次成功拉取的缓存（可能已过期）优先于库内置的历史表。
+   这样客户只要联网成功过一次，之后断网、缓存过期也能继续用最近一次的数据；
+   lunar 不再需要每年升级来追赶新年份，维护者也不需要每年手动操作。 */
+function mergeHolidayFallback(stale, fallback) {
+  const base = fallback && typeof fallback === 'object' ? fallback : {};
+  const extra = stale && typeof stale === 'object' ? stale : {};
+  return Object.assign({}, base, extra);
+}
+
 const Calendar = {
   holidays: {},
   loaded: false,
@@ -85,14 +94,19 @@ const Calendar = {
   },
 
   async loadHolidays() {
+    // 缓存即使过期也先留着：双源都失败时，它比库内置的历史表更新
+    let staleData = null;
     try {
       const cached = localStorage.getItem(HOLIDAY_CACHE_KEY);
       if (cached) {
         const obj = JSON.parse(cached);
-        if (Date.now() - obj.timestamp < HOLIDAY_CACHE_DURATION) {
-          this.holidays = Object.assign({}, HOLIDAY_FALLBACK, obj.data);
-          this.holidaySource = 'cache';
-          return;
+        if (obj && obj.data && Object.keys(obj.data).length > 0) {
+          staleData = obj.data;
+          if (Date.now() - obj.timestamp < HOLIDAY_CACHE_DURATION) {
+            this.holidays = mergeHolidayFallback(obj.data, HOLIDAY_FALLBACK);
+            this.holidaySource = 'cache';
+            return;
+          }
         }
       }
     } catch {}
@@ -121,8 +135,10 @@ const Calendar = {
         }));
       } catch {}
     } else {
-      // 两源均失败：保持内置兜底表（由 HolidayUtil 生成），不报错（静默降级 + 浮层标注）
-      this.holidays = Object.assign({}, HOLIDAY_FALLBACK);
+      // 双源均失败：优先用上次成功的数据（哪怕已过期），其次库内置历史表。
+      // 客户端因此不需要每年等扩展升级；lunar 不升级也能拿到新一年数据。
+      this.holidays = mergeHolidayFallback(staleData, HOLIDAY_FALLBACK);
+      this.holidaySource = staleData ? 'cache' : 'fallback';
     }
   },
 
@@ -321,5 +337,5 @@ if (typeof window !== 'undefined') window.Calendar = Calendar;
 /* Node 单测入口：buildHolidayFallback 是纯函数（依赖全局 HolidayUtil），
    单独导出便于验证内置兜底数据与国务院公告一致（ADV-14） */
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { Calendar, buildHolidayFallback };
+  module.exports = { Calendar, buildHolidayFallback, mergeHolidayFallback };
 }

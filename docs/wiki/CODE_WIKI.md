@@ -2,7 +2,7 @@
 
 > 本文档是对仓库代码的结构化导览：整体架构、模块职责、关键对象与函数、数据模型、
 > 依赖关系、运行与测试方式。面向首次接手本仓库的开发者与 AI 编程代理。
-> 内容基于源码逐文件核对，最后更新对应版本 **1.1.3**。
+> 内容基于源码逐文件核对，最后更新对应版本 **1.1.4**。
 > 产品背景与需求文档见 `docs/product/`，评估与审查记录见 `docs/reviews/`。
 
 ---
@@ -44,7 +44,7 @@
 | 平台 | Chrome Extension **Manifest V3**（Edge 等 Chromium 浏览器同样可加载） |
 | 技术栈 | 原生 HTML / CSS / JavaScript，**无前端框架、无运行时构建步骤** |
 | 数据 | 全部保存在本地（`chrome.storage.local`，`localStorage` 回退）；无后端、无账号、无云同步、无埋点 |
-| 当前版本 | 1.1.3（版本号以 `src/manifest.json` 为准） |
+| 当前版本 | 1.1.4（版本号以 `src/manifest.json` 为准） |
 | 分发形态 | 直接加载 `src/` 目录；或用 `npm run pack` 生成 `dist/凌睿科技导航.zip` |
 
 **功能一览**：搜索框（Google/百度/Bing 切换、网址直跳、快捷键）、快捷书签（增删改、
@@ -86,7 +86,7 @@ Open-Meteo 备源、24 小时曲线、城市选择/IP 定位）、壁纸（4 套
 │   ├── images/icons/           # 16/48/128 扩展图标
 │   └── THIRD-PARTY.md          # 第三方组件与数据服务条款声明
 ├── tests/
-│   ├── unit/                   # node:test 单元测试（8 个文件，79 项）
+│   ├── unit/                   # node:test 单元测试（8 个文件，80 项）
 │   │   ├── storage.test.js
 │   │   ├── sorting.test.js
 │   │   ├── search-input.test.js
@@ -471,9 +471,10 @@ Node 导出：`brightnessToThemeHint`、`WALLPAPERS`。
 - `buildHolidayFallback(baseYear)`：从 lunar 的 `HolidayUtil` 生成「当前年 ±1」的
   法定节假日/调休表（1.7.7 内置 2018-2026），作为离线兜底；未公告年份不生成推测数据。
 - `init()`：以兜底表初始化，`loadHolidays()` 后置 `loaded=true`。
-- `loadHolidays()`：先读 localStorage 的 `holidayCacheV1`（24h 有效）；否则并发拉取
-  当年与次年数据，主源 `cdn.jsdelivr.net/gh/NateScarlet/holiday-cn`、备源
-  `raw.githubusercontent.com`（各 6s 超时）；记录 `holidaySource`
+- `loadHolidays()`：先读 localStorage 的 `holidayCacheV1`；24h 内直接使用，过期也保留。
+  否则并发拉取当年与次年数据，主源 `cdn.jsdelivr.net/gh/NateScarlet/holiday-cn`、备源
+  `raw.githubusercontent.com`（各 6s 超时）；双源均失败时优先使用过期缓存，其次内置表。
+  因此年度数据跟随运行时数据源自动更新，**不依赖每年升级 lunar**；记录 `holidaySource`
   （network/cache/partial/fallback）供浮层标注“数据可能不完整”。
 - 月历：`getMonthMatrix(y,m)` 生成含前后月补位的 7 列格子；`getLunarLabel`
   （节气优先，初一显示“X月”，否则农历日）、`getGanZhiHeader`（干支年月）；
@@ -526,7 +527,8 @@ PBI-14 的“无埋点回归防护”。
 构建，浏览器环境挂全局 `Solar` / `Lunar` / `HolidayUtil`。本项目使用
 `Solar.fromYmd(y,m,d).getLunar()` 链上的 `getJieQi/getDay/getDayInChinese/
 getMonthInChinese/getYearInGanZhi` 等 API，以及 `HolidayUtil.getHolidays/getDay/
-getName/isWork` 生成节假日兜底（详见 `src/THIRD-PARTY.md`，升级时需复核兼容性）。
+getName/isWork` 生成节假日兜底（详见 `src/THIRD-PARTY.md`）。lunar 升级是**可选项**：
+年度数据由运行时 `holiday-cn` 自动更新，库只负责农历/节气与首次离线安装的历史兜底。
 
 ---
 
@@ -700,7 +702,7 @@ Toast 撤销（5s）→ restore 原 id 归位”。
 
 ## 11. 测试体系
 
-### 11.1 单元测试（`npm test`，node:test，79 项）
+### 11.1 单元测试（`npm test`，node:test，80 项）
 
 | 文件 | 覆盖点 |
 |------|--------|
@@ -709,14 +711,14 @@ Toast 撤销（5s）→ restore 原 id 归位”。
 | `search-input.test.js` | `resolveInput` 十余个判定场景 + `isCommitEnter` |
 | `weather.test.js` | WMO/WWO 码表、扩展码中文文案、46 城描述映射、Open-Meteo 结构归一、`resolveCoords` 优先级、**双源容灾链与全失败不覆盖缓存**、缓存结构校验（ADV-03）、hover 转义（ADV-02）、城市乱序（ADV-04） |
 | `wallpaper.test.js` | 平均相对亮度（黑/白/中灰/空数组）与 `brightnessToThemeHint` 阈值边界、非法输入（ADV-05） |
-| `calendar.test.js` | 内置兜底由 `HolidayUtil` 生成：2026 春节/国庆/元旦的放假日与调休上班日，未公告年份不产生推测数据（ADV-14） |
+| `calendar.test.js` | 内置兜底由 `HolidayUtil` 生成：2026 春节/国庆/元旦的放假日与调休上班日，未公告年份不产生推测数据；过期缓存优先于内置表（ADV-14） |
 | `bookmark-import.test.js` | 书签树拍平、scope、去重、协议过滤、空文件夹、标题截断/兜底、数量上限、异常输入 |
 | `network-audit.test.js` | 白名单/通配/同源/相对 URL/favicon 例外，以及 **manifest host_permissions 与 CSP ⊆ 注册表** 一致性 |
 
 Node 可直接 require 业务脚本的前提：顶层无浏览器副作用（chrome/document 只在
 函数体内引用）。
 
-### 11.2 E2E（`tests/e2e/nav-e2e.js`，Playwright，四模式 392 项断言）
+### 11.2 E2E（`tests/e2e/nav-e2e.js`，Playwright，四模式 395 项断言）
 
 | 模式 | 命令 | 环境 | 价值 |
 |------|------|------|------|
