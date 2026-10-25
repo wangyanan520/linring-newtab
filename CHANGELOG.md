@@ -23,21 +23,30 @@ Chrome Web Store 与 Edge 加载项商店都要求每次提交的版本号**严�
 
 ---
 
-## [未发布] — 工作区
+## [1.2.7] — 2026-10-25
 
-> 本节只记录**尚未发版**的改动，不代表已对外发布。打包发版时并入下一个版本号。
+### 修复
+
+- **补全 `prefers-reduced-motion` 兜底**：此前全项目 0 处，系统开启"减少动态效果"的用户
+  仍会看到全部 hover 位移、面板滑入与 toast 淡入。现用通配选择器压到 0.01ms——保留状态
+  终值，也保证 `transitionend` 照常触发（直接写 `none` 会让依赖该事件的逻辑收不到回调）。
+- **24 处 `transition: all` 收为显式属性**：避免后续新增属性时静默扩大过渡范围，也不再
+  连带过渡 `width`/`height` 等布局属性。注意 `transition: a, b, c 0.35s` 是**错写**——
+  只有最后一个条目拿到时长，前几个按 0s 处理，过渡会静默消失。
+- **15 处白色字面量收敛为语义 token**：新增 `--text-on-accent`（彩色/深色底上的文字与
+  图形）与 `--surface-solid`（实心白面）。此前裸 `#fff` 与主题变量并行成两个真相来源。
+  不能简单替换成 `--text-primary`——它在浅色主题下是深色，彩色底上的字会变深压深底。
 
 ### 工程
 
-- 新增 `tests/unit/css-hygiene.test.js`（5 项）：prefers-reduced-motion 兜底、禁 `transition: all`、
-  `transition` shorthand 每个条目必须自带时长、选择器里禁裸 `#fff`。配套修掉主样式表的 24 处
-  `transition: all`、15 处白色字面量（收敛为 `--text-on-accent` / `--surface-solid` 两个语义 token），
-  并补上全项目此前缺失的 `prefers-reduced-motion` 兜底。
-- 验证：单测 91/91（原 86 + 新增 5）、preview 131/131、shim 134/134、体验体检 49/49。
+- 新增 `tests/unit/css-hygiene.test.js`（5 项），把上述三条约束钉成单测。
 
 ### 文档
 
-- 文档一致性对抗式审查（`docs/reviews/review-report-doc-consistency.md`）后的修订，不影响分发包。
+- 文档一致性对抗式审查后的 58 条修订，详见 `docs/reviews/review-report-doc-consistency.md`。
+  只改文档，不影响分发包。
+
+**验证**：单测 91/91、E2E preview 131/131、shim 134/134、体验体检 49/49。
 
 ---
 

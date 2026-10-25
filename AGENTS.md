@@ -30,6 +30,7 @@ lunar 1.7.7 的 `HolidayUtil` 生成；年度数据由运行时 `holiday-cn` + �
 - **1.2.4**：浅色主题重做（纸感中性白 + 墨蓝文字）
 - **1.2.5**：设置面板 7 tab → 4 tab 重构
 - **1.2.6**：浅色主题不再使用壁纸（纯色纸面）
+- **1.2.7**：补 `prefers-reduced-motion` 兜底、24 处 `transition` 显式化、白色语义 token
 
 **未上架应用商店**（`06-MVP.md` 3.2 战略排除项，属既定决策而非未完成）。
 
@@ -130,7 +131,7 @@ lunar 1.7.7 的 `HolidayUtil` 生成；年度数据由运行时 `holiday-cn` + �
 4. 工作区中已有的未提交改动（可能来自其他任务包）一律保留，禁止回退。
 5. **对外分发前必须递增 `src/manifest.json` 的 `version`，并在 `CHANGELOG.md` 补一节**。
    Chrome Web Store 与 Edge 加载项商店都要求版本号严格递增，重复或回退会被拒。
-   版本语义（主/次/修订）与判定标准见 `CHANGELOG.md` 开头。当前版本：**1.2.6**。
+   版本语义（主/次/修订）与判定标准见 `CHANGELOG.md` 开头。当前版本：**1.2.7**。
 
 ## 多 Agent 协作
 
