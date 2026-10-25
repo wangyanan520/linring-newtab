@@ -452,7 +452,7 @@ async function runCore(page, label) {
   // [3] 主题
   await page.click('#settingsBtn');
   await sleep(600);
-  await page.click('[data-tab="wallpaper"]');
+  await page.click('[data-tab="appearance"]');
   await sleep(600);
   await page.locator('#themeSelect').selectOption('light');
   await sleep(400);
@@ -462,7 +462,7 @@ async function runCore(page, label) {
   check('[3] 主题刷新持久化', await page.evaluate(() => document.documentElement.dataset.theme) === 'light');
   await page.click('#settingsBtn');
   await sleep(500);
-  await page.click('[data-tab="wallpaper"]');
+  await page.click('[data-tab="appearance"]');
   await sleep(500);
   await page.locator('#themeSelect').selectOption('dark');
   await sleep(300);
@@ -492,13 +492,13 @@ async function runCore(page, label) {
   // 恢复 dark 状态供后续测试
   await page.click('#settingsBtn');
   await sleep(500);
-  await page.click('[data-tab="wallpaper"]');
+  await page.click('[data-tab="appearance"]');
   await sleep(500);
   await page.locator('#themeSelect').selectOption('dark');
   await sleep(300);
 
   // [4] 组件开关
-  await page.click('[data-tab="components"]');
+  await page.click('[data-tab="appearance"]');
   await sleep(600);
   check('[4] 搜索框常驻', await page.locator('input[data-component-id="search"]').isDisabled());
   await page.locator('input[data-component-id="weather"]').uncheck();
@@ -517,7 +517,7 @@ async function runCore(page, label) {
   await sleep(400);
 
   // [5] 键盘排序（N1 回归：主页同步刷新）
-  await page.click('[data-tab="bookmarks"]');
+  await page.click('[data-tab="content"]');
   await sleep(600);
   const orderBefore = await page.evaluate(() => Array.from(document.querySelectorAll('#bookmarkList .setting-item-title')).map(e => e.textContent));
   await page.locator('[data-action="move-bookmark"][data-dir="up"]').nth(1).click();
@@ -532,7 +532,7 @@ async function runCore(page, label) {
   await sleep(2500);
   await page.click('#settingsBtn');
   await sleep(500);
-  await page.click('[data-tab="bookmarks"]');
+  await page.click('[data-tab="content"]');
   await sleep(500);
   const orderPersist = await page.evaluate(() => Array.from(document.querySelectorAll('#bookmarkList .setting-item-title')).map(e => e.textContent));
   check('[5] 排序刷新持久化', JSON.stringify(orderPersist) === JSON.stringify(orderAfter));
@@ -541,7 +541,7 @@ async function runCore(page, label) {
   // 用户路径：点开 A 的编辑 → 改主意点开 B 的编辑 → 在 B 的表单里输入并点它自己的保存按钮
   // 注意断言必须落在"最后一个表单自己的按钮"上：修复前该按钮没有监听器（无反应），
   // 而"点第一个按钮"在修复前后会得到相同的数据结果，无法区分
-  await page.click('[data-tab="bookmarks"]');
+  await page.click('[data-tab="content"]');
   await sleep(500);
   const editBefore = (await storageGet(page, 'bookmarks')).map(b => b.title);
   await page.locator('[data-action="edit-bookmark"]').nth(0).click();
@@ -560,14 +560,14 @@ async function runCore(page, label) {
   // 注：不复原标题——后续 [6] 只校验导出结构，[7] 用固定备份覆盖数据，均不依赖书签标题
 
   // [5.6] 编辑链接后切 tab（P1-2 回归：操作按钮不应永久消失）
-  await page.click('[data-tab="categories"]');
+  await page.click('[data-tab="content"]');
   await sleep(500);
   const actBefore = await page.locator('#categoryList .sub-item').nth(0).locator('.setting-item-actions').count();
   await page.locator('[data-action="edit-item"]').nth(0).click();
   await sleep(300);
-  await page.click('[data-tab="wallpaper"]');
+  await page.click('[data-tab="appearance"]');
   await sleep(300);
-  await page.click('[data-tab="categories"]');
+  await page.click('[data-tab="content"]');
   await sleep(500);
   const actAfter = await page.locator('#categoryList .sub-item').nth(0).locator('.setting-item-actions').count();
   check('[5.6] 编辑链接后切 tab，该行操作按钮仍在', actBefore === 1 && actAfter === 1, `编辑前=${actBefore} 切回后=${actAfter}`);
@@ -667,9 +667,9 @@ async function runCore(page, label) {
   // [15] PBI-13 隐私可见化
   await page.click('#settingsBtn');
   await sleep(400);
-  await page.click('[data-tab="privacy"]');
+  await page.click('[data-tab="data"]');
   await sleep(500);
-  const privacyText = await page.evaluate(() => document.getElementById('tabPrivacy').innerText);
+  const privacyText = await page.evaluate(() => document.getElementById('privacySection').innerText);
   check('[15] 隐私 tab：权限清单', /权限清单/.test(privacyText) && /storage/.test(privacyText));
   check('[15] 隐私 tab：外部数据源', /外部数据源/.test(privacyText) && /favicon\.im/.test(privacyText) && /wttr\.in/.test(privacyText) && /bing\.biturl\.top/.test(privacyText));
   check('[15] 隐私 tab：无埋点声明', /无统计埋点/.test(privacyText) && /无广告/.test(privacyText));
@@ -910,7 +910,7 @@ async function runCore(page, label) {
     `searchClear/settingsClose/settingsBtn/searchInput = ${JSON.stringify(a11y.iconNames)}`);
   check('[19] 设置面板具备 dialog 语义', a11y.overlayRole === 'dialog' && a11y.overlayModal === 'true',
     `role=${a11y.overlayRole} aria-modal=${a11y.overlayModal}`);
-  check('[19] tab 与面板语义关联', a11y.tablist && a11y.tabs === 7 && a11y.panels === 7,
+  check('[19] tab 与面板语义关联', a11y.tablist && a11y.tabs === 4 && a11y.panels === 4,
     `tablist=${a11y.tablist} tabs=${a11y.tabs} panels=${a11y.panels}`);
 
   await page.click('#settingsBtn');
@@ -995,7 +995,7 @@ async function runCore(page, label) {
   // 那样测的是"约束存在"而非"有没有给出提示"。改为统计 reportValidity 的实际调用次数。
   await page.click('#settingsBtn');
   await sleep(400);
-  await page.click('[data-tab="bookmarks"]');
+  await page.click('[data-tab="content"]');
   await sleep(300);
   await page.click('#addBookmarkBtn');
   await sleep(300);
@@ -1034,10 +1034,10 @@ async function runCore(page, label) {
   if (await cancelBtn.count()) { await cancelBtn.click(); await sleep(200); }
 
   // P2-3：隐私清单需披露 favicon 兜底会直连书签自身域名
-  await page.click('[data-tab="privacy"]');
+  await page.click('[data-tab="data"]');
   await sleep(400);
   const privacyP23 = await page.evaluate(() => {
-    const el = document.getElementById('tabPrivacy');
+    const el = document.getElementById('privacySection');
     return el ? el.innerText : '';
   });
   check('[21] 隐私清单披露书签域名直连（P2-3）', /书签自身域名/.test(privacyP23),
@@ -1356,7 +1356,7 @@ async function runCore(page, label) {
       form: !!document.querySelector('#bookmarkList .inline-form')
     }));
     check('[36] 点击空状态按钮直达"添加书签"表单（UX-09）',
-      emptyOpen.open && emptyOpen.tab === 'bookmarks' && emptyOpen.form,
+      emptyOpen.open && emptyOpen.tab === 'content' && emptyOpen.form,
       `面板=${emptyOpen.open} tab=${emptyOpen.tab} 表单=${emptyOpen.form}`);
     await page.click('#settingsClose');
     await sleep(500);
@@ -1612,7 +1612,7 @@ async function runCore(page, label) {
       form: !!document.querySelector('#bookmarkList .inline-form')
     }));
     check('[40] 点击磁贴直达"添加书签"表单（UX-12）',
-      quickForm.open && quickForm.tab === 'bookmarks' && quickForm.form,
+      quickForm.open && quickForm.tab === 'content' && quickForm.form,
       `面板=${quickForm.open} tab=${quickForm.tab} 表单=${quickForm.form}`);
     await page.click('#settingsClose');
     await sleep(500);
@@ -1706,7 +1706,7 @@ async function runCore(page, label) {
   // 必须从设置页的开关点进去验一遍：直接写存储只能证明渲染逻辑，证明不了开关接对了线
   await page.click('#settingsBtn');
   await sleep(600);
-  await page.click('#tabBtnComponents');
+  await page.click('#tabBtnAppearance');
   await sleep(500);
   const hasToggle = await page.evaluate(() => !!document.getElementById('showQuickAddToggle'));
   if (hasToggle) {

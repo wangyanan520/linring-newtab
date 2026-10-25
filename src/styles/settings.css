@@ -9,6 +9,10 @@
 .settings-overlay.open { display: flex; }
 
 .settings-panel {
+  /* 面板级配色令牌：列表分隔线 / 行悬停统一从这里取，避免逐条硬编码 */
+  --panel-border: rgba(255, 255, 255, 0.07);
+  --panel-border-soft: rgba(255, 255, 255, 0.04);
+  --row-hover: rgba(255, 255, 255, 0.035);
   background: rgba(22, 22, 40, 0.96);
   color: #d0d0e0;
   border-radius: 20px;
@@ -20,12 +24,23 @@
   animation: panelIn 0.30s var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1));
 }
 
+/* 面板本身由 open() 主动聚焦（模态焦点约定），但 Chrome 会给 tabindex="-1"
+   的元素画一圈 1px 系统蓝框，整个面板像被选中一样。焦点已在面板内部，
+   容器不再需要可见焦点环。 */
+.settings-panel:focus,
+.settings-panel:focus-visible {
+  outline: none;
+}
+
 /* V3 浅色主题：设置面板适配 */
 [data-theme="light"] .settings-overlay {
   background: rgba(255, 255, 255, 0.30);
 }
 
 [data-theme="light"] .settings-panel {
+  --panel-border: rgba(27, 32, 48, 0.10);
+  --panel-border-soft: rgba(27, 32, 48, 0.06);
+  --row-hover: rgba(25, 28, 45, 0.035);
   background: rgba(250, 250, 255, 0.96);
   color: rgba(25, 28, 45, 0.82);
   border-color: rgba(25, 28, 45, 0.08);
@@ -40,9 +55,9 @@
   color: rgba(25, 28, 45, 0.92);
 }
 
-/* UI 审查：浅色主题同步提高（关闭图标 0.45 → 0.58） */
+/* UI 审查：浅色主题同步提高（关闭图标 0.45 → 0.58 → 0.66，0.58 实测 4.14:1） */
 [data-theme="light"] .settings-close {
-  color: rgba(25, 28, 45, 0.58);
+  color: rgba(25, 28, 45, 0.66);
 }
 
 [data-theme="light"] .settings-close:hover {
@@ -92,12 +107,11 @@
 }
 
 [data-theme="light"] .setting-item {
-  background: rgba(25, 28, 45, 0.03);
+  background: transparent;
 }
 
 [data-theme="light"] .setting-item:hover {
-  background: rgba(25, 28, 45, 0.05);
-  border-color: rgba(25, 28, 45, 0.06);
+  background: var(--row-hover);
 }
 
 [data-theme="light"] .setting-item-title {
@@ -109,11 +123,11 @@
 }
 
 [data-theme="light"] .sub-item {
-  background: rgba(25, 28, 45, 0.02);
+  background: transparent;
 }
 
 [data-theme="light"] .sub-item:hover {
-  background: rgba(25, 28, 45, 0.04);
+  background: var(--row-hover);
 }
 
 [data-theme="light"] .inline-form input,
@@ -131,11 +145,11 @@
 
 [data-theme="light"] .inline-form input::placeholder,
 [data-theme="light"] .inline-form-sub input::placeholder {
-  color: rgba(25, 28, 45, 0.32);
+  color: rgba(25, 28, 45, 0.58);
 }
 
 [data-theme="light"] .empty-state {
-  color: rgba(25, 28, 45, 0.35);
+  color: rgba(25, 28, 45, 0.62);
 }
 
 [data-theme="light"] .setting-section-title {
@@ -143,7 +157,7 @@
 }
 
 [data-theme="light"] .setting-section-desc {
-  color: rgba(25, 28, 45, 0.42);
+  color: rgba(25, 28, 45, 0.68);
 }
 
 [data-theme="light"] .city-select {
@@ -159,14 +173,18 @@
 }
 
 [data-theme="light"] .city-select option {
-  background: #ffffff;
+  background: var(--surface-solid);
   color: rgba(25, 28, 45, 0.85);
 }
 
 [data-theme="light"] .toggle-row {
-  background: rgba(25, 28, 45, 0.03);
-  border-color: rgba(25, 28, 45, 0.08);
+  background: transparent;
+  border-color: var(--panel-border-soft);
   color: rgba(25, 28, 45, 0.85);
+}
+
+[data-theme="light"] .item-list {
+  border-color: var(--panel-border-soft);
 }
 
 [data-theme="light"] .settings-body::-webkit-scrollbar-thumb {
@@ -185,7 +203,7 @@
 .settings-header {
   display: flex; align-items: center;
   justify-content: space-between;
-  padding: 20px 28px 16px;
+  padding: 18px 24px 14px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 
@@ -197,7 +215,7 @@
 /* UI 审查：图标色 0.25 在面板底色上实测 2.25:1，低于非文本控件 3:1；0.45 约 3.6:1 */
 .settings-close {
   background: none; border: none;
-  color: rgba(255, 255, 255, 0.45); cursor: pointer;
+  color: rgba(255, 255, 255, 0.52); cursor: pointer;
   padding: 6px; border-radius: 8px;
   display: flex; align-items: center;
 }
@@ -206,8 +224,8 @@
 
 .settings-tabs {
   display: flex; gap: 0;
-  padding: 0 28px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  padding: 0 24px;
+  border-bottom: 1px solid var(--panel-border-soft);
 }
 
 /* UI 审查：未选中标签 0.30 → 0.50（13px 正文需 4.5:1，实测由 2.70 提升到约 4.9） */
@@ -217,7 +235,9 @@
   cursor: pointer; font-size: 13px;
   font-family: var(--font, -apple-system, "PingFang SC", sans-serif);
   border-bottom: 2px solid transparent;
-  transition: all 0.25s ease;
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity, filter, backdrop-filter;
+  transition-duration: 0.25s;
+  transition-timing-function: ease;
   margin-bottom: -1px; letter-spacing: 0.4px; font-weight: 400;
   /* UX-05：此前每个 tab 左右各 24px padding，7 个光 padding 就占掉 336px，
      留给文字的只有 168px（平均 24px/个），而"快捷书签"需要约 54px —— 7 个 tab
@@ -234,65 +254,90 @@
   border-bottom-color: rgba(255, 255, 255, 0.35);
 }
 
-.settings-body { flex: 1; overflow-y: auto; padding: 22px 28px; }
+.settings-body { flex: 1; overflow-y: auto; padding: 18px 24px 22px; }
 
 .tab-content { display: none; }
 .tab-content.active { display: block; }
 
 .tab-toolbar { margin-bottom: 18px; }
 
+/* ===== 统一行列表 =====
+   此前每行都是一张独立圆角卡片，行与行之间留 4px 缝，按钮又各自一套尺寸，
+   整个面板像一堆互不相干的卡片堆叠。现统一为「一个容器 + 行分隔线」：
+   容器负责边框与圆角，行只负责内容与悬停底色。 */
 .btn-primary {
   display: inline-flex; align-items: center; gap: 6px;
   background: rgba(255, 255, 255, 0.06);
   color: #d0d0e0;
   border: 1px solid rgba(255, 255, 255, 0.06);
-  padding: 8px 20px; border-radius: 10px;
+  padding: 7px 16px; border-radius: 8px;
   cursor: pointer; font-size: 13px;
   font-family: var(--font, -apple-system, "PingFang SC", sans-serif);
-  transition: all 0.2s ease;
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity, filter, backdrop-filter;
+  transition-duration: 0.2s;
+  transition-timing-function: ease;
   letter-spacing: 0.3px; font-weight: 400;
 }
 
 .btn-primary:hover { background: rgba(255,255,255,0.10); border-color: rgba(255,255,255,0.10); color: #f0f0f8; }
 
+/* 危险操作：与普通编辑按钮同尺寸，但保留红色描边与更大的左侧间距，
+   避免在「编辑 / 上移 / 下移 / 删除」里一眼分不出可逆与不可逆 */
 .btn-danger {
   background: rgba(231, 76, 60, 0.10);
-  color: #e74c3c;
+  /* #e74c3c 在红色底纹上实测 4.21:1，改用更亮的红 */
+  color: #ff6b5a;
   border: 1px solid rgba(231, 76, 60, 0.08);
-  padding: 5px 14px; border-radius: 8px;
-  cursor: pointer; font-size: 12px;
+  padding: 4px 10px; border-radius: 7px;
+  cursor: pointer; font-size: 12px; line-height: 18px;
   font-family: var(--font, -apple-system, "PingFang SC", sans-serif);
-  transition: all 0.2s ease;
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity, filter, backdrop-filter;
+  transition-duration: 0.2s;
+  transition-timing-function: ease;
+  margin-left: 4px;
 }
 
-.btn-danger:hover { background: rgba(231,76,60,0.18); border-color: rgba(231,76,60,0.12); color: #ff6b5a; }
+.btn-danger:hover { background: rgba(231,76,60,0.18); border-color: rgba(231,76,60,0.12); color: #ff8b7c; }
 
 /* UI 审查：次要按钮 0.40 → 0.62（12px 正文需 4.5:1，实测 3.69 → 约 5.3） */
 .btn-edit {
   background: rgba(255, 255, 255, 0.04);
   color: rgba(255, 255, 255, 0.62);
   border: 1px solid rgba(255, 255, 255, 0.04);
-  padding: 5px 14px; border-radius: 8px;
-  cursor: pointer; font-size: 12px;
+  padding: 4px 10px; border-radius: 7px;
+  cursor: pointer; font-size: 12px; line-height: 18px;
   font-family: var(--font, -apple-system, "PingFang SC", sans-serif);
-  transition: all 0.2s ease;
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity, filter, backdrop-filter;
+  transition-duration: 0.2s;
+  transition-timing-function: ease;
 }
 
 .btn-edit:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.06); color: rgba(255,255,255,0.85); }
 
-.item-list { display: flex; flex-direction: column; gap: 4px; }
+.item-list {
+  display: flex; flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--panel-border-soft);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.item-list > .setting-item + .setting-item,
+.item-list > .category-with-items + .category-with-items {
+  border-top: 1px solid var(--panel-border-soft);
+}
 
 .setting-item {
   display: flex; align-items: center;
   justify-content: space-between;
-  padding: 11px 16px;
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: 10px;
-  border: 1px solid transparent;
-  transition: all 0.2s ease;
+  padding: 10px 14px;
+  background: transparent;
+  border-radius: 0;
+  border: 0;
+  transition: background 0.2s ease;
 }
 
-.setting-item:hover { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.03); }
+.setting-item:hover { background: var(--row-hover); }
 
 .setting-item-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 
@@ -305,25 +350,31 @@
   max-width: 260px; margin-top: 1px;
 }
 
-.setting-item-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.setting-item-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
 
-.category-with-items { margin-bottom: 2px; }
+.category-with-items { margin-bottom: 0; }
 
+/* 子条目挂在分类行下方，用一条竖向导引线表示从属关系；
+   竖线放在列表容器内部，不额外增加横向留白 */
 .category-sub-items {
-  margin-left: 14px; margin-top: 3px;
-  display: flex; flex-direction: column; gap: 2px;
+  margin: 0 0 0 14px;
+  padding: 2px 0 4px 6px;
+  border-left: 1px solid var(--panel-border-soft);
+  display: flex; flex-direction: column; gap: 0;
 }
 
 .sub-item {
   display: flex; align-items: center;
   justify-content: space-between;
-  padding: 7px 14px;
-  background: rgba(255, 255, 255, 0.01);
-  border-radius: 8px; border: 1px solid transparent;
+  padding: 7px 12px;
+  background: transparent;
+  border-radius: 0; border: 0;
   transition: background 0.2s ease;
 }
 
-.sub-item:hover { background: rgba(255,255,255,0.03); }
+.sub-item + .sub-item { border-top: 1px solid var(--panel-border-soft); }
+
+.sub-item:hover { background: var(--row-hover); }
 
 .sub-item .setting-item-info { flex-direction: row; gap: 10px; align-items: center; }
 .sub-item .setting-item-title { font-size: 12px; font-weight: 400; }
@@ -341,11 +392,14 @@
   border-radius: 8px; padding: 8px 14px;
   color: #d0d0e0; font-size: 13px;
   font-family: var(--font, -apple-system, "PingFang SC", sans-serif);
-  outline: none; transition: all 0.2s ease;
+  outline: none;
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity, filter, backdrop-filter;
+  transition-duration: 0.2s;
+  transition-timing-function: ease;
 }
 
 .inline-form input:focus { border-color: rgba(255,255,255,0.12); background: rgba(255,255,255,0.06); }
-.inline-form input::placeholder { color: rgba(255, 255, 255, 0.20); }
+.inline-form input::placeholder { color: rgba(255, 255, 255, 0.55); }
 
 .inline-form-sub {
   display: flex; gap: 8px; flex-wrap: wrap;
@@ -358,22 +412,34 @@
   border-radius: 8px; padding: 8px 14px;
   color: #d0d0e0; font-size: 13px;
   font-family: var(--font, -apple-system, "PingFang SC", sans-serif);
-  outline: none; transition: all 0.2s ease;
+  outline: none;
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity, filter, backdrop-filter;
+  transition-duration: 0.2s;
+  transition-timing-function: ease;
 }
 
 .inline-form-sub input:focus { border-color: rgba(255,255,255,0.12); background: rgba(255,255,255,0.06); }
-.inline-form-sub input::placeholder { color: rgba(255, 255, 255, 0.20); }
+.inline-form-sub input::placeholder { color: rgba(255, 255, 255, 0.55); }
 
 .input-sm-name { min-width: 100px; }
 .input-sm-url { min-width: 140px; }
-.btn-sm { padding: 4px 12px; font-size: 12px; }
+.btn-sm { padding: 4px 10px; font-size: 12px; line-height: 18px; }
 
+/* UI 审查：空态 0.20 实测约 1.8:1 */
 .empty-state {
-  text-align: center; color: rgba(255, 255, 255, 0.20);
+  text-align: center; color: rgba(255, 255, 255, 0.55);
   padding: 36px 0; font-size: 13px; letter-spacing: 0.3px;
 }
 
-.setting-section { margin-bottom: 24px; }
+.setting-section { margin-bottom: 26px; }
+.setting-section:last-child { margin-bottom: 0; }
+
+/* 标题与右侧"添加"按钮同排：说明文字归入左侧，按钮不再独占一行 */
+.setting-section-head {
+  display: flex; align-items: flex-start;
+  justify-content: space-between; gap: 12px;
+  margin-bottom: 10px;
+}
 
 .setting-section-title {
   font-size: 14px; font-weight: 500;
@@ -381,12 +447,15 @@
 }
 
 .setting-section-desc {
-  font-size: 12px; color: rgba(255, 255, 255, 0.25);
+  font-size: 12px; color: rgba(255, 255, 255, 0.55);
   line-height: 1.6; margin-bottom: 14px;
 }
 
+.setting-section-head .setting-section-desc { margin-bottom: 0; }
+.setting-section-head .btn-primary { flex-shrink: 0; }
+
 .city-select {
-  width: 100%;
+  width: 100%; max-width: 260px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 10px; padding: 10px 14px;
@@ -410,20 +479,65 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 10px;
+  padding: 10px 4px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--panel-border-soft);
+  border-radius: 0;
   font-size: 13px;
   color: #d0d0e0;
   cursor: pointer;
 }
 
+.toggle-row:hover { background: var(--row-hover); }
+.toggle-row:last-of-type { border-bottom: 0; }
+
+/* 开关：此前是一个被拉伸到 36×20 的原生复选框，既不像复选框也不像开关。
+   现用 appearance:none 画成拨动开关，滑块用 radial-gradient 画（原生 input
+   对伪元素的兼容性不统一）。未选中态靠 1px 边线保证 3:1 的可辨识度。 */
 .toggle-row input[type="checkbox"] {
-  width: 36px;
-  height: 20px;
-  accent-color: #8b5cf6;
+  -webkit-appearance: none; appearance: none;
+  width: 38px; height: 22px; border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  background-color: rgba(255, 255, 255, 0.12);
+  background-image: radial-gradient(circle at 11px 11px, var(--surface-solid) 0 7px, transparent 7.5px);
+  background-repeat: no-repeat;
+  background-position: 0 0;
   cursor: pointer;
+  transition: background-color 0.2s ease, background-position 0.2s ease, border-color 0.2s ease;
+  flex-shrink: 0;
+}
+
+.toggle-row input[type="checkbox"]:checked {
+  background-color: #8b5cf6;
+  background-position: 16px 0;
+  border-color: transparent;
+}
+
+.toggle-row input[type="checkbox"]:focus-visible {
+  outline: 2px solid rgba(175, 155, 255, 0.95);
+  outline-offset: 2px;
+}
+
+/* 常驻组件（如搜索框）是不可关闭的 checked+disabled 状态，需与可选开关区分 */
+.toggle-row input[type="checkbox"]:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+[data-theme="light"] .toggle-row input[type="checkbox"] {
+  border-color: rgba(25, 28, 45, 0.50);
+  background-color: rgba(25, 28, 45, 0.12);
+  background-image: radial-gradient(circle at 11px 11px, var(--surface-solid) 0 7px, transparent 7.5px);
+}
+
+[data-theme="light"] .toggle-row input[type="checkbox"]:checked {
+  background-color: #6d4bd8;
+  border-color: transparent;
+}
+
+[data-theme="light"] .toggle-row input[type="checkbox"]:focus-visible {
+  outline-color: #6d4bd8;
 }
 
 /* PBI-13 隐私可见化：清单列表 */
@@ -445,14 +559,15 @@
   color: rgba(25, 28, 45, 0.92);
 }
 
-/* UI 审查 P2：320px 视口下面板宽 288、内容区仅 232px，7 个 white-space:nowrap 的
-   tab 横向溢出（实测最右 tab 被裁掉）；同时 .setting-item 的固定宽度 actions
-   把信息列压到 5px。窄屏改为 tab 可换行、条目信息与操作分行。 */
+/* UI 审查 P2：320px 视口下面板宽 288、内容区仅 232px，white-space:nowrap 的 tab
+   会把最右一个顶出容器；同时 .setting-item 的固定宽度 actions 把信息列压到 5px。
+   窄屏改为 tab 可换行、条目信息与操作分行。（tab 已由 7 个合并为 4 个，
+   320 下通常单行放下，保留换行作为更长文案的兜底） */
 @media (max-width: 420px) {
   .settings-header { padding: 16px 16px 12px; }
   /* flex:1 的等分在窄屏会把 nowrap 文字撑过容器，改为按内容宽排列并允许换行 */
   .settings-tabs { flex-wrap: wrap; padding: 0 16px; }
-  .tab-btn { flex: 0 0 auto; padding: 10px 8px; }
+  .tab-btn { flex: 1 1 auto; padding: 10px 6px; font-size: 12.5px; }
 
   .settings-body { padding: 16px; }
 
@@ -463,4 +578,7 @@
 
   .sub-item { flex-wrap: wrap; row-gap: 6px; }
   .sub-item .setting-item-url { max-width: 100%; }
+
+  .city-select { max-width: 100%; }
+  .setting-section-head { flex-wrap: wrap; }
 }

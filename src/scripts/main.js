@@ -406,7 +406,7 @@ const App = {
       if (addBtn) {
         addBtn.addEventListener('click', async () => {
           Settings.open();
-          Settings.switchTab('bookmarks');
+          Settings.switchTab('content');
           // 必须等 open() 里那次异步列表渲染完成再插入表单，
           // 否则 renderBookmarks 的 innerHTML 赋值会把刚 prepend 的表单抹掉
           await Settings.renderBookmarks();
@@ -461,7 +461,7 @@ const App = {
     if (quickAdd) {
       quickAdd.addEventListener('click', async () => {
         Settings.open();
-        Settings.switchTab('bookmarks');
+        Settings.switchTab('content');
         // 等 open() 里那次异步列表渲染完成再插表单，否则会被 innerHTML 赋值抹掉
         await Settings.renderBookmarks();
         Settings.showAddBookmarkForm();
@@ -527,7 +527,7 @@ const App = {
       if (addBtn) {
         addBtn.addEventListener('click', async () => {
           Settings.open();
-          Settings.switchTab('categories');
+          Settings.switchTab('content');
           await Settings.renderCategories(); // 同书签区：等渲染完成再插表单
           Settings.showAddCategoryForm();
         });

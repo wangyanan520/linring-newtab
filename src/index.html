@@ -109,40 +109,50 @@
         </button>
       </div>
       <div class="settings-tabs" role="tablist" aria-label="设置分类">
-        <button class="tab-btn active" id="tabBtnBookmarks" data-tab="bookmarks" role="tab" aria-selected="true" aria-controls="tabBookmarks">快捷书签</button>
-        <button class="tab-btn" id="tabBtnCategories" data-tab="categories" role="tab" aria-selected="false" aria-controls="tabCategories">分类导航</button>
-        <button class="tab-btn" id="tabBtnWallpaper" data-tab="wallpaper" role="tab" aria-selected="false" aria-controls="tabWallpaper">壁纸</button>
+        <button class="tab-btn active" id="tabBtnContent" data-tab="content" role="tab" aria-selected="true" aria-controls="tabContent">内容</button>
+        <button class="tab-btn" id="tabBtnAppearance" data-tab="appearance" role="tab" aria-selected="false" aria-controls="tabAppearance">外观</button>
         <button class="tab-btn" id="tabBtnWeather" data-tab="weather" role="tab" aria-selected="false" aria-controls="tabWeather">天气</button>
-        <button class="tab-btn" id="tabBtnData" data-tab="data" role="tab" aria-selected="false" aria-controls="tabData">数据</button>
-        <button class="tab-btn" id="tabBtnComponents" data-tab="components" role="tab" aria-selected="false" aria-controls="tabComponents">组件</button>
-        <button class="tab-btn" id="tabBtnPrivacy" data-tab="privacy" role="tab" aria-selected="false" aria-controls="tabPrivacy">隐私</button>
+        <button class="tab-btn" id="tabBtnData" data-tab="data" role="tab" aria-selected="false" aria-controls="tabData">数据与隐私</button>
       </div>
       <div class="settings-body">
-        <div class="tab-content active" id="tabBookmarks" role="tabpanel" aria-labelledby="tabBtnBookmarks">
-          <div class="tab-toolbar">
-            <button class="btn-primary" id="addBookmarkBtn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              <span>添加书签</span>
-            </button>
-          </div>
-          <div class="item-list" id="bookmarkList"></div>
+        <div class="tab-content active" id="tabContent" role="tabpanel" aria-labelledby="tabBtnContent">
+          <section class="setting-section">
+            <div class="setting-section-head">
+              <div>
+                <div class="setting-section-title">快捷书签</div>
+                <p class="setting-section-desc">主页搜索框下方的快捷入口，顺序与主页一致。</p>
+              </div>
+              <button class="btn-primary btn-sm" id="addBookmarkBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                <span>添加书签</span>
+              </button>
+            </div>
+            <div class="item-list" id="bookmarkList"></div>
+          </section>
+          <section class="setting-section">
+            <div class="setting-section-head">
+              <div>
+                <div class="setting-section-title">分类导航</div>
+                <p class="setting-section-desc">按分类整理的链接集合，可逐个分类展开维护。</p>
+              </div>
+              <button class="btn-primary btn-sm" id="addCategoryBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                <span>添加分类</span>
+              </button>
+            </div>
+            <div class="item-list" id="categoryList"></div>
+          </section>
         </div>
-        <div class="tab-content" id="tabCategories" role="tabpanel" aria-labelledby="tabBtnCategories">
-          <div class="tab-toolbar">
-            <button class="btn-primary" id="addCategoryBtn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              <span>添加分类</span>
-            </button>
-          </div>
-          <div class="item-list" id="categoryList"></div>
+        <div class="tab-content" id="tabAppearance" role="tabpanel" aria-labelledby="tabBtnAppearance">
+          <div id="wallpaperSection"></div>
+          <div id="componentsSection"></div>
         </div>
-        <div class="tab-content" id="tabWallpaper" role="tabpanel" aria-labelledby="tabBtnWallpaper"></div>
         <div class="tab-content" id="tabWeather" role="tabpanel" aria-labelledby="tabBtnWeather">
           <div class="setting-section">
             <div class="setting-section-title">选择省份</div>
@@ -155,9 +165,10 @@
             <select class="city-select" id="weatherCitySelect"></select>
           </div>
         </div>
-        <div class="tab-content" id="tabData" role="tabpanel" aria-labelledby="tabBtnData"></div>
-        <div class="tab-content" id="tabComponents" role="tabpanel" aria-labelledby="tabBtnComponents"></div>
-        <div class="tab-content" id="tabPrivacy" role="tabpanel" aria-labelledby="tabBtnPrivacy"></div>
+        <div class="tab-content" id="tabData" role="tabpanel" aria-labelledby="tabBtnData">
+          <div id="dataSection"></div>
+          <div id="privacySection"></div>
+        </div>
       </div>
     </div>
   </div>

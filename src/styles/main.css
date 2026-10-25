@@ -23,6 +23,15 @@
   --accent-light: rgba(180, 160, 255, 0.4);
   --accent-glow: rgba(150, 100, 255, 0.15);
   --accent-border: rgba(150, 100, 255, 0.12);
+
+  /* 语义化白色：此前纯白字面量散落在 12 个选择器里，与主题变量并行成
+     两个真相来源——改主题时这些位置不跟，浅色主题的对比度修复会被下一次改动绕过。
+     ① --text-on-accent：彩色或深色底上的文字与图形（红底删除键、accent 主按钮、
+        toast 动作键、勾选对勾）。不随主题变化，两个主题下都必须保持纯白，
+        否则浅色主题下会变成深色字压在 accent 底上，对比度直接崩。
+     ② --surface-solid：实心白面与纯白装饰图形（浅色主题的悬停卡片、开关滑块圆点）。 */
+  --text-on-accent: #ffffff;
+  --surface-solid: #ffffff;
 }
 
 /* ===== V3 浅色主题 =====
@@ -36,61 +45,62 @@
   --text-primary: rgba(25, 28, 45, 0.95);
   --text-secondary: rgba(25, 28, 45, 0.82);
   --text-tertiary: rgba(25, 28, 45, 0.68);
-  --glass-bg: rgba(255, 255, 255, 0.50);
-  --glass-bg-hover: rgba(255, 255, 255, 0.68);
-  --glass-border: rgba(25, 28, 45, 0.10);
-  --glass-border-hover: rgba(25, 28, 45, 0.18);
-  --shadow-sm: 0 2px 12px rgba(40, 35, 70, 0.10);
-  --shadow-md: 0 8px 32px rgba(40, 35, 70, 0.14);
-  --shadow-lg: 0 16px 48px rgba(40, 35, 70, 0.18);
+  /* 浅色主题改为"纸片"体系：此前卡片 0.50 白叠在 0.88 白背景上，明度差不足 4%，
+     卡片轮廓几乎消失、内容像浮在背景上。白度抬到 0.72/0.90，配 0.10 实边框与
+     可见阴影，恢复"背景 → 卡片 → 内容"三层。 */
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-bg-hover: rgba(255, 255, 255, 0.90);
+  --glass-border: rgba(27, 32, 48, 0.10);
+  --glass-border-hover: rgba(27, 32, 48, 0.16);
+  --shadow-sm: 0 1px 3px rgba(24, 28, 45, 0.06), 0 4px 14px rgba(24, 28, 45, 0.05);
+  --shadow-md: 0 2px 6px rgba(24, 28, 45, 0.07), 0 10px 28px rgba(24, 28, 45, 0.08);
+  --shadow-lg: 0 6px 18px rgba(24, 28, 45, 0.10), 0 20px 48px rgba(24, 28, 45, 0.12);
 }
 
 /* UX-02 根因①：.bg-layer 的背景由 wallpaper.js 内联写入（样式表覆盖不了），
    纯 CSS 唯一可控点就是这个伪元素。原值 rgba(255,255,255,0.16) 叠在深色壁纸上
    只把底部抬到等效灰阶 40，而卡片底是 121 —— 文字夹在中间必然不可读。 */
 [data-theme="light"] .bg-layer::after {
-  background: rgba(246, 247, 252, 0.88);
+  /* 浅色主题不使用壁纸：用不透明纸面色完整覆盖壁纸图像与遮罩。
+     此前试过"半透明白纱既留壁纸又保可读"，但 0.55 / 0.62 / 0.82 / 0.94 都落在
+     "壁纸被洗成脏灰"与"文字压不住"之间，还得再叠一层标题晕影，观感反而更差。
+     壁纸只在深色主题生效，浅色主题直接给纯色背景。 */
+  background: #f3f5fa;
 }
 
-/* UX-02 路线 C：保底层强度由「主题 × 壁纸明度」共同决定。
-   data-wallpaper-tone 由 wallpaper.js 写在 <html> 上（预设读 themeHint，在线壁纸用采样结果）。
-   方向一致时保持淡覆盖以留住壁纸观感；方向相反时必须加重，否则文字与背景明度接近、
-   对比度直接塌掉——实测"晨雾白（浅色壁纸）+ 深色主题"下 10 项关键元素全部不达标（最低 1.41:1）。
+/* 浅色主题没有壁纸，这层紫色装饰光晕已无叠加对象，留着只是脏点 */
+[data-theme="light"] .bg-glow {
+  display: none;
+}
 
-   这里刻意压到近黑：可读性是底线，而浅色壁纸的最佳观感路径是配浅色主题
-   （auto 模式选到晨雾白会自动切 light，走下面那条 0.45 的规则）。
-   手动坚持"深色主题 + 浅色壁纸"时牺牲壁纸观感、保住文字可读，是两者相权后的选择。 */
+/* UX-02 路线 C：深色主题下覆盖层强度按壁纸明度切换。
+   data-wallpaper-tone 由 wallpaper.js 写在 <html> 上（预设读 themeHint，在线壁纸用采样结果）。
+   浅色壁纸 + 深色主题方向相反，覆盖层必须压重，否则白字压浅底直接不可读——
+   实测该组合 10 项关键元素全部不达标（最低 1.41:1）。 */
 [data-theme="dark"][data-wallpaper-tone="light"] .bg-layer::after {
   background: rgba(6, 8, 18, 0.85);
 }
 
-/* 浅色壁纸配浅色主题：不必洗到 0.88，45% 就够把底色压进浅色区间，
-   同时保留壁纸本身的层次——这正是新增浅色预设（路线 C）的收益。 */
-[data-theme="light"][data-wallpaper-tone="light"] .bg-layer::after {
-  background: rgba(248, 249, 253, 0.45);
-}
-
 [data-theme="light"] .datetime,
 [data-theme="light"] .weather-widget {
-  background: rgba(255, 255, 255, 0.45);
-  border-color: rgba(25, 28, 45, 0.08);
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(27, 32, 48, 0.10);
 }
 
 [data-theme="light"] .weather-widget:hover {
-  background: rgba(25, 28, 45, 0.06);
-  border-color: rgba(25, 28, 45, 0.14);
+  background: rgba(255, 255, 255, 0.90);
+  border-color: rgba(27, 32, 48, 0.16);
 }
 
 [data-theme="light"] .search-inner {
-  background: rgba(255, 255, 255, 0.60);
-  border-color: rgba(25, 28, 45, 0.08);
-  box-shadow: var(--shadow-md), 0 0 0 1px rgba(25, 28, 45, 0.04);
+  background: rgba(255, 255, 255, 0.90);
+  border-color: rgba(27, 32, 48, 0.10);
+  box-shadow: var(--shadow-md);
 }
 
-/* UI 审查 P2：浅底上亮紫焦点环只有约 2:1，改用实色深紫（约 5:1） */
 [data-theme="light"] .search-inner:focus-within {
-  background: rgba(255, 255, 255, 0.78);
-  border-color: rgba(25, 28, 45, 0.14);
+  background: rgba(255, 255, 255, 0.98);
+  border-color: rgba(27, 32, 48, 0.14);
   box-shadow:
     var(--shadow-md),
     0 0 0 2px var(--focus-ring-light, #6d4bd8);
@@ -114,28 +124,33 @@
 }
 
 [data-theme="light"] .bookmark-icon {
-  background: rgba(255, 255, 255, 0.45);
-  border-color: rgba(25, 28, 45, 0.08);
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(27, 32, 48, 0.12);
+  box-shadow: 0 1px 2px rgba(24, 28, 45, 0.06), 0 4px 12px rgba(24, 28, 45, 0.06);
 }
 
 [data-theme="light"] .bookmark-item:hover .bookmark-icon {
-  background: rgba(255, 255, 255, 0.75);
+  background: var(--surface-solid);
+  border-color: rgba(27, 32, 48, 0.18);
 }
 
 [data-theme="light"] .category-card,
 [data-theme="light"] .todo-card {
-  background: rgba(255, 255, 255, 0.45);
-  border-color: rgba(25, 28, 45, 0.08);
+  background: rgba(255, 255, 255, 0.80);
+  border-color: rgba(27, 32, 48, 0.10);
+  box-shadow: var(--shadow-sm);
 }
 
 [data-theme="light"] .category-card:hover,
 [data-theme="light"] .todo-card:hover {
-  background: rgba(255, 255, 255, 0.62);
+  background: rgba(255, 255, 255, 0.92);
+  border-color: var(--accent-border);
+  box-shadow: var(--shadow-md);
 }
 
 [data-theme="light"] .category-link:hover {
-  background: rgba(25, 28, 45, 0.06);
-  border-color: rgba(25, 28, 45, 0.10);
+  background: var(--surface-solid);
+  border-color: var(--accent-border);
 }
 
 [data-theme="light"] .category-title {
@@ -156,13 +171,13 @@
 }
 
 [data-theme="light"] .tool-btn {
-  background: rgba(255, 255, 255, 0.45);
-  border-color: rgba(25, 28, 45, 0.08);
+  background: rgba(255, 255, 255, 0.78);
+  border-color: rgba(27, 32, 48, 0.10);
 }
 
 [data-theme="light"] .tool-btn:hover {
-  background: rgba(255, 255, 255, 0.65);
-  border-color: rgba(25, 28, 45, 0.14);
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(27, 32, 48, 0.16);
 }
 
 /* V3 组件可见性：隐藏的组件区块 */
@@ -173,9 +188,9 @@
 /* V3 浅色主题：悬浮卡片（天气 24h / 农历日历）与待办输入区 */
 [data-theme="light"] .weather-hover-card,
 [data-theme="light"] .datetime-hover-card {
-  background: rgba(250, 250, 255, 0.97);
-  border-color: rgba(25, 28, 45, 0.10);
-  box-shadow: 0 20px 48px rgba(40, 35, 70, 0.18);
+  background: rgba(255, 255, 255, 0.98);
+  border-color: rgba(27, 32, 48, 0.12);
+  box-shadow: 0 24px 60px rgba(24, 28, 45, 0.16), 0 2px 8px rgba(24, 28, 45, 0.08);
 }
 
 /* V3 浅色主题：农历浮层内部文字（默认硬编码白色系，需按浅色覆盖） */
@@ -206,12 +221,12 @@
 }
 
 [data-theme="light"] .todo-input-wrapper {
-  background: rgba(255, 255, 255, 0.60);
-  border-color: rgba(25, 28, 45, 0.08);
+  background: rgba(255, 255, 255, 0.86);
+  border-color: rgba(27, 32, 48, 0.10);
 }
 
 [data-theme="light"] .todo-input-wrapper:focus-within {
-  background: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.98);
   border-color: var(--accent-border);
 }
 
@@ -366,7 +381,9 @@ body {
   border-radius: var(--radius-full);
   border: 1px solid rgba(0, 0, 0, 0.06);
   background: rgba(0, 0, 0, 0.12);
-  transition: all 0.3s var(--ease-out);
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity, filter, backdrop-filter;
+  transition-duration: 0.3s;
+  transition-timing-function: var(--ease-out);
   cursor: default;
 }
 
@@ -459,7 +476,9 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: var(--radius-xl);
   padding: 4px 4px 4px 20px;
-  transition: all 0.35s var(--ease-out);
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity, filter, backdrop-filter;
+  transition-duration: 0.35s;
+  transition-timing-function: var(--ease-out);
   box-shadow: var(--shadow-md), 0 0 0 1px rgba(0, 0, 0, 0.06);
 }
 
@@ -498,7 +517,9 @@ body {
   cursor: pointer;
   padding: 6px 10px 6px 6px;
   border-radius: 6px;
-  transition: all 0.2s ease;
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity, filter, backdrop-filter;
+  transition-duration: 0.2s;
+  transition-timing-function: ease;
   flex-shrink: 0;
   font-weight: 400;
   letter-spacing: 0.3px;
@@ -543,7 +564,9 @@ body {
   cursor: pointer;
   padding: 8px 14px;
   opacity: 0;
-  transition: all 0.25s ease;
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity, filter, backdrop-filter;
+  transition-duration: 0.25s;
+  transition-timing-function: ease;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -600,7 +623,9 @@ body {
   text-decoration: none;
   color: var(--text-primary);
   width: 100%;
-  transition: all 0.3s var(--ease-out);
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity, filter, backdrop-filter;
+  transition-duration: 0.3s;
+  transition-timing-function: var(--ease-out);
   cursor: pointer;
   position: relative;
 }
@@ -653,7 +678,7 @@ body {
 .bookmark-remove:focus-visible {
   background: #c0392b;
   border-color: #c0392b;
-  color: #ffffff;
+  color: var(--text-on-accent);
   opacity: 1;
   pointer-events: auto;
 }
@@ -677,7 +702,7 @@ body {
 [data-theme="light"] .bookmark-remove:focus-visible {
   background: #c0392b;
   border-color: #c0392b;
-  color: #ffffff;
+  color: var(--text-on-accent);
 }
 
 .bookmark-icon {
@@ -692,7 +717,9 @@ body {
   justify-content: center;
   font-size: 20px;
   font-weight: 450;
-  transition: all 0.3s var(--ease-out);
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity, filter, backdrop-filter;
+  transition-duration: 0.3s;
+  transition-timing-function: var(--ease-out);
   border: 1px solid rgba(255, 255, 255, 0.04);
   box-shadow: 0 4px 16px rgba(10, 8, 30, 0.20);
 }
@@ -763,7 +790,9 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.04);
   border-radius: var(--radius-md);
   overflow: hidden;
-  transition: all 0.3s var(--ease-out);
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity, filter, backdrop-filter;
+  transition-duration: 0.3s;
+  transition-timing-function: var(--ease-out);
 }
 
 .category-card:hover {
@@ -851,7 +880,9 @@ body {
   padding: 4px 12px;
   border-radius: var(--radius-full);
   background: rgba(0, 0, 0, 0.12);
-  transition: all 0.2s ease;
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity, filter, backdrop-filter;
+  transition-duration: 0.2s;
+  transition-timing-function: ease;
   border: 1px solid rgba(0, 0, 0, 0.08);
   font-weight: 400;
 }
@@ -886,7 +917,9 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.04);
   border-radius: var(--radius-md);
   padding: 14px 16px;
-  transition: all 0.3s var(--ease-out);
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity, filter, backdrop-filter;
+  transition-duration: 0.3s;
+  transition-timing-function: var(--ease-out);
   /* UX-07：此前是 height: fit-content，待办卡片只有 111px 而相邻分类容器 248px，
      右列下方留出 141px 空洞。交给 grid 默认的 stretch 与左列等高。
      margin-top 与 .categories 的 4px 对齐，否则顶部差 4px。 */
@@ -971,7 +1004,9 @@ body {
   border-radius: 4px;
   cursor: pointer;
   flex-shrink: 0;
-  transition: all 0.2s ease;
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity, filter, backdrop-filter;
+  transition-duration: 0.2s;
+  transition-timing-function: ease;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -988,7 +1023,7 @@ body {
   position: absolute;
   width: 4px;
   height: 7px;
-  border: solid #fff;
+  border: solid var(--text-on-accent);
   border-width: 0 1.5px 1.5px 0;
   transform: rotate(45deg);
   top: 1px;
@@ -998,7 +1033,9 @@ body {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.55);
   flex: 1;
-  transition: all 0.2s ease;
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity, filter, backdrop-filter;
+  transition-duration: 0.2s;
+  transition-timing-function: ease;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1054,7 +1091,9 @@ body {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 10px;
-  transition: all 0.25s ease;
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity, filter, backdrop-filter;
+  transition-duration: 0.25s;
+  transition-timing-function: ease;
   padding: 2px;
 }
 
@@ -1083,13 +1122,15 @@ body {
 .todo-submit-btn {
   background: var(--accent-color);
   border: none;
-  color: #fff;
+  color: var(--text-on-accent);
   padding: 6px 14px;
   border-radius: 8px;
   cursor: pointer;
   font-size: 12px;
   font-family: var(--font);
-  transition: all 0.2s ease;
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity, filter, backdrop-filter;
+  transition-duration: 0.2s;
+  transition-timing-function: ease;
   white-space: nowrap;
   flex-shrink: 0;
   margin-right: 2px;
@@ -1109,7 +1150,9 @@ body {
   min-height: 18px;
   line-height: 18px;
   padding: 2px 4px 0;
-  transition: all 0.2s ease;
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity, filter, backdrop-filter;
+  transition-duration: 0.2s;
+  transition-timing-function: ease;
 }
 
 .feedback-error {
@@ -1165,7 +1208,9 @@ body {
   cursor: pointer;
   font-size: 12px;
   font-family: var(--font);
-  transition: all 0.25s var(--ease-out);
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity, filter, backdrop-filter;
+  transition-duration: 0.25s;
+  transition-timing-function: var(--ease-out);
   letter-spacing: 0.3px;
 }
 
@@ -1305,7 +1350,9 @@ body {
   padding: 0;
   font-family: var(--font);
   opacity: 0.85;
-  transition: all 0.3s var(--ease-out);
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity, filter, backdrop-filter;
+  transition-duration: 0.3s;
+  transition-timing-function: var(--ease-out);
 }
 
 .bookmark-tile-add:hover,
@@ -1373,7 +1420,7 @@ body {
 .toast-action {
   background: rgba(255, 255, 255, 0.10);
   border: none;
-  color: #ffffff;
+  color: var(--text-on-accent);
   font-size: 12px;
   font-family: var(--font);
   padding: 5px 13px;
@@ -1438,7 +1485,9 @@ body {
   padding: 8px 16px;
   border-radius: var(--radius-full);
   cursor: pointer;
-  transition: all 0.2s var(--ease-out);
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity, filter, backdrop-filter;
+  transition-duration: 0.2s;
+  transition-timing-function: var(--ease-out);
 }
 
 .btn-ghost:hover {
@@ -1750,7 +1799,7 @@ body {
 
 .dhc-cell.dhc-today .dhc-day,
 .dhc-cell.dhc-today .dhc-sub {
-  color: #fff;
+  color: var(--text-on-accent);
   font-weight: 600;
 }
 
@@ -1786,7 +1835,7 @@ body {
   margin-left: 8px;
   padding: 2px 10px;
   font-size: 12px;
-  color: #fff;
+  color: var(--text-on-accent);
   background: rgba(255, 255, 255, 0.10);
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 999px;
@@ -1829,15 +1878,18 @@ body {
 
 /* --- R4：完全缺失的浅色覆盖 --- */
 
-/* 主标题此前是硬编码白字（原 L375），浅色背景下实测仅 1.37:1 */
+/* 主标题此前是硬编码白字（原 L375），浅色背景下实测仅 1.37:1。
+   浅色主题背景是不透明纸面，不再需要任何光晕或文字阴影——深色 text-shadow
+   在浅底上只会让字形边缘发糊，这里一并清掉。 */
 [data-theme="light"] .site-title {
-  color: rgba(25, 28, 45, 0.92);
-  text-shadow: 0 2px 16px rgba(255, 255, 255, 0.55);
+  color: rgba(25, 28, 45, 0.95);
+  text-shadow: none;
 }
 
 /* 副标题颜色走变量，但阴影仍是深色，浅底上会糊成灰边 */
 [data-theme="light"] .site-subtitle {
-  text-shadow: 0 1px 8px rgba(255, 255, 255, 0.50);
+  color: rgba(25, 28, 45, 0.88);
+  text-shadow: none;
 }
 
 /* 天气分隔符硬编码 15% 白，浅底下等于不可见 */
@@ -1848,22 +1900,22 @@ body {
 /* 待办"添加"与底部工具按钮的 hover 态是硬编码深色高光，浅底上越 hover 越糊 */
 [data-theme="light"] .todo-add-btn:hover {
   color: var(--text-primary);
-  background: rgba(25, 28, 45, 0.08);
+  background: rgba(109, 75, 216, 0.08);
 }
 
 [data-theme="light"] .tool-btn:hover {
-  background: rgba(255, 255, 255, 0.72);
-  border-color: rgba(25, 28, 45, 0.14);
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(27, 32, 48, 0.16);
 }
 
-/* 分类链接的基础态是深色半透明底，浅色下应改为浅色玻璃 */
+/* 分类链接的基础态：白 0.58 与卡片 0.80 明度太近，改 0.66 并保留细边，hover 转实白 */
 [data-theme="light"] .category-link {
-  background: rgba(255, 255, 255, 0.58);
-  border-color: rgba(25, 28, 45, 0.08);
+  background: rgba(255, 255, 255, 0.66);
+  border-color: rgba(27, 32, 48, 0.08);
 }
 
 [data-theme="light"] .category-header:hover {
-  background: rgba(25, 28, 45, 0.04);
+  background: rgba(109, 75, 216, 0.06);
 }
 
 /* 搜索框图标靠 opacity 压暗：深色图标 × 0.35 在浅底上只有 1.78:1 */
@@ -1889,14 +1941,22 @@ body {
 [data-theme="light"] .dhc-nav { color: rgba(25, 28, 45, 0.68); }
 [data-theme="light"] .dhc-week,
 [data-theme="light"] .dhc-sub { color: rgba(25, 28, 45, 0.62); }
-[data-theme="light"] .dhc-week.dhc-weekend { color: rgba(25, 28, 45, 0.45); }
+/* 周末靠日期数字的颜色区分即可；表头若继续压到 0.45，11px 文字实测只有 2.84:1 */
+[data-theme="light"] .dhc-week.dhc-weekend { color: rgba(25, 28, 45, 0.62); }
+/* 非本月日期：0.36 在纯白卡上实测 2.23:1。弱化交给字号与日期数字的 alpha，
+   副文本不能再低于正文阈值（0.60 实测约 4.4，取 0.62 与普通副文本对齐） */
 [data-theme="light"] .dhc-cell.dhc-outside .dhc-day,
-[data-theme="light"] .dhc-cell.dhc-outside .dhc-sub { color: rgba(25, 28, 45, 0.36); }
+[data-theme="light"] .dhc-cell.dhc-outside .dhc-sub { color: rgba(25, 28, 45, 0.62); }
+
+/* 逐时时刻走 --accent-color，而该变量由 wallpaper.js 内联写入（CSS 覆盖无效），
+   浅色下实测 rgba(108,92,200,0.75) 只有 3.23:1。这里给兜底实色。 */
+[data-theme="light"] .whc-hour { color: rgba(25, 28, 45, 0.78); }
+[data-theme="light"] .whc-col.whc-now .whc-hour { color: #5b46b8; }
 
 /* --- R6：accent 相关组件的浅色兜底实色 --- */
 [data-theme="light"] .todo-submit-btn {
   background: #6d4bd8;
-  color: #ffffff;
+  color: var(--text-on-accent);
 }
 
 [data-theme="light"] .todo-checkbox:checked {
@@ -1912,7 +1972,7 @@ body {
 }
 
 [data-theme="light"] .dhc-cell.dhc-today .dhc-day,
-[data-theme="light"] .dhc-cell.dhc-today .dhc-sub { color: #ffffff; }
+[data-theme="light"] .dhc-cell.dhc-today .dhc-sub { color: var(--text-on-accent); }
 
 [data-theme="light"] .dhc-cell.dhc-work .dhc-day,
 [data-theme="light"] .dhc-cell.dhc-work .dhc-sub { color: rgba(30, 90, 200, 0.95); }
@@ -1920,6 +1980,39 @@ body {
 [data-theme="light"] .dhc-badge-off { background: #b45309; }
 [data-theme="light"] .dhc-badge-work { background: #2f6fb0; }
 
+/* 危险按钮深色主题用 #e74c3c，在浅色面板上实测 3.05:1；浅色改用深砖红 */
+[data-theme="light"] .btn-danger {
+  color: rgba(170, 35, 25, 0.95);
+  background: rgba(200, 50, 40, 0.08);
+  border-color: rgba(200, 50, 40, 0.18);
+}
+
+[data-theme="light"] .btn-danger:hover {
+  color: rgba(140, 25, 18, 0.98);
+  background: rgba(200, 50, 40, 0.14);
+  border-color: rgba(200, 50, 40, 0.26);
+}
+
 /* 根背景被 .bg-layer 完全遮盖，但浅色主题留深色底会在壁纸解码完成前闪一下黑 */
 [data-theme="light"],
 [data-theme="light"] body { background: #f4f5f9; }
+
+/* ===== 无障碍：减少动态效果 =====
+   UX-16：此前全项目没有任何 prefers-reduced-motion 兜底——系统层面开了"减少动态
+   效果"的用户，照样会看到全部 hover 位移、面板滑入和 toast 淡入，而且这类缺失在
+   功能上毫无异常（没有任何运行时信号），只有受影响的用户自己知道。
+   用通配选择器 + !important 一次覆盖两个样式表（index.html 同时加载 main.css 与
+   settings.css，集中一处避免两份重复规则各自漂移）。
+   时长压到 0.01ms 而不是 none：状态切换的终值仍会立即生效，但过渡事件照常触发，
+   避免依赖 transitionend 的逻辑收不到回调。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+}

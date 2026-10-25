@@ -1,5 +1,5 @@
 const Settings = {
-  currentTab: 'bookmarks',
+  currentTab: 'content',
 
   async init() {
     this.bindEvents();
@@ -16,6 +16,9 @@ const Settings = {
     this.renderBookmarks();
     this.renderCategories();
     this.renderWallpaperSettings();
+    // 面板停留在上次的 tab 时，对应内容同样需要是最新的（组件/隐私为惰性渲染）
+    if (this.currentTab === 'appearance') this.renderComponentsSettings();
+    if (this.currentTab === 'data') this.renderPrivacySettings();
     // 模态对话框需把焦点移入面板（面板为 tabindex="-1"），随后 Tab 由 trapFocus 限制在面板内
     const panel = document.querySelector('.settings-panel');
     if (panel) panel.focus();
@@ -95,27 +98,23 @@ const Settings = {
       el.classList.toggle('active', el.id === `tab${tab.charAt(0).toUpperCase() + tab.slice(1)}`);
     });
 
+    // 4 个 tab 各自承载一组设置：外观 = 壁纸 + 主页组件，内容 = 书签 + 分类，
+    // 数据与隐私 = 备份/导入 + 权限与数据源声明
     if (tab === 'weather') {
       this.renderWeatherSettings();
     }
-    if (tab === 'wallpaper') {
+    if (tab === 'appearance') {
       this.renderWallpaperSettings();
+      this.renderComponentsSettings();
     }
     if (tab === 'data') {
       this.renderDataSettings();
-    }
-    if (tab === 'components') {
-      this.renderComponentsSettings();
-    }
-    if (tab === 'privacy') {
       this.renderPrivacySettings();
     }
     // 切回列表 tab 时重建渲染：内联编辑表单是用 replaceWith 把操作按钮整块顶掉的，
     // 只靠 clearInlineForms 删除表单不会把按钮恢复回来（P1-2）
-    if (tab === 'bookmarks') {
+    if (tab === 'content') {
       this.renderBookmarks();
-    }
-    if (tab === 'categories') {
       this.renderCategories();
     }
     // 清理其他 tab 可能残留的内联表单，防止 ID 冲突
@@ -125,7 +124,7 @@ const Settings = {
   /* PBI-13 隐私可见化（US-15）：权限清单 / 数据声明 / 外部数据源 / 无埋点声明。
      纯静态展示，不请求任何网络，不读取用户数据。 */
   renderPrivacySettings() {
-    const tab = document.getElementById('tabPrivacy');
+    const tab = document.getElementById('privacySection');
     if (!tab) return;
     if (tab.dataset.rendered) return;
     tab.dataset.rendered = '1';
@@ -172,7 +171,7 @@ const Settings = {
 
   /* V3 组件管理：按 COMPONENTS 注册表渲染开关，搜索框常驻不可关闭 */
   async renderComponentsSettings() {
-    const tab = document.getElementById('tabComponents');
+    const tab = document.getElementById('componentsSection');
     if (!tab) return;
     const settings = await Storage.getSettings();
     const visibility = settings.componentVisibility || {};
@@ -660,7 +659,7 @@ const Settings = {
   },
 
   async renderDataSettings() {
-    const tab = document.getElementById('tabData');
+    const tab = document.getElementById('dataSection');
     if (!tab) return;
     tab.innerHTML = `
       <div class="setting-section">
@@ -839,7 +838,7 @@ const Settings = {
   },
 
   async renderWallpaperSettings() {
-    const tab = document.getElementById('tabWallpaper');
+    const tab = document.getElementById('wallpaperSection');
     if (!tab) return;
 
     // 只渲染一次，后续切换标签时不再重复追加
