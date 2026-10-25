@@ -683,7 +683,7 @@ const Weather = {
     const loc = display ? `<span class="weather-sep">|</span><span class="weather-desc">${display}</span>` : '';
     el.innerHTML = `
       <span class="weather-icon">${escapeHtml(String(this.cache.icon == null ? '' : this.cache.icon))}</span>
-      <span class="weather-temp">${escapeHtml(String(this.cache.temp == null ? '' : this.cache.temp))}°C</span>
+      <span class="weather-temp" role="button" tabindex="0" aria-expanded="false">${escapeHtml(String(this.cache.temp == null ? '' : this.cache.temp))}°C</span>
       <span class="weather-sep">|</span>
       <span class="weather-desc">${escapeHtml(this.cache.desc)}</span>
       ${loc}
@@ -698,19 +698,49 @@ const Weather = {
     // #weatherWidget 是静态元素，但 render() 会反复重建它的 innerHTML。
     // 绑定在 el 自身的监听器必须只绑一次：否则每次 render 净增 2 个，且闭包会一直持有
     // 已被移除的旧卡片节点使其无法回收（P2-11：实测 16 次 render 累积到 34 个监听器）
+    // UI 审查 P2：温度文字是浮层的触发器，补 role/tabindex/aria-expanded；
+    // 触屏无 hover、键盘也无入口，因此补 click 与 Enter/Space 切换（与日历浮层一致）。
+    const setExpanded = (open) => {
+      clearTimeout(this._hideTimer);
+      el.classList.toggle('show-weather-card', open);
+      const t = el.querySelector('.weather-temp');
+      if (t) t.setAttribute('aria-expanded', String(open));
+    };
     if (!this._hoverBound) {
       this._hoverBound = true;
       this._hideTimer = null;
-      this._showCard = () => {
-        clearTimeout(this._hideTimer);
-        el.classList.add('show-weather-card');
-      };
+      this._showCard = () => setExpanded(true);
       this._hideCard = () => {
-        this._hideTimer = setTimeout(() => el.classList.remove('show-weather-card'), 200);
+        this._hideTimer = setTimeout(() => setExpanded(false), 200);
       };
-      el.addEventListener('mouseenter', this._showCard);
-      el.addEventListener('mouseleave', this._hideCard);
+      // UI 审查 P2：触屏点击会合成 mouseenter/mouseleave，若绑定悬停逻辑，
+      // 刚点开的卡片会被 200ms 后的 mouseleave 定时器立刻收起。只在真有 hover
+      // 能力的设备上注册悬停开合，其余（触屏/键盘）统一走 show-weather-card。
+      if (window.matchMedia('(hover: hover)').matches) {
+        el.addEventListener('mouseenter', this._showCard);
+        el.addEventListener('mouseleave', this._hideCard);
+      }
+      el.addEventListener('click', (e) => {
+        // 触屏没有 hover：点天气区域即可切换；卡片内部与重试/选城市按钮不切换
+        if (e.target.closest('.weather-hover-card')) return;
+        if (e.target.closest('button, a, select')) return;
+        setExpanded(!el.classList.contains('show-weather-card'));
+      });
+      el.addEventListener('keydown', (e) => {
+        if (!e.target.classList.contains('weather-temp')) return;
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+          e.preventDefault();
+          setExpanded(!el.classList.contains('show-weather-card'));
+        }
+      });
+      // 触屏点击空白处收起（鼠标用户由 mouseleave 负责）
+      document.addEventListener('click', (e) => {
+        if (!el.contains(e.target)) setExpanded(false);
+      });
     }
+    // render 会重置模板里的 aria-expanded，需按当前展示状态回填
+    const t = el.querySelector('.weather-temp');
+    if (t) t.setAttribute('aria-expanded', String(el.classList.contains('show-weather-card')));
     // 悬停卡片每次 render 都是新节点，需重新绑定；旧节点随 innerHTML 重建被回收
     card.addEventListener('mouseenter', this._showCard);
     card.addEventListener('mouseleave', this._hideCard);

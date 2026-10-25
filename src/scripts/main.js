@@ -9,6 +9,10 @@ const SEARCH_ENGINES = [
    但此前所有输入都被拼成搜索链接，输入 github.com 会跳到 google.com/search?q=github.com。
    判定原则是**保守优先**——拿不准就当搜索词，避免把用户的搜索意图误判成网址跳走。 */
 const URL_SCHEME_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
+/* 可执行/可注入的协议：即使带 :// 也不导航。扩展页与主页同源，直跳 javascript:/data:
+   等于把搜索框当成脚本入口；file: 仍放行（用户主动输入本地路径属正常需求，且浏览器自身会拦截
+   扩展页到 file: 的导航）。书签录入侧用白名单，这里用黑名单但口径一致：危险协议一律拒。 */
+const BLOCKED_SCHEME_RE = /^(?:javascript|data|vbscript):/i;
 const LOCAL_HOST_RE = /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(:\d+)?([/?#]|$)/i;
 const IPV4_RE = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(:\d+)?([/?#]|$)/;
 /* 域名：标签(含连字符，不以连字符开头结尾) + 顶级域(纯字母 2-24 位) + 可选端口/路径 */
@@ -42,8 +46,12 @@ function isValidIpv4(match) {
 function resolveInput(raw) {
   const input = String(raw == null ? '' : raw).trim();
   if (!input) return { type: 'search', target: '' };
-  // 已带协议：原样使用（含 chrome-extension://、file:// 等）
-  if (URL_SCHEME_RE.test(input)) return { type: 'url', target: input };
+  // 已带协议：危险协议按搜索处理（不导航），其余原样使用（含 chrome-extension://、file:// 等）
+  if (URL_SCHEME_RE.test(input)) {
+    return BLOCKED_SCHEME_RE.test(input)
+      ? { type: 'search', target: input }
+      : { type: 'url', target: input };
+  }
   // 本机地址与内网 IP：默认 http（https 在本地开发环境通常不可用）
   if (LOCAL_HOST_RE.test(input)) return { type: 'url', target: 'http://' + input };
   const ip = input.match(IPV4_RE);
@@ -63,9 +71,9 @@ function resolveInput(raw) {
    区块定位依赖 index.html 中的 data-component="<id>" 标记（P3-1：此前另用 class/id 选择器，
    与 index.html 里的标记脱节，那 7 处标记成了没人读的死代码；改用标记后 class 改名不再影响组件开关）。 */
 const COMPONENTS = [
-  { id: 'search', title: '搜索框', locked: true, defaultVisible: true },
+  { id: 'search', title: '搜索框', locked: true },
   {
-    id: 'calendar', title: '农历日历', defaultVisible: true,
+    id: 'calendar', title: '农历日历',
     init: async () => {
       // 时钟不依赖节假日网络数据：先启动时钟（startClock 每秒自检 Calendar.loaded，
       // 数据到位后自动挂载农历浮层），否则慢网络下时间区域会长时间空白
@@ -73,11 +81,11 @@ const COMPONENTS = [
       if (typeof Calendar !== 'undefined' && !Calendar.loaded) await Calendar.init();
     }
   },
-  { id: 'weather', title: '天气', defaultVisible: true, init: () => Weather.init(), onShow: () => Weather.startRefresh(), onHide: () => Weather.stopRefresh() },
-  { id: 'bookmarks', title: '快捷书签', defaultVisible: true, init: () => App.renderBookmarks() },
-  { id: 'categories', title: '分类导航', defaultVisible: true, init: () => App.renderCategories() },
-  { id: 'todos', title: '待办', defaultVisible: true, init: () => Todos.init() },
-  { id: 'wallpaper', title: '壁纸按钮', defaultVisible: true }
+  { id: 'weather', title: '天气', init: () => Weather.init(), onShow: () => Weather.startRefresh(), onHide: () => Weather.stopRefresh() },
+  { id: 'bookmarks', title: '快捷书签', init: () => App.renderBookmarks() },
+  { id: 'categories', title: '分类导航', init: () => App.renderCategories() },
+  { id: 'todos', title: '待办', init: () => Todos.init() },
+  { id: 'wallpaper', title: '壁纸按钮' }
 ];
 
 const App = {
@@ -250,7 +258,8 @@ const App = {
       const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target.isContentEditable === true);
       const overlay = document.getElementById('settingsOverlay');
       const settingsOpen = !!(overlay && overlay.classList.contains('open'));
-      if (e.key === '/' && !isTyping) {
+      // UI 审查 P2：设置面板打开时 "/" 仍会把焦点抢到背后的搜索框（1-9、? 已有守卫）
+      if (e.key === '/' && !isTyping && !settingsOpen) {
         e.preventDefault();
         searchInput.focus();
       } else if (e.key === 'Escape' && document.activeElement === searchInput) {
@@ -331,11 +340,15 @@ const App = {
         && typeof Calendar !== 'undefined' && Calendar.loaded;
 
       if (needMount) {
-        el.innerHTML = `<span class="datetime-text">${dateStr}  ${timeStr}</span>${Calendar.render()}`;
+        // UI 审查 P2：日期文本是浮层的触发器，补 role/tabindex/aria-expanded
+        // 使其可被键盘与读屏器识别（日历卡片内的翻页按钮保持独立可聚焦）
+        el.innerHTML = `<span class="datetime-text" role="button" tabindex="0" aria-expanded="false">${dateStr}  ${timeStr}</span>${Calendar.render()}`;
         hoverCardMounted = true;
         mountedDateKey = dateKey;
         const card = el.querySelector('.datetime-hover-card');
         if (card) Calendar.bindCardEvents(card);
+        const trigger = el.querySelector('.datetime-text');
+        if (trigger) trigger.setAttribute('aria-expanded', String(el.classList.contains('show-card')));
       } else {
         const textEl = el.querySelector('.datetime-text');
         const target = textEl || el;
@@ -345,13 +358,26 @@ const App = {
     update();
     setInterval(update, 1000);
 
-    // 点击切换日历卡片
+    // UI 审查 P2：触屏没有 hover、键盘也无法触发，浮层此前只有鼠标可达。
+    // 点击/Enter/Space 切换，并与 aria-expanded 保持同步（文本节点每次重建，需实时查询）
+    const setCardOpen = (open) => {
+      el.classList.toggle('show-card', open);
+      const trigger = el.querySelector('.datetime-text');
+      if (trigger) trigger.setAttribute('aria-expanded', String(open));
+    };
     el.addEventListener('click', (e) => {
       if (e.target.closest('.datetime-hover-card')) return;
-      el.classList.toggle('show-card');
+      setCardOpen(!el.classList.contains('show-card'));
+    });
+    el.addEventListener('keydown', (e) => {
+      if (!e.target.classList.contains('datetime-text')) return;
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+        e.preventDefault();
+        setCardOpen(!el.classList.contains('show-card'));
+      }
     });
     document.addEventListener('click', (e) => {
-      if (!el.contains(e.target)) el.classList.remove('show-card');
+      if (!el.contains(e.target)) setCardOpen(false);
     });
   },
 
@@ -511,7 +537,10 @@ const App = {
 
     container.innerHTML = categories.map(cat => `
       <div class="category-card" data-id="${escapeAttr(cat.id)}" draggable="true">
-        <div class="category-header" data-action="toggle" data-id="${escapeAttr(cat.id)}">
+        <!-- UI 审查 P2：分类头是 div 上的点击交互，键盘与读屏器都不可达；
+             补 role/tabindex/aria-expanded，Enter/Space 切换（见下方事件绑定） -->
+        <div class="category-header" data-action="toggle" data-id="${escapeAttr(cat.id)}"
+             role="button" tabindex="0" aria-expanded="${cat.collapsed ? 'false' : 'true'}">
           <span class="category-title">${escapeHtml(cat.title)}</span>
           <span class="category-toggle ${cat.collapsed ? 'collapsed' : ''}">▼</span>
         </div>
@@ -524,7 +553,7 @@ const App = {
     `).join('');
 
     container.querySelectorAll('[data-action="toggle"]').forEach(header => {
-      header.addEventListener('click', async () => {
+      const toggle = async () => {
         const id = header.dataset.id;
         const categories = await Storage.getCategories();
         const cat = categories.find(c => c.id === id);
@@ -532,6 +561,17 @@ const App = {
           cat.collapsed = !cat.collapsed;
           await Storage.updateCategory(id, { collapsed: cat.collapsed });
           await this.renderCategories();
+          // 重渲染会替换节点；不恢复的话键盘用户按 Enter 后焦点掉回 body
+          const restored = [...container.querySelectorAll('[data-action="toggle"]')]
+            .find(h => h.dataset.id === id);
+          if (restored) restored.focus();
+        }
+      };
+      header.addEventListener('click', toggle);
+      header.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+          e.preventDefault();
+          toggle();
         }
       });
     });

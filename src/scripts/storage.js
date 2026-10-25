@@ -213,6 +213,9 @@ function validateBackup(data) {
       if (typeof todo.id !== 'string' || !todo.id) errors.push(`todos[${i}] 缺少 id`);
       else if (!idSafe(todo.id)) errors.push(`todos[${i}] id 含不支持的字符（仅字母/数字/下划线/连字符）`);
       if (typeof todo.text !== 'string' || !todo.text.trim()) errors.push(`todos[${i}] 缺少 text`);
+      if (todo.createdAt !== undefined && !Number.isFinite(todo.createdAt)) {
+        errors.push(`todos[${i}].createdAt 不是有效时间戳`);
+      }
       if (typeof todo.id === 'string' && todo.id) {
         if (ids.has(todo.id)) errors.push(`待办 id 重复：${todo.id}`);
         ids.add(todo.id);
@@ -233,6 +236,35 @@ function normalizeCategories(categories) {
       ? { ...cat, items: Array.isArray(cat.items) ? cat.items : [] }
       : cat
   );
+}
+
+/* 导入设置白名单（ADV-13）：只接受 DEFAULT_SETTINGS 里声明过的键，丢弃备份中的未知字段；
+   weatherCache / wallpaperApiCache 是运行时缓存，不随备份跨设备迁移（也是缓存注入的入口）。 */
+function pickSettings(raw) {
+  const out = { ...DEFAULT_SETTINGS };
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  for (const key of Object.keys(DEFAULT_SETTINGS)) {
+    if (key === 'weatherCache' || key === 'wallpaperApiCache') continue;
+    if (!Object.prototype.hasOwnProperty.call(raw, key)) continue;
+    if (key === 'componentVisibility') {
+      out[key] = (raw[key] && typeof raw[key] === 'object' && !Array.isArray(raw[key])) ? raw[key] : {};
+    } else {
+      out[key] = raw[key];
+    }
+  }
+  return out;
+}
+
+/* 导入待办归一化（ADV-15）：补齐缺失/非法的 createdAt，保证 todos.js 的排序比较不出现 NaN。
+   按数组顺序递增补值，不改变用户的原有排列。 */
+function normalizeTodos(todos) {
+  if (!Array.isArray(todos)) return [];
+  const base = Date.now();
+  return todos.map((todo, i) => (
+    todo && typeof todo === 'object' && !Array.isArray(todo)
+      ? { ...todo, createdAt: Number.isFinite(todo.createdAt) ? todo.createdAt : base + i }
+      : todo
+  ));
 }
 
 /* ---- 共享工具函数 ---- */
@@ -343,10 +375,21 @@ async function storageSet(data) {
 }
 /* -------------------------------------------------------- */
 
+/* 上一次成功读到的待办（ADV-09）：读失败时用它兜底，避免把"读失败"显示成"空列表" */
+let _lastGoodTodos = null;
+
 const Storage = {
   async init() {
     const result = await storageGet(['settings']);
     if (!result.settings || !result.settings.version) {
+      // 首次安装 vs 设置项单独损坏：若已有用户数据，先留一份导入前备份再写入预设，
+      // 避免"设置丢了一个键，书签/分类/待办被预设整体覆盖"且不可逆（ADV-08）
+      const existing = await storageGet(['bookmarks', 'categories', 'todos']);
+      const hasData = ['bookmarks', 'categories', 'todos']
+        .some(k => Array.isArray(existing[k]) && existing[k].length > 0);
+      if (hasData) {
+        await storageSet({ 'lastImportBackup-1': { ...existing, backedUpAt: Date.now() } });
+      }
       await storageSet({
         bookmarks: PRESET_BOOKMARKS,
         categories: PRESET_CATEGORIES,
@@ -530,10 +573,12 @@ const Storage = {
   async getTodos() {
     try {
       const result = await storageGet(['todos']);
-      return result.todos || [];
+      _lastGoodTodos = Array.isArray(result.todos) ? result.todos : [];
+      return _lastGoodTodos;
     } catch (e) {
+      // 读失败不要立刻显空态：优先回上一次成功读到的列表，避免界面误导成"待办全丢了"（ADV-09）
       console.error('读取待办失败:', e);
-      return [];
+      return _lastGoodTodos || [];
     }
   },
 
@@ -659,8 +704,8 @@ const Storage = {
     const next = {
       bookmarks: Array.isArray(data.bookmarks) ? data.bookmarks : (current.bookmarks || []),
       categories: Array.isArray(data.categories) ? normalizeCategories(data.categories) : (current.categories || []),
-      todos: Array.isArray(data.todos) ? data.todos : (current.todos || []),
-      settings: data.settings ? { ...DEFAULT_SETTINGS, ...data.settings } : (current.settings || DEFAULT_SETTINGS)
+      todos: Array.isArray(data.todos) ? normalizeTodos(data.todos) : (current.todos || []),
+      settings: data.settings ? pickSettings(data.settings) : (current.settings || DEFAULT_SETTINGS)
     };
 
     // 导入前自动备份当前数据：轮转保留最近 3 份（-1 最新），便于回滚与留痕；
@@ -675,8 +720,13 @@ const Storage = {
     try {
       await storageSet(next);
     } catch (err) {
-      // 写入失败：回滚到导入前数据
-      await storageSet(current).catch(() => {});
+      // 写入失败：回滚到导入前数据。只回写实际存在的键——缺失键在 localStorage 分支
+      // 会被 JSON.stringify(undefined) 写成字符串 "undefined"（ADV-17）
+      const rollback = {};
+      for (const [key, value] of Object.entries(current)) {
+        if (value !== undefined) rollback[key] = value;
+      }
+      await storageSet(rollback).catch(() => {});
       throw new Error('写入失败，已恢复原有数据：' + err.message);
     }
     return next;
@@ -751,6 +801,8 @@ if (typeof module !== 'undefined' && module.exports) {
     ensureSortOrder,
     validateBackup,
     normalizeCategories,
+    normalizeTodos,
+    pickSettings,
     escapeHtml,
     escapeAttr,
     isCommitEnter,

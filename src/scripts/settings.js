@@ -69,7 +69,12 @@ const Settings = {
     document.getElementById('addCategoryBtn').addEventListener('click', () => this.showAddCategoryForm());
 
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') this.close();
+      if (e.key === 'Escape' && document.getElementById('settingsOverlay').classList.contains('open')) {
+        // 输入框/文本域里按 Esc 是"取消本次输入"的惯用手势，不应连带关掉整个面板（ADV-16）
+        const t = e.target;
+        const inField = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+        if (!inField) this.close();
+      }
       // P2-8：面板打开时限制 Tab 焦点不逃逸到背后的主页
       if (e.key === 'Tab' && document.getElementById('settingsOverlay').classList.contains('open')) {
         this.trapFocus(e);
@@ -124,13 +129,20 @@ const Settings = {
     if (!tab) return;
     if (tab.dataset.rendered) return;
     tab.dataset.rendered = '1';
+    // 域名数量取自 manifest，避免权限调整后文案与实际授权漂移（ADV-07：曾写死 4，实际 6）
+    let hostCount = 6; // 仅非扩展模式（预览/文件）使用；扩展模式一律以 manifest 为准
+    try {
+      hostCount = (chrome.runtime.getManifest().host_permissions || []).length;
+    } catch (e) {
+      // 预览/文件模式没有 chrome.runtime，退化为不显示具体数量
+    }
     tab.innerHTML = `
       <div class="setting-section">
         <div class="setting-section-title">权限清单</div>
         <p class="setting-section-desc">本扩展申请的浏览器权限极少，且全部用于本地功能：</p>
         <ul class="privacy-list">
           <li><b>storage</b> — 在浏览器本地保存书签 / 分类 / 待办 / 设置，数据不出本机。</li>
-          <li><b>host_permissions（4 个域名）</b> — 仅用于主动访问下列外部数据源，不包含任何埋点或追踪服务。</li>
+          <li><b>host_permissions（${hostCount} 个域名）</b> — 仅用于主动访问下列外部数据源，不包含任何埋点或追踪服务。</li>
           <li><b>bookmarks（可选，默认不申请）</b> — 仅在你点击"从浏览器导入书签"时弹出授权；只读取、不修改、不上传，拒绝不影响任何其他功能。安装时不会请求该权限。</li>
         </ul>
       </div>
@@ -595,7 +607,7 @@ const Settings = {
     const savedCityQuery = found ? found.city.query : '';
 
     provSelect.innerHTML = WEATHER_PROVINCES.map(p => `
-      <option value="${p.name}" ${p.name === savedProvince ? 'selected' : ''}>${p.name}</option>
+      <option value="${escapeAttr(p.name)}" ${p.name === savedProvince ? 'selected' : ''}>${escapeHtml(p.name)}</option>
     `).join('');
 
     this.updateCityDropdown(savedProvince, savedCityQuery);
@@ -816,7 +828,13 @@ const Settings = {
       const wp = typeof Wallpaper !== 'undefined' ? Wallpaper.getWallpapers().find(w => w.name === wallpaperName) : null;
       refreshBtn.style.display = wp && wp.type === 'api' ? '' : 'none';
     }
-    if (typeof Weather !== 'undefined') Weather.setCity(s.weatherCity || '');
+    // 天气组件被隐藏时用户已表达"不联网"，导入备份不应重新发起天气请求（ADV-12）
+    const weatherComp = (typeof COMPONENTS !== 'undefined')
+      ? COMPONENTS.find(c => c.id === 'weather')
+      : null;
+    if (typeof Weather !== 'undefined' && (!weatherComp || App.isComponentVisible(weatherComp, s))) {
+      Weather.setCity(s.weatherCity || '');
+    }
     if (typeof Wallpaper !== 'undefined') Wallpaper.init();
   },
 
@@ -918,7 +936,7 @@ const Settings = {
     if (!prov) return;
 
     citySelect.innerHTML = prov.cities.map(c => `
-      <option value="${c.query}" ${c.query === selectedQuery ? 'selected' : ''}>${c.name}</option>
+      <option value="${escapeAttr(c.query)}" ${c.query === selectedQuery ? 'selected' : ''}>${escapeHtml(c.name)}</option>
     `).join('');
   },
 

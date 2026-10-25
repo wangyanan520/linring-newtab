@@ -813,7 +813,7 @@ shim 模式 E2E。有头扩展模式不进 CI。
 ## 14. 常见开发任务指引
 
 - **新增一个主页组件**：在 index.html 加带 `data-component="<id>"` 的区块 →
-  在 main.js `COMPONENTS` 注册（可选 `init/onShow/onHide/defaultVisible`）→
+  在 main.js `COMPONENTS` 注册（可选 `init/onShow/onHide`）→
   设置“组件”tab 会自动出现开关。默认可见，隐藏时必须确保停止其定时器/网络请求。
 - **新增第三方网络域名**：同步四处——`network-audit.js` 注册表、manifest 的
   `host_permissions` 与 CSP `connect-src`（图片还要 `img-src`）、设置“隐私”页文案、

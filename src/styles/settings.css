@@ -40,13 +40,14 @@
   color: rgba(25, 28, 45, 0.92);
 }
 
+/* UI 审查：浅色主题同步提高（关闭图标 0.45 → 0.58） */
 [data-theme="light"] .settings-close {
-  color: rgba(25, 28, 45, 0.45);
+  color: rgba(25, 28, 45, 0.58);
 }
 
 [data-theme="light"] .settings-close:hover {
   background: rgba(25, 28, 45, 0.06);
-  color: rgba(25, 28, 45, 0.75);
+  color: rgba(25, 28, 45, 0.85);
 }
 
 [data-theme="light"] .settings-tabs {
@@ -54,11 +55,11 @@
 }
 
 [data-theme="light"] .tab-btn {
-  color: rgba(25, 28, 45, 0.45);
+  color: rgba(25, 28, 45, 0.62);
 }
 
 [data-theme="light"] .tab-btn:hover {
-  color: rgba(25, 28, 45, 0.70);
+  color: rgba(25, 28, 45, 0.82);
 }
 
 [data-theme="light"] .tab-btn.active {
@@ -81,7 +82,7 @@
 
 [data-theme="light"] .btn-edit {
   background: rgba(25, 28, 45, 0.04);
-  color: rgba(25, 28, 45, 0.55);
+  color: rgba(25, 28, 45, 0.65);
   border-color: rgba(25, 28, 45, 0.08);
 }
 
@@ -104,7 +105,7 @@
 }
 
 [data-theme="light"] .setting-item-url {
-  color: rgba(25, 28, 45, 0.40);
+  color: rgba(25, 28, 45, 0.62);
 }
 
 [data-theme="light"] .sub-item {
@@ -193,14 +194,15 @@
   color: #e8e8f0;
 }
 
+/* UI 审查：图标色 0.25 在面板底色上实测 2.25:1，低于非文本控件 3:1；0.45 约 3.6:1 */
 .settings-close {
   background: none; border: none;
-  color: rgba(255, 255, 255, 0.25); cursor: pointer;
+  color: rgba(255, 255, 255, 0.45); cursor: pointer;
   padding: 6px; border-radius: 8px;
   display: flex; align-items: center;
 }
 
-.settings-close:hover { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.6); }
+.settings-close:hover { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.8); }
 
 .settings-tabs {
   display: flex; gap: 0;
@@ -208,9 +210,10 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 
+/* UI 审查：未选中标签 0.30 → 0.50（13px 正文需 4.5:1，实测由 2.70 提升到约 4.9） */
 .tab-btn {
   background: none; border: none;
-  color: rgba(255, 255, 255, 0.30); padding: 13px 4px;
+  color: rgba(255, 255, 255, 0.50); padding: 13px 4px;
   cursor: pointer; font-size: 13px;
   font-family: var(--font, -apple-system, "PingFang SC", sans-serif);
   border-bottom: 2px solid transparent;
@@ -224,7 +227,7 @@
   white-space: nowrap;
 }
 
-.tab-btn:hover { color: rgba(255, 255, 255, 0.55); }
+.tab-btn:hover { color: rgba(255, 255, 255, 0.72); }
 
 .tab-btn.active {
   color: #e0e0f0;
@@ -264,9 +267,10 @@
 
 .btn-danger:hover { background: rgba(231,76,60,0.18); border-color: rgba(231,76,60,0.12); color: #ff6b5a; }
 
+/* UI 审查：次要按钮 0.40 → 0.62（12px 正文需 4.5:1，实测 3.69 → 约 5.3） */
 .btn-edit {
   background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.40);
+  color: rgba(255, 255, 255, 0.62);
   border: 1px solid rgba(255, 255, 255, 0.04);
   padding: 5px 14px; border-radius: 8px;
   cursor: pointer; font-size: 12px;
@@ -274,7 +278,7 @@
   transition: all 0.2s ease;
 }
 
-.btn-edit:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.06); color: rgba(255,255,255,0.65); }
+.btn-edit:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.06); color: rgba(255,255,255,0.85); }
 
 .item-list { display: flex; flex-direction: column; gap: 4px; }
 
@@ -294,8 +298,9 @@
 
 .setting-item-title { font-size: 13px; font-weight: 450; color: #d8d8e8; }
 
+/* UI 审查：URL 是核对条目的关键信息，0.25 实测 2.27:1；0.50 约 4.8:1 */
 .setting-item-url {
-  font-size: 11px; color: rgba(255, 255, 255, 0.25);
+  font-size: 11px; color: rgba(255, 255, 255, 0.50);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   max-width: 260px; margin-top: 1px;
 }
@@ -438,4 +443,24 @@
 }
 [data-theme="light"] .privacy-list b {
   color: rgba(25, 28, 45, 0.92);
+}
+
+/* UI 审查 P2：320px 视口下面板宽 288、内容区仅 232px，7 个 white-space:nowrap 的
+   tab 横向溢出（实测最右 tab 被裁掉）；同时 .setting-item 的固定宽度 actions
+   把信息列压到 5px。窄屏改为 tab 可换行、条目信息与操作分行。 */
+@media (max-width: 420px) {
+  .settings-header { padding: 16px 16px 12px; }
+  /* flex:1 的等分在窄屏会把 nowrap 文字撑过容器，改为按内容宽排列并允许换行 */
+  .settings-tabs { flex-wrap: wrap; padding: 0 16px; }
+  .tab-btn { flex: 0 0 auto; padding: 10px 8px; }
+
+  .settings-body { padding: 16px; }
+
+  .setting-item { flex-wrap: wrap; row-gap: 8px; }
+  .setting-item-info { flex: 1 1 100%; }
+  .setting-item-url { max-width: 100%; }
+  .setting-item-actions { margin-left: auto; }
+
+  .sub-item { flex-wrap: wrap; row-gap: 6px; }
+  .sub-item .setting-item-url { max-width: 100%; }
 }

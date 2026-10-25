@@ -482,3 +482,91 @@ test('工具函数：generateId 格式 / escapeAttr / escapeHtml 冒烟', async 
     delete global.document;
   } finally { cleanupGlobals(); }
 });
+
+/* ==================== 第四轮审查（ADV-08/09/13/15/17）回归 ==================== */
+
+test('ADV-08 init：设置缺失但已有数据时先备份，再写入预设', async () => {
+  try {
+    const { Storage, chromeMock } = withChrome({
+      bookmarks: [{ id: 'keep', title: '用户书签', url: 'https://keep.com', sortOrder: 1 }]
+    });
+    await Storage.init();
+    const backup = chromeMock._store['lastImportBackup-1'];
+    assert.ok(backup, '已有用户数据时必须留一份导入前备份');
+    assert.equal(backup.bookmarks[0].id, 'keep', '备份里是用户原数据');
+    assert.equal((await Storage.getBookmarks()).length, 8, '预设仍照常写入（首次安装语义不变）');
+  } finally { cleanupGlobals(); }
+});
+
+test('ADV-09 getTodos：读失败返回上次成功结果，不显示成空列表', async () => {
+  try {
+    const { Storage, chromeMock } = withChrome({ todos: [{ id: 't1', text: 'A', createdAt: 1 }] });
+    assert.equal((await Storage.getTodos()).length, 1, '先成功读一次建立基准');
+    chromeMock._failGet(true);
+    const after = await Storage.getTodos();
+    assert.equal(after.length, 1, '读失败不能把界面误导成"待办全丢了"');
+  } finally { cleanupGlobals(); }
+});
+
+test('ADV-13 pickSettings：只接受已知键，丢弃未知字段与运行时缓存', () => {
+  const { pickSettings, DEFAULT_SETTINGS } = freshRequire();
+  const out = pickSettings({
+    theme: 'light',
+    weatherCity: 'shenzhen',
+    evilKey: '<script>alert(1)</script>',
+    weatherCache: { hourly: [{ icon: '<img src=x>' }] },
+    wallpaperApiCache: { url: 'https://evil' },
+    componentVisibility: { weather: false }
+  });
+  assert.equal(out.theme, 'light', '已知键保留');
+  assert.equal(out.weatherCity, 'shenzhen', '已知键保留');
+  assert.ok(!('evilKey' in out), '未知键被丢弃');
+  assert.equal(out.weatherCache, DEFAULT_SETTINGS.weatherCache, '天气缓存不随备份导入');
+  assert.equal(out.wallpaperApiCache, DEFAULT_SETTINGS.wallpaperApiCache, '壁纸缓存不随备份导入');
+  assert.deepEqual(out.componentVisibility, { weather: false }, '合法可见性配置保留');
+  assert.deepEqual(pickSettings({ componentVisibility: ['x'] }).componentVisibility, {}, '非法可见性归一为空对象');
+});
+
+test('ADV-15 normalizeTodos：缺失/非法 createdAt 补值，非法值被校验拦下', () => {
+  const { normalizeTodos, validateBackup } = freshRequire();
+  const out = normalizeTodos([
+    { id: 'a', text: 'A' },
+    { id: 'b', text: 'B', createdAt: 'not-a-number' },
+    { id: 'c', text: 'C', createdAt: 100 }
+  ]);
+  assert.ok(Number.isFinite(out[0].createdAt), '缺失值被补齐');
+  assert.ok(Number.isFinite(out[1].createdAt), '非数值被补齐');
+  assert.equal(out[2].createdAt, 100, '合法时间戳原样保留');
+  assert.ok(out[0].createdAt < out[1].createdAt, '补值按数组顺序递增，不改变排列');
+  assert.ok(validateBackup({ todos: [{ id: 't1', text: 'A', createdAt: 'abc' }] }).length > 0,
+    '非法 createdAt 被校验拒绝');
+  assert.equal(validateBackup({ todos: [{ id: 't1', text: 'A' }] }).length, 0,
+    '缺失 createdAt 允许（兼容旧备份，由归一化补值）');
+});
+
+test('ADV-17 导入写入失败回滚：缺失键不会变成字符串 "undefined"', async () => {
+  try {
+    const { Storage, lsMock } = withLS();
+    // 空环境：current 的四个键在 localStorage 分支都会读成 undefined。
+    // 只让 bookmarks 的第一次写入失败（导入本身），回滚必须能顺利写完——
+    // 若回滚不过滤 undefined，就会把 "undefined" 字符串落到存储里。
+    const origSetItem = lsMock.setItem;
+    let failedOnce = false;
+    lsMock.setItem = function (k, v) {
+      if (!failedOnce && k === 'bookmarks') {
+        failedOnce = true;
+        throw new Error('QuotaExceededError (mock, once)');
+      }
+      return origSetItem.call(this, k, v);
+    };
+    const payload = JSON.stringify({
+      schemaVersion: 1,
+      bookmarks: [{ id: 'b1', title: 'A', url: 'https://a.com' }]
+    });
+    await assert.rejects(() => Storage.importData(payload), /已恢复原有数据/);
+    for (const [key, value] of lsMock._store) {
+      assert.notEqual(value, 'undefined', `键 ${key} 被写成了字符串 "undefined" 脏值`);
+    }
+  } finally { cleanupGlobals(); }
+});
+

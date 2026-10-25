@@ -24,6 +24,24 @@ test('resolveInput：带协议的输入原样作为网址', () => {
   }
 });
 
+test('resolveInput：可执行协议不导航，按搜索词处理（ADV-10）', () => {
+  const cases = [
+    'javascript://alert(1)',
+    'JavaScript://alert(1)',
+    'data://text/html,<script>alert(1)</script>',
+    'vbscript://msgbox(1)'
+  ];
+  for (const input of cases) {
+    const r = resolveInput(input);
+    assert.strictEqual(r.type, 'search', `${input} 不得直跳`);
+    assert.strictEqual(r.target, input, '保留原始输入供搜索');
+  }
+  // 普通协议仍直跳：file:// 是用户主动输入本地路径，chrome:// 是合法浏览器地址
+  for (const input of ['file:///Users/me/a.txt', 'chrome://settings', 'about://blank']) {
+    assert.strictEqual(resolveInput(input).type, 'url', `${input} 应直跳`);
+  }
+});
+
 test('resolveInput：常见域名补 https 并直跳', () => {
   const cases = [
     ['github.com', 'https://github.com'],

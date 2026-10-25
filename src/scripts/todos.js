@@ -10,7 +10,9 @@ const Todos = {
     const container = document.getElementById('todoContent');
     if (!container) return;
     const todos = await Storage.getTodos();
-    todos.sort((a, b) => a.createdAt - b.createdAt);
+    // 旧数据的 createdAt 可能缺失或非数值：兜底为 0，避免比较结果成 NaN 导致顺序随机（ADV-15）
+    const ts = t => (Number.isFinite(t.createdAt) ? t.createdAt : 0);
+    todos.sort((a, b) => ts(a) - ts(b));
 
     const formHtml = this.showForm ? `
       <div class="todo-input-form">
@@ -26,9 +28,13 @@ const Todos = {
       ? '<div class="todo-empty">还没有待办事项</div>'
       : todos.map(t => `
         <div class="todo-item" data-id="${escapeAttr(t.id)}">
-          <input type="checkbox" class="todo-checkbox" ${t.done ? 'checked' : ''}>
+          <!-- UI 审查：原勾选框无标签、删除按钮无名称，读屏只能读到"复选框""乘号"；
+               用 aria-label 补齐可访问名称（过长文本截断，避免整段朗读） -->
+          <input type="checkbox" class="todo-checkbox" ${t.done ? 'checked' : ''}
+                 aria-label="标记「${escapeAttr(t.text.slice(0, 20))}」为${t.done ? '未完成' : '已完成'}">
           <span class="todo-text ${t.done ? 'done' : ''}">${escapeHtml(t.text)}</span>
-          <button class="todo-delete-btn">×</button>
+          <button class="todo-delete-btn" title="删除"
+                  aria-label="删除待办「${escapeAttr(t.text.slice(0, 20))}」">×</button>
         </div>
       `).join('');
 

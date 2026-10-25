@@ -87,9 +87,13 @@
   box-shadow: var(--shadow-md), 0 0 0 1px rgba(25, 28, 45, 0.04);
 }
 
+/* UI 审查 P2：浅底上亮紫焦点环只有约 2:1，改用实色深紫（约 5:1） */
 [data-theme="light"] .search-inner:focus-within {
   background: rgba(255, 255, 255, 0.78);
   border-color: rgba(25, 28, 45, 0.14);
+  box-shadow:
+    var(--shadow-md),
+    0 0 0 2px var(--focus-ring-light, #6d4bd8);
 }
 
 [data-theme="light"] .engine-btn {
@@ -219,20 +223,21 @@
   color: rgba(25, 28, 45, 0.62);
 }
 
-[data-theme="light"] .todo-text.done {
-  color: rgba(25, 28, 45, 0.30);
+/* UI 审查：浅色主题的常态色在文件末尾 R5 区统一维护（后置规则会覆盖此处）；
+   这里只补 R5 未覆盖的悬停底色与键盘焦点态。悬停行时不再改按钮颜色，
+   否则会盖掉按钮自身的红色悬停反馈（行选择器特异性更高）。 */
+[data-theme="light"] .todo-item:hover .todo-delete-btn {
+  background: rgba(25, 28, 45, 0.06);
 }
 
-[data-theme="light"] .todo-checkbox {
-  border-color: rgba(25, 28, 45, 0.30);
+[data-theme="light"] .todo-item:hover .todo-delete-btn:hover {
+  color: rgba(170, 35, 25, 0.95);
+  background: rgba(200, 50, 40, 0.10);
 }
 
-[data-theme="light"] .todo-delete-btn {
-  color: rgba(25, 28, 45, 0.25);
-}
-
-[data-theme="light"] .todo-delete-btn:hover {
-  color: rgba(210, 60, 45, 0.75);
+[data-theme="light"] .todo-delete-btn:focus-visible {
+  color: rgba(170, 35, 25, 0.95);
+  background: rgba(200, 50, 40, 0.10);
 }
 
 [data-theme="light"] .todo-item:hover {
@@ -337,6 +342,19 @@ body {
   display: inline-block;
 }
 
+/* UI 审查 P2：日期文本是可点击的浮层触发器，键盘聚焦时需可见 */
+.datetime-text:focus-visible,
+.weather-temp:focus-visible {
+  outline: 2px solid var(--focus-ring, rgba(175, 155, 255, 0.95));
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+[data-theme="light"] .datetime-text:focus-visible,
+[data-theme="light"] .weather-temp:focus-visible {
+  outline-color: var(--focus-ring-light, #6d4bd8);
+}
+
 .weather-widget {
   position: relative;
   display: flex;
@@ -365,6 +383,8 @@ body {
 .weather-temp {
   font-weight: 450;
   color: var(--text-primary);
+  /* UI 审查 P2：温度文字现在是浮层触发器（触屏/键盘），需要可点击提示 */
+  cursor: pointer;
 }
 
 .weather-sep {
@@ -443,12 +463,15 @@ body {
   box-shadow: var(--shadow-md), 0 0 0 1px rgba(0, 0, 0, 0.06);
 }
 
+/* UI 审查 P2：焦点环原本只有 1px、alpha 0.15 的 accent 阴影，实测背景 0.20→0.28、
+   边框 0.06→0.10，几乎看不出来（#searchInput 自身 outline:none）。
+   改为 2px 实色亮紫环：浅色底对比 3.0:1 以上，深色底约 6:1。 */
 .search-inner:focus-within {
   background: rgba(0, 0, 0, 0.28);
   border-color: rgba(255, 255, 255, 0.10);
   box-shadow:
     var(--shadow-md),
-    0 0 0 1px var(--accent-glow);
+    0 0 0 2px var(--focus-ring, rgba(175, 155, 255, 0.95));
 }
 
 .search-icon {
@@ -641,6 +664,15 @@ body {
   color: rgba(25, 28, 45, 0.70);
 }
 
+/* UI 审查 P2：触屏没有 hover，删除按钮原本永不显形（pointer-events:none 也点不到）。
+   (hover:none) 与 coarse 指针都会命中，按钮常驻显示。 */
+@media (hover: none), (pointer: coarse) {
+  .bookmark-remove {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
 [data-theme="light"] .bookmark-remove:hover,
 [data-theme="light"] .bookmark-remove:focus-visible {
   background: #c0392b;
@@ -758,6 +790,19 @@ body {
 
 .category-header:hover {
   background: rgba(255, 255, 255, 0.02);
+}
+
+/* UI 审查 P2：分类头是 div 上的点击交互，键盘不可达；JS 侧补 role/tabindex 后
+   还需要可见焦点环，否则键盘用户看不出当前位置（outline-offset 为负避免撑破卡片） */
+.category-header:focus-visible {
+  background: rgba(255, 255, 255, 0.10);
+  outline: 2px solid var(--focus-ring, rgba(175, 155, 255, 0.95));
+  outline-offset: -2px;
+}
+
+[data-theme="light"] .category-header:focus-visible {
+  background: rgba(25, 28, 45, 0.06);
+  outline-color: var(--focus-ring-light, #6d4bd8);
 }
 
 .category-title {
@@ -915,12 +960,14 @@ body {
   background: rgba(255, 255, 255, 0.03);
 }
 
+/* UI 审查：边框 alpha 原为 0.2，在待办卡片底色上约 1.6:1，低于非文本控件 3:1；
+   0.4 实测约 3.7:1。尺寸维持 14px，避免改动勾选对勾的定位。 */
 .todo-checkbox {
   appearance: none;
   -webkit-appearance: none;
   width: 14px;
   height: 14px;
-  border: 1.5px solid rgba(255, 255, 255, 0.2);
+  border: 1.5px solid rgba(255, 255, 255, 0.4);
   border-radius: 4px;
   cursor: pointer;
   flex-shrink: 0;
@@ -958,29 +1005,43 @@ body {
   white-space: nowrap;
 }
 
+/* UI 审查：原 alpha 0.2 在卡片底色上实测 1.84:1，已完成条目几乎不可读；
+   0.5 实测 5.28:1。删除线本身承担"已完成"的视觉区分。 */
 .todo-text.done {
   text-decoration: line-through;
-  color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.5);
 }
 
+/* UI 审查：原实现 color alpha 0.1 + opacity 0，只有 .todo-item:hover 才把 opacity 提到 1，
+   而变红又依赖按钮自身 :hover —— 按钮不可见就永远指不到，且触屏 (hover:none) 下
+   pointer-events 仍为 auto，成了"隐形删除热区"。现改为常驻可见：
+   颜色即层级（0.55 实测 6.19:1），尺寸 24×24（WCAG 2.5.8 最小目标），触屏与键盘都可达。 */
 .todo-delete-btn {
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.55);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1;
-  padding: 0 2px;
-  transition: color 0.2s ease;
-  opacity: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 6px;
+  transition: color 0.2s ease, background 0.2s ease;
 }
 
 .todo-item:hover .todo-delete-btn {
-  opacity: 1;
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.06);
 }
 
-.todo-delete-btn:hover {
-  color: rgba(255, 100, 80, 0.7);
+.todo-delete-btn:hover,
+.todo-delete-btn:focus-visible {
+  color: rgba(255, 100, 80, 0.95);
+  background: rgba(255, 100, 80, 0.12);
 }
 
 .todo-input-form {
@@ -1066,9 +1127,10 @@ body {
   75% { transform: translateX(4px); }
 }
 
+/* UI 审查：原 alpha 0.15 在深色卡片上实测 1.54:1，空状态引导文案几乎看不见；0.5 实测 5.28:1 */
 .todo-empty {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.5);
   text-align: center;
   padding: 16px 0;
 }
@@ -1235,12 +1297,14 @@ body {
 /* UX-12：主页书签区末尾的快捷添加磁贴。
    保持低视觉权重（不抢已收藏站点的注意力），hover/聚焦时才提亮。
    刻意不给 draggable 属性——拖拽逻辑按 [draggable="true"] 收集元素，磁贴自然不会参与排序。 */
+/* UI 审查 P2：整块 opacity 0.45 会把虚线边框与"+"一起压到 3.17 / 2.15:1。
+   抬到 0.85 并加深边框自身 alpha（0.28 → 0.42），有效对比约 3.4:1（非文本需 3:1）。 */
 .bookmark-tile-add {
   background: none;
   border: none;
   padding: 0;
   font-family: var(--font);
-  opacity: 0.45;
+  opacity: 0.85;
   transition: all 0.3s var(--ease-out);
 }
 
@@ -1251,7 +1315,7 @@ body {
 }
 
 .bookmark-add-icon {
-  border: 1px dashed rgba(255, 255, 255, 0.28);
+  border: 1px dashed rgba(255, 255, 255, 0.42);
   background: rgba(0, 0, 0, 0.10);
   font-size: 22px;
   font-weight: 300;
@@ -1264,9 +1328,9 @@ body {
 }
 
 [data-theme="light"] .bookmark-add-icon {
-  border-color: rgba(25, 28, 45, 0.22);
+  border-color: rgba(25, 28, 45, 0.52);
   background: rgba(255, 255, 255, 0.42);
-  color: rgba(25, 28, 45, 0.62);
+  color: rgba(25, 28, 45, 0.72);
 }
 
 [data-theme="light"] .bookmark-tile-add:hover .bookmark-add-icon {
@@ -1394,11 +1458,16 @@ body {
 }
 
 /* ===== 天气预报（24h）悬浮卡片 ===== */
+/* UI 审查 P2：固定 540px 在 320/375 视口下越界（实测 left=-237 / -182）。
+   宽度改为视口宽减两侧留白；24 列柱状图自身不压缩（min-width），窄屏时卡片内横向滚动。 */
 .weather-hover-card {
   position: absolute;
   top: calc(100%);
   right: 0;
-  width: 540px;
+  width: min(540px, calc(100vw - 32px));
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
   padding: 18px 22px 16px;
   background: rgba(30, 30, 50, 0.97);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -1413,12 +1482,22 @@ body {
   z-index: 100;
 }
 
-.weather-widget.show-weather-card .weather-hover-card,
-.weather-widget:hover .weather-hover-card {
+.weather-widget.show-weather-card .weather-hover-card {
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
   transition-delay: 0.15s;
+}
+
+/* UI 审查 P2：触屏上 :hover 会"粘住"（点击后一直命中），点空白处也收不起来。
+   悬停开卡只在真有 hover 能力的设备生效，触屏/键盘统一由 .show-weather-card 控制。 */
+@media (hover: hover) {
+  .weather-widget:hover .weather-hover-card {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+    transition-delay: 0.15s;
+  }
 }
 
 .whc-header {
@@ -1434,6 +1513,9 @@ body {
   grid-template-columns: repeat(24, 1fr);
   gap: 3px;
   align-items: end;
+  /* 每列至少 17px（12px 的 "23°" 需要约 24px，留出呼吸）；不足时由卡片承担横向滚动，
+     否则窄屏下温度文字会互相重叠。 */
+  min-width: 420px;
 }
 
 .whc-col {
@@ -1497,11 +1579,12 @@ body {
 }
 
 /* ===== 农历日历悬浮卡片 ===== */
+/* UI 审查 P2：固定 380px 在 320 视口下 right=397（越界 77px），改为视口自适应 */
 .datetime-hover-card {
   position: absolute;
   top: calc(100%);
   left: 0;
-  width: 380px;
+  width: min(380px, calc(100vw - 32px));
   padding: 18px 20px 16px;
   background: rgba(30, 30, 50, 0.97);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -1517,12 +1600,21 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.datetime.show-card .datetime-hover-card,
-.datetime:hover .datetime-hover-card {
+.datetime.show-card .datetime-hover-card {
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
   transition-delay: 0.15s;
+}
+
+/* UI 审查 P2：同天气浮层，触屏的 :hover 粘滞会让浮层无法收起 */
+@media (hover: hover) {
+  .datetime:hover .datetime-hover-card {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+    transition-delay: 0.15s;
+  }
 }
 
 .dhc-header {
@@ -1541,10 +1633,12 @@ body {
   text-align: center;
 }
 
+/* UI 审查 P2：翻页箭头、星期、农历副文本原为 0.30/0.30/0.30，在卡片底
+   rgba(30,30,50,0.97) 上实测 2.70 / 2.26 / 3.32:1，低于 4.5。提到 0.62 后约 6:1。 */
 .dhc-nav {
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.62);
   cursor: pointer;
   padding: 2px 6px;
   border-radius: 4px;
@@ -1572,14 +1666,15 @@ body {
 .dhc-week {
   text-align: center;
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.62);
   padding: 4px 0;
   letter-spacing: 0.3px;
   font-weight: 500;
 }
 
+/* 周末仍有弱化，但需保持在 4.5:1 以上（0.15 实测 1.6:1） */
 .dhc-week.dhc-weekend {
-  color: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.48);
 }
 
 .dhc-grid {
@@ -1614,15 +1709,16 @@ body {
 
 .dhc-sub {
   font-size: 10px;
-  color: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.62);
   line-height: 1.2;
   margin-top: 2px;
   letter-spacing: 0.2px;
 }
 
+/* 非本月日期同样需要可辨认（原 0.12 实测 1.44:1）；0.45 实测 4.36 仍差一点，取 0.50 */
 .dhc-cell.dhc-outside .dhc-day,
 .dhc-cell.dhc-outside .dhc-sub {
-  color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.50);
 }
 
 .dhc-cell.dhc-weekend .dhc-day {
@@ -1634,17 +1730,17 @@ body {
 }
 
 .dhc-cell.dhc-off .dhc-sub {
-  color: var(--accent-color);
-  opacity: 0.7;
+  color: rgba(185, 150, 255, 0.95);
 }
 
 .dhc-cell.dhc-work .dhc-day {
   color: rgba(100, 160, 255, 0.8);
 }
 
+/* UI 审查 P2：节假日副文本原本 color 0.8 × opacity 0.7 = 有效 0.56，
+   在卡片底上实测 2.26:1；去掉二次淡化并提亮到约 5.7:1（浅色主题同样受益） */
 .dhc-cell.dhc-work .dhc-sub {
-  color: rgba(100, 160, 255, 0.8);
-  opacity: 0.7;
+  color: rgba(130, 180, 255, 0.95);
 }
 
 .dhc-cell.dhc-today {
@@ -1778,15 +1874,18 @@ body {
 /* --- R5：已有覆盖但 alpha 偏弱 --- */
 [data-theme="light"] .category-title { color: rgba(25, 28, 45, 0.92); }
 [data-theme="light"] .todo-text { color: rgba(25, 28, 45, 0.78); }
-[data-theme="light"] .todo-text.done { color: rgba(25, 28, 45, 0.48); }
-[data-theme="light"] .todo-checkbox { border-color: rgba(25, 28, 45, 0.42); }
-[data-theme="light"] .todo-delete-btn { color: rgba(25, 28, 45, 0.40); }
+/* UI 审查：已完成条目 0.48 → 0.68（实测 5.4:1）；删除 × 0.40 → 0.68（实测 5.4:1）。
+   0.62/0.55 的首轮修改实测只有 4.48/3.64，仍低于 4.5，故按实测回调到这里。 */
+[data-theme="light"] .todo-text.done { color: rgba(25, 28, 45, 0.68); }
+[data-theme="light"] .todo-checkbox { border-color: rgba(25, 28, 45, 0.55); }
+[data-theme="light"] .todo-delete-btn { color: rgba(25, 28, 45, 0.68); }
 [data-theme="light"] .todo-delete-btn:hover { color: rgba(170, 35, 25, 0.95); }
 [data-theme="light"] .todo-input::placeholder { color: rgba(25, 28, 45, 0.42); }
 [data-theme="light"] .feedback-error { color: rgba(170, 35, 25, 0.95); }
 [data-theme="light"] .feedback-success { color: rgba(20, 120, 75, 0.95); }
 /* 空状态提示原本还叠了 opacity:.6，两层淡化后实测 1.07:1，这里一并去掉 */
-[data-theme="light"] .empty-hint { color: rgba(25, 28, 45, 0.62); opacity: 1; }
+/* UI 审查 P2：浅色空态提示 0.62 实测 4.23:1，提到 0.70（约 5:1） */
+[data-theme="light"] .empty-hint { color: rgba(25, 28, 45, 0.70); opacity: 1; }
 [data-theme="light"] .dhc-nav { color: rgba(25, 28, 45, 0.68); }
 [data-theme="light"] .dhc-week,
 [data-theme="light"] .dhc-sub { color: rgba(25, 28, 45, 0.62); }
