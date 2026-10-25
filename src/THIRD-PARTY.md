@@ -8,8 +8,9 @@
 ## 运行时数据服务（不打包进扩展，运行时按需请求）
 
 这些服务没有代码进入分发包，但运行时会按其条款请求，故一并记录。
-**完整清单以 `scripts/network-audit.js` 的 `NETWORK_ALLOWLIST` 为准**（该文件随包分发），
-用户可见的说明见设置面板「隐私」页。
+**完整清单以 `src/scripts/network-audit.js` 的 `NETWORK_ALLOWLIST` + `FAVICON_FALLBACK_RULE`
+为准**（该文件随包分发）：`NETWORK_ALLOWLIST` 是 8 条域名注册表，书签自身域名的 favicon
+直连不在其中，由 `FAVICON_FALLBACK_RULE` 单独覆盖。用户可见的说明见设置面板「隐私」页。
 
 **条目组织方式**：先给一张总表覆盖全部数据源；只有**条款对分发或商业化构成实际约束**
 的服务才另开小节展开（Open-Meteo 的 CC-BY 署名与非商业限制、ipwho.is 的免费计划限制）。

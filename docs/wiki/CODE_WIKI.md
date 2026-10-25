@@ -2,7 +2,7 @@
 
 > 本文档是对仓库代码的结构化导览：整体架构、模块职责、关键对象与函数、数据模型、
 > 依赖关系、运行与测试方式。面向首次接手本仓库的开发者与 AI 编程代理。
-> 内容基于源码逐文件核对，最后更新对应版本 **1.2.0**。
+> 内容基于源码逐文件核对，最后更新对应版本 **1.2.6**（2026-10-25）。
 > 产品背景与需求文档见 `docs/product/`，评估与审查记录见 `docs/reviews/`。
 
 ---
@@ -44,7 +44,7 @@
 | 平台 | Chrome Extension **Manifest V3**（Edge 等 Chromium 浏览器同样可加载） |
 | 技术栈 | 原生 HTML / CSS / JavaScript，**无前端框架、无运行时构建步骤** |
 | 数据 | 全部保存在本地（`chrome.storage.local`，`localStorage` 回退）；无后端、无账号、无云同步、无埋点 |
-| 当前版本 | 1.2.0（版本号以 `src/manifest.json` 为准） |
+| 当前版本 | 1.2.6（版本号以 `src/manifest.json` 为准） |
 | 分发形态 | 直接加载 `src/` 目录；或用 `npm run pack` 生成 `dist/凌睿科技导航.zip` |
 
 **功能一览**：搜索框（Google/百度/Bing 切换、网址直跳、快捷键）、快捷书签（增删改、
@@ -55,8 +55,11 @@ Open-Meteo 备源、24 小时曲线、城市选择/IP 定位）、壁纸（4 套
 
 **架构风格**：单页面 + 多个按固定顺序加载的普通 `<script>`，模块间通过**全局对象**
 （`Storage` / `App` / `Settings` / `Weather` / `Wallpaper` / `Calendar` / `Todos` /
-`Toast`）协作；每个文件同时支持 Node 环境 `module.exports`（供单元测试 require），
-顶层无浏览器副作用，故同一文件可在浏览器与 Node 双环境运行。
+`Toast`）协作。**模块导出并不统一**，读代码前先确认：`storage.js` / `weather.js` /
+`wallpaper.js` / `calendar.js` / `network-audit.js` 提供 `module.exports` 供单测 require；
+`settings.js`、`todos.js` 只有浏览器全局，**不能 require**。此外 `main.js`、`settings.js`、
+`calendar.js`、`network-audit.js` 顶层有受控的浏览器副作用（安装事件监听、初始化），
+只有在页面里按序加载才安全。
 
 ---
 
@@ -76,7 +79,7 @@ Open-Meteo 备源、24 小时曲线、城市选择/IP 定位）、壁纸（4 套
 │   │   ├── lunar.min.js        # 第三方 lunar-javascript（全局 Solar/Lunar/HolidayUtil）
 │   │   ├── calendar.js         # 公历/农历/节假日日历浮层
 │   │   ├── todos.js            # 待办渲染与交互
-│   │   ├── settings.js         # 设置面板（7 个 tab 的全部逻辑）+ normalizeUrl
+│   │   ├── settings.js         # 设置面板（4 个 tab 的全部逻辑）+ normalizeUrl
 │   │   └── main.js             # App 主控：组件注册表、搜索、书签/分类渲染、启动
 │   ├── styles/
 │   │   ├── main.css            # 主页全部样式（约 1800 行，18 个分区）
@@ -86,7 +89,7 @@ Open-Meteo 备源、24 小时曲线、城市选择/IP 定位）、壁纸（4 套
 │   ├── images/icons/           # 16/48/128 扩展图标
 │   └── THIRD-PARTY.md          # 第三方组件与数据服务条款声明
 ├── tests/
-│   ├── unit/                   # node:test 单元测试（8 个文件，80 项）
+│   ├── unit/                   # node:test 单元测试（9 个文件，91 项）
 │   │   ├── storage.test.js
 │   │   ├── sorting.test.js
 │   │   ├── search-input.test.js
@@ -122,7 +125,7 @@ flowchart TB
     subgraph Page["index.html（唯一页面）"]
         direction TB
         Main["主页区块<br/>top-bar / 搜索 / 书签 / 分类 / 待办 / 底栏"]
-        Modal["设置弹层 #settingsOverlay<br/>7 个 tab"]
+        Modal["设置弹层 #settingsOverlay<br/>4 个 tab"]
         ToastRoot["#toastRoot 提示容器"]
     end
 
@@ -355,9 +358,10 @@ Node 导出：`resolveInput`、`SEARCH_ENGINES`、`COMMON_TLDS`。
 
 ### 5.3 settings.js — 设置面板
 
-全局 `Settings` 对象 + 文件底部的 `normalizeUrl()` 纯函数。设置面板 7 个 tab：
-**快捷书签 / 分类导航 / 壁纸 / 天气 / 数据 / 组件 / 隐私**（骨架在 index.html，
-内容大部分由 JS 渲染）。
+全局 `Settings` 对象 + 文件底部的 `normalizeUrl()` 纯函数。设置面板 **4 个 tab**
+（1.2.5 由 7 个平级 tab 收敛而来）：**内容 / 外观 / 天气 / 数据与隐私**。合并关系是
+「内容」= 原快捷书签 + 分类导航，「外观」= 壁纸 + 组件，「数据与隐私」= 数据 + 隐私。
+骨架在 index.html，内容大部分由 JS 渲染。
 
 主要方法：
 
@@ -472,7 +476,7 @@ Node 导出：`brightnessToThemeHint`、`WALLPAPERS`。
   法定节假日/调休表（1.7.7 内置 2018-2026），作为离线兜底；未公告年份不生成推测数据。
 - `init()`：以兜底表初始化，`loadHolidays()` 后置 `loaded=true`。
 - `loadHolidays()`：先读 localStorage 的 `holidayCacheV1`；24h 内直接使用，过期也保留。
-  否则并发拉取当年与次年数据，主源 `cdn.jsdelivr.net/gh/NateScarlet/holiday-cn`、备源
+  否则**依次**拉取当年与次年数据（`calendar.js:118-119` 是 `for…await` 串行，不是并发），主源 `cdn.jsdelivr.net/gh/NateScarlet/holiday-cn`、备源
   `raw.githubusercontent.com`（各 6s 超时）；双源均失败时优先使用过期缓存，其次内置表。
   因此年度数据跟随运行时数据源自动更新，**不依赖每年升级 lunar**；记录 `holidaySource`
   （network/cache/partial/fallback）供浮层标注“数据可能不完整”。
@@ -551,7 +555,7 @@ getName/isWork` 生成节假日兜底（详见 `src/THIRD-PARTY.md`）。lunar �
 {
   "wallpaperName": "深邃星空",
   "wallpaperApiCache": null,
-  "searchEngine": "Google",
+  "searchEngine": "百度",
   "theme": "dark",          // dark | light | auto（跟随壁纸）
   "weatherCity": "",       // cities.json 中的拼音 query；'' 表示自动定位
   "weatherCache": null,    // Weather 规范化缓存（含 source/version/timestamp）
@@ -590,7 +594,7 @@ getName/isWork` 生成节假日兜底（详见 `src/THIRD-PARTY.md`）。lunar �
 - 主体：标题组、搜索框（引擎按钮+输入框+清除键，`data-component="search"`）、
   快捷书签网格 `#bookmarkContainer`、主网格（分类 `#categoryContainer` + 待办卡）。
 - 底栏：壁纸按钮（`data-component="wallpaper"`）+ 设置按钮。
-- `#toastRoot` 与 `#settingsOverlay`（7 tab 的设置对话框，含完整 ARIA：
+- `#toastRoot` 与 `#settingsOverlay`（4 tab 的设置对话框，含完整 ARIA：
   `role="dialog" aria-modal`、tablist/tab/tabpanel）。
 - `<head>` 内联一小段 CSS 用于初始隐藏 Chrome 注入的自定义按钮（JS 再持续清理）。
 
@@ -702,7 +706,7 @@ Toast 撤销（5s）→ restore 原 id 归位”。
 
 ## 11. 测试体系
 
-### 11.1 单元测试（`npm test`，node:test，80 项）
+### 11.1 单元测试（`npm test`，node:test，91 项）
 
 | 文件 | 覆盖点 |
 |------|--------|
@@ -714,9 +718,12 @@ Toast 撤销（5s）→ restore 原 id 归位”。
 | `calendar.test.js` | 内置兜底由 `HolidayUtil` 生成：2026 春节/国庆/元旦的放假日与调休上班日，未公告年份不产生推测数据；过期缓存优先于内置表（ADV-14） |
 | `bookmark-import.test.js` | 书签树拍平、scope、去重、协议过滤、空文件夹、标题截断/兜底、数量上限、异常输入 |
 | `network-audit.test.js` | 白名单/通配/同源/相对 URL/favicon 例外，以及 **manifest host_permissions 与 CSP ⊆ 注册表** 一致性 |
+| `css-hygiene.test.js` | 静态卫生：reduced-motion 兜底存在且真的压掉动画、无 `transition: all`、`transition` shorthand 每个条目自带时长（防静默 0s）、选择器里不出现裸 `#fff` |
 
-Node 可直接 require 业务脚本的前提：顶层无浏览器副作用（chrome/document 只在
-函数体内引用）。
+`settings.js`、`todos.js` 没有 `module.exports`，只能作为浏览器全局加载；其余业务脚本可
+require，`main.js` 等带受控的顶层副作用。注意 `css-hygiene.test.js` 属于**文本断言**：
+它只能证明"没写被禁的写法"，证明不了"过渡真的生效"——效果类改动仍必须在真实浏览器里
+读 computed 值（本项目在 `transition: a, b, c 0.35s` 上翻过车）。
 
 ### 11.2 E2E（`tests/e2e/nav-e2e.js`，Playwright，四模式 398 项断言）
 

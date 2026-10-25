@@ -212,7 +212,7 @@ return new Promise((resolve, reject) => chrome.storage.local.get(keys, (r) => {
 3. **ADV-04**（照抄已有 `_applyGen` 模式 + 乱序单测，低风险机械修改）。
 4. **ADV-03 + ADV-02 同批修**（缓存恢复校验 + hover 转义，互为表里，共用一个"缓存形状"夹具测试）。
 5. **ADV-05**（需先做产品/权限决策：加 host 权限还是随机源降级 auto；决策后联动改隐私页 ADV-07 与 ux-audit 矩阵）。
-6. P3 随相邻改动顺手清理；ADV-14 纳入年度发布检查单。
+6. P3 随相邻改动顺手清理。（ADV-14 当时被列为候选，后续已在 1.1.4 修复，**不是**年度检查项。）
 
 **验证要求提醒**：每项修复按 AGENTS.md 规则补"回退被测代码即红灯"的断言；天气类改动跑 E2E [26]/[27]/[44]；主题/壁纸改动跑 `node tools/ux-audit.js --contrast` 并扩展在线源矩阵。
 
@@ -231,8 +231,11 @@ return new Promise((resolve, reject) => chrome.storage.local.get(keys, (r) => {
 | ADV-05 随机壁纸明度采样 | ✅ 已修复 | 改用 `<img crossOrigin="anonymous">` + canvas（Canvas 只认服务端 CORS 头，不认扩展 host_permissions），fetch 保留为有权限域的回退通道。实测随机源 307 后 `www.bing.com/th` 与 `cn.bing.com/th` 均返回 ACAO: *；E2E [39] 新增随机亮图断言，回退 wallpaper.js 后红灯。未新增任何 host 权限 |
 | ADV-06 lastError 未处理 | ✅ 已修复 | storageGet/Set 在回调内检查 `chrome.runtime.lastError` 并 reject；单测 mock 改为「回调 + lastError」语义，新增 chrome 分支回滚用例，回退后红灯 |
 
-**验证结果**：单测 80/80、preview E2E 130/130、shim E2E 133/133、E2E 全量四模式 395/395、体验体检 49 项通过 / 0 项不通过。
+**验证结果（2026-10-17 时点）**：单测 80/80、preview E2E 130/130、shim E2E 133/133、E2E 全量四模式 395/395、体验体检 49 项通过 / 0 项不通过。**当前（2026-10-25）已增至单测 91、preview 131、shim 134、四模式 398**，本行保留原值以便对账。
 
 **P3 进展**：ADV-14 已修复——内置兜底改由 lunar 1.7.7 的 `HolidayUtil` 生成，删除与
 国务院公告不一致的手工 2026 表；年度数据由运行时 `holiday-cn` 自动更新，缓存过期也
-保留作兜底，**lunar 升级不再是年度运维要求**。其余 ADV-07~18 未处理。
+保留作兜底，**lunar 升级不再是年度运维要求**。
+
+**P3 后续**（2026-10-25 补注）：ADV-07~13、15~18 共 11 项已在 1.2.3 修复（见 `CHANGELOG.md`
+对应小节），本报告写作时的"未处理"状态已失效。

@@ -2,7 +2,17 @@
 
 > 审查时间：2026-09-01 · 审查对象：全部源码 + docs/product 文档链 + docs/spec + 分发包
 > 方法：意图↔实现逐条比对（intended-vs-implemented）+ 五轴代码审查 + 两轮对抗式再审查（攻击审查报告自身）+ E2E 运行时验证
-> 状态：本报告为独立审查产物；未改动任何源码。E2E 脚本位于 `/tmp/nav-e2e/`（未入库）
+> 状态：本报告为独立审查产物；未改动任何源码。E2E 脚本当时在 `/tmp/nav-e2e/`，现已入库为
+> `tests/e2e/nav-e2e.js`（见 §148 附近"E2E 脚本收敛入库"的路径注记）。
+
+> **⚠ 本报告的结论已被后续审查推翻（2026-10-25 标注）**
+>
+> 本报告第五节写"最终无 P1 阻塞项"，但 `项目评估报告.md` 在同一份代码上发现了本报告
+> **未捕获的 P0**——编辑表单重复 ID 导致静默数据损坏（见该报告 §P0-1）。这是典型的
+> 审查视角盲区：本报告覆盖了运行时行为，没覆盖 DOM id 冲突这类静态不变量。
+>
+> 阅读时请按"2026-09-01 的结论、后来被证伪"来理解，**不要把它当作当前状态**。当前状态见
+> `AGENTS.md` 的"项目概述"与 `review-report-doc-consistency.md`。
 
 ---
 
@@ -148,7 +158,7 @@ A3 无兜底文案（E2E 证实）、A4 壁纸回退到预设非「上一张」+
 ### E2E 脚本收敛入库（PBI-15 起点）
 
 - 新增 `tests/e2e/nav-e2e.js`：自包含三模式（扩展 / http 预览 / file:// 预览），内嵌静态服务，自动探测 Chrome for Testing 与 headless shell 路径（`CFT_PATH`/`EXT_PATH`/`PORT` 环境变量可覆盖），存储断言统一探测 chrome.storage / localStorage。
-- 运行：`node scripts/__tests__/e2e/nav-e2e.js [--extension | --preview]`；前置 `npm i -D playwright` + `npx playwright install chromium`。
+- 运行：`node tests/e2e/nav-e2e.js [--extension | --preview | --shim]`（2026-09-22 目录重组前的旧路径为 `scripts/__tests__/e2e/nav-e2e.js`，已失效）；前置 `npm i -D playwright` + `npx playwright install chromium`。
 - 入库版实测 **64 PASS / 0 FAIL**（P2-4 修复后 A10 全部断言转绿，预览 + file + 扩展三模式全通过）。
 - 注意：扩展模式需 GUI 会话（headful）；无 GUI 环境可用 `--preview` 跑预览模式回归。
 
