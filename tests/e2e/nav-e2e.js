@@ -73,6 +73,19 @@ const check = (n, c, d = '') => (c ? R.pass : R.fail).push(n + (d ? ` | ${d}` : 
 const info = (n, d) => R.info.push(`${n} | ${d}`);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+/* 方向 B：分组默认展开态由 DOM 决定；需要操作折叠组内控件前先展开。
+   折叠组的 summary 是原生可聚焦元素，点击即展开，不做持久化。 */
+const openSettingsGroup = async (page, group) => {
+  const isOpen = await page.evaluate(g => {
+    const el = document.querySelector(`.settings-group[data-group="${g}"]`);
+    return el ? el.open : false;
+  }, group);
+  if (!isOpen) {
+    await page.click(`.settings-group[data-group="${group}"] > summary`);
+    await sleep(300);
+  }
+};
+
 /* 存储访问统一探测：扩展模式 chrome.storage / 预览模式 localStorage */
 const storageGet = (page, key) => page.evaluate(k => new Promise(res => {
   if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
@@ -562,6 +575,7 @@ async function runCore(page, label) {
   // [5.6] 编辑链接后切 tab（P1-2 回归：操作按钮不应永久消失）
   await page.click('[data-tab="content"]');
   await sleep(500);
+  await openSettingsGroup(page, 'categories');
   const actBefore = await page.locator('#categoryList .sub-item').nth(0).locator('.setting-item-actions').count();
   await page.locator('[data-action="edit-item"]').nth(0).click();
   await sleep(300);
@@ -590,6 +604,7 @@ async function runCore(page, label) {
   // [6] 导出 + 隐私文案
   await page.click('[data-tab="data"]');
   await sleep(600);
+  await openSettingsGroup(page, 'privacy');
   const dataText = await page.evaluate(() => document.getElementById('tabData').innerText);
   check('[6] 隐私文案准确（本地备份 + 外部数据源声明）', /不经过任何服务器/.test(dataText) && /外部数据源/.test(dataText) && /无埋点/.test(dataText));
   const dlP = page.waitForEvent('download', { timeout: 8000 });
@@ -669,6 +684,7 @@ async function runCore(page, label) {
   await sleep(400);
   await page.click('[data-tab="data"]');
   await sleep(500);
+  await openSettingsGroup(page, 'privacy');
   const privacyText = await page.evaluate(() => document.getElementById('privacySection').innerText);
   check('[15] 隐私 tab：权限清单', /权限清单/.test(privacyText) && /storage/.test(privacyText));
   check('[15] 隐私 tab：外部数据源', /外部数据源/.test(privacyText) && /favicon\.im/.test(privacyText) && /wttr\.in/.test(privacyText) && /bing\.biturl\.top/.test(privacyText));
@@ -901,7 +917,9 @@ async function runCore(page, label) {
       iconNames: [name(el('searchClear')), name(el('settingsClose')), name(el('settingsBtn')), name(el('searchInput'))],
       overlayRole: overlay ? overlay.getAttribute('role') : null,
       overlayModal: overlay ? overlay.getAttribute('aria-modal') : null,
-      tablist: !!document.querySelector('.settings-tabs[role="tablist"]'),
+      tablist: !!document.querySelector('.settings-nav[role="tablist"]'),
+      navOrientation: document.querySelector('.settings-nav').getAttribute('aria-orientation'),
+      tabStops: [...document.querySelectorAll('.tab-btn')].filter(b => b.tabIndex === 0).length,
       tabs: document.querySelectorAll('.tab-btn[role="tab"]').length,
       panels: document.querySelectorAll('.tab-content[role="tabpanel"]').length
     };
@@ -912,6 +930,8 @@ async function runCore(page, label) {
     `role=${a11y.overlayRole} aria-modal=${a11y.overlayModal}`);
   check('[19] tab 与面板语义关联', a11y.tablist && a11y.tabs === 4 && a11y.panels === 4,
     `tablist=${a11y.tablist} tabs=${a11y.tabs} panels=${a11y.panels}`);
+  check('[19] 竖排 tablist 声明方向且只有当前项在 Tab 序', a11y.navOrientation === 'vertical' && a11y.tabStops === 1,
+    `aria-orientation=${a11y.navOrientation} tabStops=${a11y.tabStops}`);
 
   await page.click('#settingsBtn');
   await sleep(400);
@@ -924,14 +944,45 @@ async function runCore(page, label) {
   check('[19] aria-selected 随 tab 切换同步', selSync.count === 1 && selSync.tab === 'data',
     `选中=${selSync.tab}（应为 data，共 ${selSync.count} 个）`);
 
+  // 方向 B：权限声明默认折叠 —— 断言"内容不渲染"，而不只是 open 属性为 false。
+  // 注意 <details> 关闭态在 Chromium 里用 content-visibility 收起：子元素的
+  // getClientRects() 仍返回缓存的布局盒、offsetParent 也不是 null，不能用它们判"不可见"
+  // （实测关闭态 rects=1 / offsetParent 非 null，会误报失败）。有效信号是 innerText 为空
+  // （渲染树里没有这段文字），且折叠组的实际高度只等于标题高度（内容不占版面）。
+  const groupState = await page.evaluate(() => {
+    const g = document.querySelector('.settings-group[data-group="privacy"]');
+    const s = document.getElementById('privacySection');
+    const summary = g ? g.querySelector('summary') : null;
+    const gr = g ? g.getBoundingClientRect() : null;
+    const sr = summary ? summary.getBoundingClientRect() : null;
+    return {
+      open: g ? g.open : null,
+      text: s ? s.innerText.length : 0,
+      summaryRects: summary ? summary.getClientRects().length : 0,
+      summaryH: sr ? Math.round(sr.height) : 0,
+      groupH: gr ? Math.round(gr.height) : 0,
+      bodyScrollH: document.querySelector('.settings-body').scrollHeight
+    };
+  });
+  check('[19] 权限声明默认折叠：内容不渲染、标题仍可达',
+    groupState.open === false && groupState.text === 0 && groupState.summaryRects > 0
+      && groupState.summaryH > 0 && groupState.groupH <= groupState.summaryH + 1,
+    `open=${groupState.open} innerText=${groupState.text} summaryRects=${groupState.summaryRects} `
+      + `summaryH=${groupState.summaryH} groupH=${groupState.groupH}`);
+
   // 焦点陷阱：必须从面板内「最后一个」可聚焦元素按 Tab 才能验出是否生效。
   // 若从 #settingsBtn 起按 Tab，焦点会顺着 DOM 顺序自然走进面板，无论有无陷阱都"通过"。
   const lastFocusable = await page.evaluate(() => {
     const panel = document.querySelector('.settings-panel');
     if (!panel) return null;
     const list = Array.from(panel.querySelectorAll(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    )).filter(el => !el.disabled && el.offsetParent !== null);
+      'button, [href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])'
+    ))
+      .filter(el => !el.disabled && el.offsetParent !== null)
+      .filter(el => {
+        const closed = el.closest('details:not([open])');
+        return !closed || closed.querySelector(':scope > summary') === el;
+      });
     if (!list.length) return null;
     const last = list[list.length - 1];
     last.focus();
@@ -948,6 +999,49 @@ async function runCore(page, label) {
   });
   check('[19] Tab 到面板末尾后循环回面板内（焦点陷阱）', !!lastFocusable && afterTab.inPanel,
     `末尾元素=${lastFocusable} → Tab 后=${afterTab.at}`);
+  // 末尾元素必须是折叠组的 summary：若 trapFocus 的选择器漏掉 summary，这条会红
+  check('[19] 焦点陷阱的末尾元素包含折叠组标题', lastFocusable === 'settings-group-summary',
+    `末尾=${lastFocusable}`);
+
+  // 方向 B：方向键在竖排 tablist 上切换（自动激活），roving tabindex 跟随
+  // 先把「天气」切为当前项，再从它按 ArrowDown —— 方向键的起点是 currentTab，
+  // 若只在 data 下 focus 天气按钮，实际会从 data 继续循环到 content。
+  await page.click('[data-tab="weather"]');
+  await sleep(300);
+  await page.focus('#tabBtnWeather');
+  await page.keyboard.press('ArrowDown');
+  await sleep(250);
+  const arrowState = await page.evaluate(() => {
+    const active = document.querySelector('.tab-btn[aria-selected="true"]');
+    return {
+      tab: active ? active.dataset.tab : null,
+      focused: document.activeElement ? document.activeElement.id : null,
+      stops: [...document.querySelectorAll('.tab-btn')].filter(b => b.tabIndex === 0).length
+    };
+  });
+  check('[19] 方向键切换 tab 且焦点/roving 跟随',
+    arrowState.tab === 'data' && arrowState.focused === 'tabBtnData' && arrowState.stops === 1,
+    `tab=${arrowState.tab} focus=#${arrowState.focused} tabStops=${arrowState.stops}`);
+
+  // 方向 B：点击分组标题后，同一份内容从"不渲染"变为可见
+  await page.click('.settings-group[data-group="privacy"] > summary');
+  await sleep(300);
+  const privacyExpanded = await page.evaluate(() => {
+    const g = document.querySelector('.settings-group[data-group="privacy"]');
+    const s = document.getElementById('privacySection');
+    return {
+      open: g ? g.open : null,
+      text: s ? s.innerText.length : 0,
+      groupH: g ? Math.round(g.getBoundingClientRect().height) : 0,
+      bodyScrollH: document.querySelector('.settings-body').scrollHeight
+    };
+  });
+  check('[19] 点击分组标题后折叠内容可见',
+    privacyExpanded.open === true && privacyExpanded.text > 0
+      && privacyExpanded.groupH > groupState.groupH
+      && privacyExpanded.bodyScrollH > groupState.bodyScrollH,
+    `open=${privacyExpanded.open} innerText=${privacyExpanded.text} groupH=${groupState.groupH}→${privacyExpanded.groupH} `
+      + `scrollH=${groupState.bodyScrollH}→${privacyExpanded.bodyScrollH}`);
 
   await page.click('#settingsClose');
   await sleep(300);
@@ -1036,6 +1130,7 @@ async function runCore(page, label) {
   // P2-3：隐私清单需披露 favicon 兜底会直连书签自身域名
   await page.click('[data-tab="data"]');
   await sleep(400);
+  await openSettingsGroup(page, 'privacy');
   const privacyP23 = await page.evaluate(() => {
     const el = document.getElementById('privacySection');
     return el ? el.innerText : '';

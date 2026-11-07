@@ -16,16 +16,23 @@
   background: rgba(22, 22, 40, 0.96);
   color: #d0d0e0;
   border-radius: 20px;
-  width: 90%; max-width: 560px;
+  width: 90%; max-width: 700px;
   /* 方向 A｜原 80vh 在高屏上把面板固定成视口的 80%（900 高即 720），内容只有
      一两屏的 tab 也会在下方留一大片空白；数据类长 tab 又只能在小窗口里滚。
      改由内容决定高度，仅在超出视口时收住，body 继续承担内部滚动。 */
   max-height: calc(100vh - 48px);
-  display: flex; flex-direction: column;
+  /* 方向 B｜左栏导航 + 右侧内容：两列网格，header 跨列，body 独立滚动。
+     面板加宽到 700，保证 148px 导航之外的正文仍有约 512px（与旧版同宽）。 */
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   box-shadow: 0 24px 80px rgba(10, 8, 30, 0.65);
   border: 1px solid rgba(255, 255, 255, 0.05);
   animation: panelIn 0.30s var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1));
 }
+
+/* 方向 B：双列网格里 header 横跨导航与内容 */
+.settings-header { grid-column: 1 / -1; }
 
 /* 面板本身由 open() 主动聚焦（模态焦点约定），但 Chrome 会给 tabindex="-1"
    的元素画一圈 1px 系统蓝框，整个面板像被选中一样。焦点已在面板内部，
@@ -68,8 +75,9 @@
   color: rgba(25, 28, 45, 0.85);
 }
 
-[data-theme="light"] .settings-tabs {
-  border-bottom-color: rgba(25, 28, 45, 0.08);
+[data-theme="light"] .settings-nav {
+  border-right-color: rgba(25, 28, 45, 0.08);
+  border-bottom-color: transparent;
 }
 
 [data-theme="light"] .tab-btn {
@@ -82,7 +90,7 @@
 
 [data-theme="light"] .tab-btn.active {
   color: rgba(25, 28, 45, 0.95);
-  border-bottom-color: rgba(25, 28, 45, 0.35);
+  box-shadow: inset 2px 0 0 rgba(25, 28, 45, 0.35);
 }
 
 /* V3 浅色主题：设置面板内容区 */
@@ -226,46 +234,49 @@
 
 .settings-close:hover { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.8); }
 
-.settings-tabs {
-  display: flex; gap: 0;
-  padding: 0 24px;
-  border-bottom: 1px solid var(--panel-border-soft);
+/* 方向 B：由横排 tab 条改为左栏竖排导航（role=tablist + aria-orientation=vertical） */
+.settings-nav {
+  grid-column: 1;
+  grid-row: 2;
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 12px 8px;
+  border-right: 1px solid var(--panel-border-soft);
+  border-bottom: 0;
 }
 
 /* UI 审查：未选中标签 0.30 → 0.50（13px 正文需 4.5:1，实测由 2.70 提升到约 4.9） */
 .tab-btn {
   background: none; border: none;
-  color: rgba(255, 255, 255, 0.50); padding: 13px 4px;
+  color: rgba(255, 255, 255, 0.50); padding: 10px 12px;
   cursor: pointer; font-size: 13px;
   font-family: var(--font, -apple-system, "PingFang SC", sans-serif);
-  border-bottom: 2px solid transparent;
   transition-property: background-color, border-color, color, box-shadow, transform, opacity, filter, backdrop-filter;
   transition-duration: 0.25s;
   transition-timing-function: ease;
-  margin-bottom: -1px; letter-spacing: 0.4px; font-weight: 400;
-  /* UX-05：此前每个 tab 左右各 24px padding，7 个光 padding 就占掉 336px，
-     留给文字的只有 168px（平均 24px/个），而"快捷书签"需要约 54px —— 7 个 tab
-     全部折成两行（"壁纸"显示成"壁/纸"，tab 高 64px 而单行只需约 40px）。
-     改为等分弹性布局：504px / 7 = 每个 72px，文字 54px + padding 8px，余量 10px。 */
-  flex: 1;
+  letter-spacing: 0.4px; font-weight: 400;
+  /* 方向 B：导航项整宽左对齐，单行不折；min-height 40 保证触屏命中区 */
+  width: 100%; text-align: left;
   white-space: nowrap;
+  min-height: 40px;
+  border-radius: 8px;
 }
 
-.tab-btn:hover { color: rgba(255, 255, 255, 0.72); }
+.tab-btn:hover { color: rgba(255, 255, 255, 0.72); background: rgba(255, 255, 255, 0.04); }
 
 .tab-btn.active {
   color: #e0e0f0;
-  border-bottom-color: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 /* 方向 A：面板高度改由内容决定后，body 必须在剩余空间内收缩才能滚动；
    scrollbar-gutter 常驻滚动条槽位，切换长短不同的 tab 时内容不再横向跳动。 */
 .settings-body {
-  flex: 1;
+  grid-column: 2;
+  grid-row: 2;
   min-height: 0;
   overflow-y: auto;
   scrollbar-gutter: stable;
-  padding: 18px 24px 22px;
+  padding: 16px 22px 20px;
 }
 
 .tab-content { display: none; }
@@ -585,8 +596,8 @@
 @media (max-width: 420px) {
   .settings-header { padding: 16px 16px 12px; }
   /* flex:1 的等分在窄屏会把 nowrap 文字撑过容器，改为按内容宽排列并允许换行 */
-  .settings-tabs { flex-wrap: wrap; padding: 0 16px; }
-  .tab-btn { flex: 1 1 auto; padding: 10px 6px; font-size: 12.5px; }
+  .settings-nav { flex-wrap: wrap; padding: 0 16px; }
+  .tab-btn { flex: 1 1 auto; width: auto; text-align: center; padding: 10px 6px; font-size: 12.5px; }
 
   .settings-body { padding: 16px; }
 
@@ -690,25 +701,30 @@
   color: var(--text-primary);
 }
 
-.settings-tabs {
-  border-bottom-color: var(--hairline);
+.settings-nav {
+  border-right-color: var(--hairline);
+  border-bottom-color: transparent;
 }
 
 .tab-btn {
   color: var(--text-tertiary);
+  border-radius: var(--radius-sm);
 }
 
 .tab-btn:hover {
   color: var(--text-secondary);
+  background: var(--hover-tint);
 }
 
 .tab-btn.active {
   color: var(--text-primary);
-  border-bottom-color: var(--brand);
+  background: var(--surface-1);
+  box-shadow: inset 2px 0 0 var(--brand);
 }
 
-[data-theme="light"] .settings-tabs {
-  border-bottom-color: var(--hairline);
+[data-theme="light"] .settings-nav {
+  border-right-color: var(--hairline);
+  border-bottom-color: transparent;
 }
 
 [data-theme="light"] .tab-btn {
@@ -721,7 +737,8 @@
 
 [data-theme="light"] .tab-btn.active {
   color: var(--text-primary);
-  border-bottom-color: var(--brand);
+  background: var(--surface-1);
+  box-shadow: inset 2px 0 0 var(--brand);
 }
 
 .btn-primary {
@@ -976,5 +993,91 @@
 
 .settings-body::-webkit-scrollbar-thumb:hover {
   background: var(--text-tertiary);
+}
+
+/* ==========================================================================
+   方向 B｜设置面板结构（左栏导航 + 分组折叠），2026-11-08
+   - 分组用原生 <details>，关闭时子元素不进入渲染树（原生 Tab 会跳过）；
+     Chromium 仍保留其布局盒与 offsetParent，trapFocus 需额外按 details[open] 排除
+   - 颜色全部走方向 C 的语义 token，不出现裸色值
+   ========================================================================== */
+
+.settings-group { border-top: 1px solid var(--hairline); }
+.settings-group:first-of-type { border-top: 0; }
+
+.settings-group-summary {
+  display: flex; align-items: center; gap: 8px;
+  min-height: 44px; padding: 4px 2px;
+  cursor: pointer; list-style: none;
+  color: var(--text-primary);
+  font-size: 14px; font-weight: 500; letter-spacing: 0.02em;
+  border-radius: var(--radius-sm);
+  transition-property: background-color, color;
+  transition-duration: 0.2s;
+  transition-timing-function: ease;
+}
+
+.settings-group-summary::-webkit-details-marker { display: none; }
+.settings-group-summary::marker { content: ''; }
+.settings-group-summary:hover { background: var(--hover-tint); }
+
+.settings-group-summary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* 自绘雪佛龙：只用 border 画折角，展开时旋转到指上 */
+.settings-group-summary::after {
+  content: ''; margin-left: auto; flex-shrink: 0;
+  width: 7px; height: 7px;
+  border-right: 1.5px solid var(--text-tertiary);
+  border-bottom: 1.5px solid var(--text-tertiary);
+  transform: rotate(45deg);
+  transition-property: transform, border-color;
+  transition-duration: 0.2s;
+  transition-timing-function: ease;
+}
+
+.settings-group[open] > .settings-group-summary::after {
+  transform: rotate(225deg);
+}
+
+.settings-group-meta {
+  color: var(--text-tertiary);
+  font-size: 12px; font-weight: 400;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.settings-group-body { padding: 6px 0 12px; }
+.settings-group-body > .setting-section { margin-bottom: 0; }
+.settings-group-body > .setting-section + .setting-section { margin-top: 18px; }
+
+/* ≤640：双栏降级为顶部横向导航，正文恢复整宽；分组折叠保持同一套默认态 */
+@media (max-width: 640px) {
+  .settings-panel {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+
+  .settings-nav {
+    grid-column: 1; grid-row: 2;
+    flex-direction: row; gap: 0;
+    padding: 0 8px;
+    border-right: 0;
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .settings-nav .tab-btn {
+    flex: 1 1 auto; width: auto; text-align: center;
+    border-radius: 0;
+  }
+
+  .settings-nav .tab-btn.active,
+  [data-theme="light"] .settings-nav .tab-btn.active {
+    background: transparent;
+    box-shadow: inset 0 -2px 0 var(--brand);
+  }
+
+  .settings-body { grid-column: 1; grid-row: 3; }
 }
 

@@ -23,6 +23,56 @@ Chrome Web Store 与 Edge 加载项商店都要求每次提交的版本号**严�
 
 ---
 
+## [1.4.0] — 2026-11-08
+
+### 变更（设置面板信息结构重排；主页 DOM / 样式 / 交互不变）
+
+- **设置面板由横排 tab 条改为左栏导航 + 右侧独立滚动正文**：CSS Grid 两列
+  `148px minmax(0,1fr)`，header 跨两列，正文承担内部滚动。面板 `max-width`
+  560 → 700，保证 148px 导航之外正文仍有约 512px（与旧版同宽）；高度继续由内容
+  决定，仅 `max-height: calc(100vh - 48px)` 收住。
+- **分组折叠**：内容 / 外观 / 数据三个 tab 的区块改为原生 `<details>` +
+  `<summary>`，标题与计数（「N 项」「N 个分类」）留在标题行，操作按钮随分组展开
+  才出现。默认展开态：快捷书签、主题外观、组件管理、城市与定位、数据备份展开；
+  分类导航、底部工具栏、壁纸源、从浏览器导入、权限与数据声明折叠。
+  折叠状态只由 DOM 的 `open` 决定，**不做持久化**，每次打开面板都是同一默认态。
+- **≤640 单列降级**：header → 顶部横向导航（四项均分、下划线指示当前项）→ 正文。
+  导航项命中区 40px，分组标题行 44px。
+- **键盘与语义**：`.settings-tabs` 改名 `.settings-nav`，保留 `role="tablist"`，
+  新增 `aria-orientation="vertical"`；roving tabindex（只有当前项 `tabIndex=0`），
+  Up/Down/Left/Right 与 Home/End 自动激活切换；`trapFocus` 的可聚焦选择器补
+  `summary`，并按 `details:not([open])` 排除折叠组内的不可见控件。
+- **版本号升次版本**：按本文件开头的补充口径，向后兼容的界面重构不属于缺陷修复。
+  数据模型、存储键、主页结构均未变，旧数据无需迁移。
+
+### 验证
+
+- 390 宽：内容 tab 正文滚动高度 1684 → **959px**，数据 tab 2602 → **334px**；
+  天气 tab 由「固定 720 高、内容仅 284」改为内容驱动的 413px 面板，无底部空白。
+- 设置面板新增元素对比度（真实截图采样）：分组标题 13.75:1（深）/ 14.76:1（浅）；
+  分组计数与未选中导航 5.42 / 5.75；雪佛龙（非文本 ≥3）5.42 / 5.75。
+- `prefers-reduced-motion: reduce`：分组标题行、雪佛龙、导航项的 computed
+  `transitionDuration` 由 0.2s / 0.2s / 0.25s 降到 0.01ms，全局兜底生效。
+- 单元测试 91/91（含 css-hygiene）；E2E preview 136/0（原 131，+5）；
+  E2E shim 139/0（原 134，+5）；`tools/ux-audit.js` 49/0。
+
+### E2E 断言迁移（原 → 新）
+
+- `[19]`：`.settings-tabs[role=tablist]` → `.settings-nav[role=tablist]`
+  （tablist / tabs=4 / panels=4 不变）。
+- `[19]`：焦点陷阱末尾元素选择器补 `summary`，新增「末尾 ===
+  `settings-group-summary`」断言。
+- `[5.6]/[5.7]/[6]/[15]/[21]`：操作折叠组内控件前先展开对应分组，原断言不变。
+- 新增 5 条：竖排方向声明与 roving（`aria-orientation=vertical && tabStops=1`）；
+  默认折叠组「内容不渲染、标题仍可达」（`open=false`、`innerText=0`、summary
+  可见、组高 = 标题高 44）；点击标题后可见（组高 44→802、正文 scrollHeight
+  319→1076）；方向键切换（weather --ArrowDown→ data，焦点与 roving 跟随）。
+
+> 折叠态断言不能用 `getClientRects()===0` 或 `offsetParent===null` 判断：
+> Chromium 关闭的 `<details>` 用 content-visibility 收起，子元素仍保留布局盒
+> （实测关闭态 rects=1、offsetParent 非 null）。有效信号是 `innerText` 为空
+> 且折叠组实际高度只等于标题高度。
+
 ## [1.3.0] — 2026-11-07
 
 ### 变更（样式层 + 三处运行时 JS：`wallpaper.js` / `weather.js` / `main.js`；无 DOM 语义与依赖变更）

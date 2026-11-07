@@ -35,6 +35,8 @@ lunar 1.7.7 的 `HolidayUtil` 生成；年度数据由运行时 `holiday-cn` + �
   深色两处对比度、768 断点宽度、设置面板高度、小字号
 - **1.3.0**：品牌视觉语言重写（Graphite & Cobalt）；深色/浅色两套材质与令牌、
   预设壁纸改为石墨底 + 克制单色光、天气柱收敛为单一高度编码、书签兜底字母按域名稳定色相
+- **1.4.0**：设置面板信息结构重排（左栏导航 + 分组折叠、700 宽、≤640 单列降级、
+  roving tabindex、折叠态不持久化）
 
 **未上架应用商店**（`06-MVP.md` 3.2 战略排除项，属既定决策而非未完成）。
 
@@ -56,9 +58,9 @@ lunar 1.7.7 的 `HolidayUtil` 生成；年度数据由运行时 `holiday-cn` + �
 |------|------|
 | `npm test` | 单元测试（node:test，91 项） |
 | `npm run test:coverage` | 覆盖率（storage.js 行覆盖约 94%、分支约 82%，仅统计被单测加载的模块） |
-| `npm run test:e2e` | E2E 全量四模式：preview + file:// + shim + 扩展（合计 398 项断言） |
-| `npm run test:e2e:preview` | http 预览 + file://（同一脚本内两段，headless，131 项断言） |
-| `npm run test:e2e:shim` | 仅 chrome.storage 模拟模式（headless，134 项断言） |
+| `npm run test:e2e` | E2E 全量四模式：preview + file:// + shim + 扩展（preview 136 + shim 139 + 扩展模式） |
+| `npm run test:e2e:preview` | http 预览 + file://（同一脚本内两段，headless，136 项断言） |
+| `npm run test:e2e:shim` | 仅 chrome.storage 模拟模式（headless，139 项断言） |
 | `node tools/ux-audit.js` | **体验体检**：布局 / 溢出 / 对比度 / 交互 / 空状态，不达标时退出码 1 |
 | `npm run pack` | 单测 + 可复现打包到 `dist/`（排除测试文件、固定时间戳） |
 | `npm run pack:zip` | 只打包、不跑单测（排查打包链路时用） |
@@ -135,7 +137,7 @@ lunar 1.7.7 的 `HolidayUtil` 生成；年度数据由运行时 `holiday-cn` + �
 4. 工作区中已有的未提交改动（可能来自其他任务包）一律保留，禁止回退。
 5. **对外分发前必须递增 `src/manifest.json` 的 `version`，并在 `CHANGELOG.md` 补一节**。
    Chrome Web Store 与 Edge 加载项商店都要求版本号严格递增，重复或回退会被拒。
-   版本语义（主/次/修订）与判定标准见 `CHANGELOG.md` 开头。当前版本：**1.3.0**。
+   版本语义（主/次/修订）与判定标准见 `CHANGELOG.md` 开头。当前版本：**1.4.0**。
 
 ## 多 Agent 协作
 

@@ -3,6 +3,7 @@ const Settings = {
 
   async init() {
     this.bindEvents();
+    this.syncTabStop();
     await this.renderBookmarks();
     await this.renderCategories();
     await this.renderWallpaperSettings();
@@ -37,8 +38,16 @@ const Settings = {
     if (!panel) return;
     // 只收可见且可聚焦的元素（未激活 tab 的内容 display:none，offsetParent 为 null）
     const focusables = Array.from(panel.querySelectorAll(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    )).filter(el => !el.disabled && el.offsetParent !== null);
+      'button, [href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])'
+    ))
+      .filter(el => !el.disabled && el.offsetParent !== null)
+      // 折叠组内的控件在 Chromium 里仍保留布局与 offsetParent（details 关闭态用
+      // content-visibility 收起），但不可见、原生 Tab 会跳过。不把它们算进首/末元素，
+      // 否则焦点陷阱的循环锚点会落在看不见的控件上。summary 本身始终可见，保留。
+      .filter(el => {
+        const closed = el.closest('details:not([open])');
+        return !closed || closed.querySelector(':scope > summary') === el;
+      });
     if (focusables.length === 0) return;
     const first = focusables[0];
     const last = focusables[focusables.length - 1];
@@ -68,6 +77,26 @@ const Settings = {
       btn.addEventListener('click', () => this.switchTab(btn.dataset.tab));
     });
 
+    // 方向 B：竖排 tablist 的方向键切换（roving tabindex，只有当前项在 Tab 序里）
+    const nav = document.querySelector('.settings-nav');
+    if (nav) {
+      nav.addEventListener('keydown', (e) => {
+        const keys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'];
+        if (!keys.includes(e.key)) return;
+        e.preventDefault();
+        const tabs = Array.from(nav.querySelectorAll('.tab-btn'));
+        if (!tabs.length) return;
+        const current = tabs.findIndex(t => t.dataset.tab === this.currentTab);
+        let next = current >= 0 ? current : 0;
+        if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = tabs.length - 1;
+        else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') next = (next - 1 + tabs.length) % tabs.length;
+        else next = (next + 1) % tabs.length;
+        tabs[next].focus();
+        this.switchTab(tabs[next].dataset.tab);
+      });
+    }
+
     document.getElementById('addBookmarkBtn').addEventListener('click', () => this.showAddBookmarkForm());
     document.getElementById('addCategoryBtn').addEventListener('click', () => this.showAddCategoryForm());
 
@@ -87,12 +116,21 @@ const Settings = {
     this.bindWeatherEvents();
   },
 
+  /* 方向 B：roving tabindex —— 只让当前选中的导航项进入 Tab 序，
+     其余项用方向键切换（ARIA tabs 约定） */
+  syncTabStop() {
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.tabIndex = btn.dataset.tab === this.currentTab ? 0 : -1;
+    });
+  },
+
   switchTab(tab) {
     this.currentTab = tab;
     document.querySelectorAll('.tab-btn').forEach(btn => {
       const active = btn.dataset.tab === tab;
       btn.classList.toggle('active', active);
       btn.setAttribute('aria-selected', active ? 'true' : 'false'); // P2-8：同步选中态
+      btn.tabIndex = active ? 0 : -1;
     });
     document.querySelectorAll('.tab-content').forEach(el => {
       el.classList.toggle('active', el.id === `tab${tab.charAt(0).toUpperCase() + tab.slice(1)}`);
@@ -218,6 +256,10 @@ const Settings = {
         }
       });
     });
+
+    // 方向 B：组件管理是常用区块，默认展开
+    const section = tab.querySelector('.setting-section');
+    if (section) tab.appendChild(this.wrapSectionAsGroup(section, true, 'components'));
   },
 
   clearInlineForms() {
@@ -228,10 +270,40 @@ const Settings = {
     });
   },
 
+  /* 方向 B：把已有的 .setting-section 包成可折叠分组。
+     原标题移入 summary，说明/控件/列表留在展开体里，避免标题重复出现。 */
+  wrapSectionAsGroup(section, open, group) {
+    const titleEl = section.querySelector('.setting-section-title');
+    const title = titleEl ? titleEl.textContent.trim() : '';
+    if (titleEl) titleEl.remove();
+
+    const details = document.createElement('details');
+    details.className = 'settings-group';
+    if (group) details.dataset.group = group;
+    details.open = open;
+
+    const summary = document.createElement('summary');
+    summary.className = 'settings-group-summary';
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'settings-group-title';
+    titleSpan.textContent = title;
+    summary.appendChild(titleSpan);
+    details.appendChild(summary);
+
+    const body = document.createElement('div');
+    body.className = 'settings-group-body';
+    body.appendChild(section);
+    details.appendChild(body);
+    return details;
+  },
+
   async renderBookmarks() {
     const container = document.getElementById('bookmarkList');
     const bookmarks = await Storage.getBookmarks();
     bookmarks.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+    // 方向 B：折叠后靠分组标题旁的计数保留"里面有多少条"的信息
+    const meta = document.getElementById('bookmarkGroupMeta');
+    if (meta) meta.textContent = `${bookmarks.length} 项`;
 
     if (bookmarks.length === 0) {
       container.innerHTML = '<div class="empty-state">暂无书签，点击上方按钮添加</div>';
@@ -268,6 +340,9 @@ const Settings = {
     const container = document.getElementById('categoryList');
     const categories = await Storage.getCategories();
     categories.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+    // 方向 B：折叠态下的引导信息（"添加分类"随分组展开才出现）
+    const meta = document.getElementById('categoryGroupMeta');
+    if (meta) meta.textContent = `${categories.length} 个分类`;
 
     if (categories.length === 0) {
       container.innerHTML = '<div class="empty-state">暂无分类，点击上方按钮添加</div>';
@@ -792,6 +867,13 @@ const Settings = {
         this.importFromBrowserBookmarks();
       });
     });
+
+    // 方向 B：数据备份是主动作（默认展开），浏览器导入低频（默认折叠）
+    const sections = Array.from(tab.querySelectorAll(':scope > .setting-section'));
+    if (sections.length === 2) {
+      tab.appendChild(this.wrapSectionAsGroup(sections[0], true, 'backup'));
+      tab.appendChild(this.wrapSectionAsGroup(sections[1], false, 'browser-import'));
+    }
   },
 
   showDataFeedback(msg, type) {
@@ -861,7 +943,7 @@ const Settings = {
         <option value="auto" ${settings.theme === 'auto' ? 'selected' : ''}>跟随壁纸</option>
       </select>
     `;
-    tab.appendChild(themeSection);
+    tab.appendChild(this.wrapSectionAsGroup(themeSection, true, 'theme'));
     themeSection.querySelector('#themeSelect').addEventListener('change', async (e) => {
       const val = e.target.value;
       await Storage.updateSettings({ theme: val });
@@ -885,7 +967,7 @@ const Settings = {
         <input type="checkbox" id="showBottomBarToggle" ${settings.showBottomBar !== false ? 'checked' : ''}>
       </label>
     `;
-    tab.appendChild(bottomBarSection);
+    tab.appendChild(this.wrapSectionAsGroup(bottomBarSection, false, 'toolbar'));
     bottomBarSection.querySelector('#showBottomBarToggle').addEventListener('change', async (e) => {
       const val = e.target.checked;
       await Storage.updateSettings({ showBottomBar: val });
@@ -910,7 +992,7 @@ const Settings = {
         <button class="btn-primary btn-sm" id="refreshWallpaperBtn" style="${currentName && wallpapers.find(w => w.name === currentName)?.type === 'api' ? '' : 'display:none'}">刷新壁纸</button>
       </div>
     `;
-    tab.appendChild(section);
+    tab.appendChild(this.wrapSectionAsGroup(section, false, 'wallpaper-source'));
 
     section.querySelector('#wallpaperSourceSelect').addEventListener('change', async (e) => {
       const name = e.target.value;
