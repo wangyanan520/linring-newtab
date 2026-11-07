@@ -66,6 +66,17 @@ function resolveInput(raw) {
   return { type: 'search', target: input };
 }
 
+/* 无 favicon 时的首字母兜底色相：按域名做稳定哈希，同一书签每次刷新同色。
+   31 乘子是常规字符串散列，输出落在 0–359，足够让相邻域名分开；
+   不引入随机源，避免每次渲染"跳色"。色相只由 JS 决定，饱和度/明度仍由
+   CSS 的固定档位控制（见 .bookmark-icon.fallback）。 */
+function stableHue(key) {
+  let h = 0;
+  const s = String(key || '');
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360;
+  return h;
+}
+
 /* ---- V3 组件注册表：主页区块统一按注册表 + 可见性配置渲染 ----
    locked=true 表示常驻组件（搜索框），不可关闭。
    区块定位依赖 index.html 中的 data-component="<id>" 标记（P3-1：此前另用 class/id 选择器，
@@ -502,6 +513,10 @@ const App = {
           this.style.display = 'none';
           this.parentElement.classList.add('fallback');
           this.parentElement.dataset.char = this.dataset.char;
+          // 域名 → 稳定色相：同一书签每次渲染同色，不同书签可区分
+          this.parentElement.style.setProperty(
+            '--bm-hue', String(stableHue(this.dataset.domain || this.dataset.char))
+          );
         }
       });
     });
@@ -674,5 +689,5 @@ if (typeof document !== 'undefined') {
 /* ---- Node 测试环境导出（UX-03）：浏览器以 <script> 全局加载，module 未定义时不执行；
        顶层除上面被守卫的 addEventListener 外无浏览器副作用，Node require 安全 ---- */
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { resolveInput, SEARCH_ENGINES, COMMON_TLDS };
+  module.exports = { resolveInput, SEARCH_ENGINES, COMMON_TLDS, stableHue };
 }

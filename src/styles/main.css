@@ -1,35 +1,83 @@
 :root {
-  --text-primary: #ffffff;
-  --text-secondary: rgba(255, 255, 255, 0.78);
-  /* UX-14：原为 0.45，压在深色壁纸上只有 4.10–4.50:1（副标题、日期时间、引擎按钮、
-     底部按钮四处实测不达标）。0.52 留出余量吸收壁纸渐变的局部提亮。 */
-  --text-tertiary: rgba(255, 255, 255, 0.52);
-  --glass-bg: rgba(0, 0, 0, 0.18);
-  --glass-bg-hover: rgba(0, 0, 0, 0.28);
-  --glass-border: rgba(255, 255, 255, 0.06);
-  --glass-border-hover: rgba(255, 255, 255, 0.10);
-  --shadow-sm: 0 2px 12px rgba(10, 8, 30, 0.25);
-  --shadow-md: 0 8px 32px rgba(10, 8, 30, 0.35);
-  --shadow-lg: 0 16px 48px rgba(10, 8, 30, 0.45);
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
+  /* ===== 方向 C｜Graphite & Cobalt =====
+     深色主题：石墨。底色近黑、表面近实心，只用一处钴蓝强调。
+     文字不用纯白：纯白压在石墨上会发晕，且与"精确工具"的调性不符。 */
+  --text-primary: rgba(242, 244, 247, 0.95);
+  --text-secondary: rgba(214, 220, 231, 0.82);
+  /* 0.72：浅色主题继承同一语义（见下），实测在 surface-1 上约 6:1；
+     0.62 时约 4.6:1，属于"刚过线"的脆弱区间，故留出余量。 */
+  --text-tertiary: rgba(184, 193, 208, 0.72);
+
+  /* 单层表面：替代原来的"多层半透明玻璃 + backdrop-filter"。
+     surface-1 = 卡片/输入/工具条；surface-2 = 浮层（需要更实、离背景更远）。 */
+  --surface-1: rgba(24, 27, 33, 0.94);
+  --surface-2: #1b1e25;
+  --surface-hover: #232830;
+  --hairline: rgba(255, 255, 255, 0.09);
+  --hairline-strong: rgba(255, 255, 255, 0.16);
+  --hover-tint: rgba(255, 255, 255, 0.07);
+
+  /* 单一品牌色：钴蓝。
+     --brand 用于文字/描边（亮钴，压在石墨上可读）；
+     --brand-fill 用于实心底。取 #4f68db：与深色卡片底的对比 3.33:1（非文本阈值 3，
+     余量 0.33），其上的白字 4.84:1（正文阈值 4.5，余量 0.34）——两个方向都留出
+     一轮配色调整的余地。此前 #4a63d4 的底色对比只有 3.09:1，属于贴线值。 */
+  --brand: #93a9ff;
+  --brand-weak: rgba(147, 169, 255, 0.12);
+  --brand-line: rgba(147, 169, 255, 0.40);
+  --brand-fill: #4f68db;
+  /* 悬停改为压深：亮钴上的白字会掉到 4.5 以下，深钴反而更稳 */
+  --brand-fill-hover: #3f57c8;
+  --focus-ring: #93a9ff;
+
+  /* 语义色：只保留危险/成功/日历提示三档，不再引入第二套装饰色 */
+  --danger: #ff8578;
+  --danger-weak: rgba(255, 107, 94, 0.12);
+  --danger-fill: #b3372c;
+  --success: #5fd39a;
+  --warn: #e0a070;
+  /* 图表柱：弱化档（24 根柱同时出现时不能整屏发亮），实心档只给"现在" */
+  --brand-bar: rgba(147, 169, 255, 0.72);
+
+  /* 旧令牌别名：其余组件继续引用这两个名字时，自动跟随新表面体系 */
+  --glass-bg: var(--surface-1);
+  --glass-bg-hover: var(--surface-hover);
+  --glass-border: var(--hairline);
+  --glass-border-hover: var(--hairline-strong);
+
+  /* 阴影改为中性黑：原来 rgba(10,8,30) 带紫，是"光晕感"的一部分 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.30), 0 4px 14px rgba(0, 0, 0, 0.22);
+  --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.32), 0 12px 32px rgba(0, 0, 0, 0.34);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.40), 0 28px 64px rgba(0, 0, 0, 0.50);
+
+  /* 圆角收紧一档：16/24px 的"胶囊化"是模板感来源之一 */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
   --radius-full: 9999px;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
-  /* V2 新增：壁纸自适应颜色变量 */
-  --accent-color: rgba(150, 100, 255, 0.8);
-  --accent-light: rgba(180, 160, 255, 0.4);
-  --accent-glow: rgba(150, 100, 255, 0.15);
-  --accent-border: rgba(150, 100, 255, 0.12);
+  --font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* 标题字阶：390 宽给 28px，1920 宽封顶 40px；字距从 10px 收到 0.055em */
+  --fs-title: clamp(28px, 3.4vw, 40px);
+  --tracking-title: 0.055em;
+  --canvas: #0e1014;
+
+  /* V2 壁纸自适应变量的兜底：wallpaper.js 会在运行时内联覆盖这四个值。
+     方向 C 的组件不再消费它们（改走 --brand*），这里保留只为不破坏旧引用。 */
+  --accent-color: var(--brand-fill);
+  --accent-light: var(--brand);
+  --accent-glow: var(--brand-weak);
+  --accent-border: var(--brand-line);
 
   /* 语义化白色：此前纯白字面量散落在 12 个选择器里，与主题变量并行成
      两个真相来源——改主题时这些位置不跟，浅色主题的对比度修复会被下一次改动绕过。
      ① --text-on-accent：彩色或深色底上的文字与图形（红底删除键、accent 主按钮、
         toast 动作键、勾选对勾）。不随主题变化，两个主题下都必须保持纯白，
         否则浅色主题下会变成深色字压在 accent 底上，对比度直接崩。
-     ② --surface-solid：实心白面与纯白装饰图形（浅色主题的悬停卡片、开关滑块圆点）。 */
+     ② --surface-solid：实心白面与纯白装饰图形（浅色主题的悬停卡片、开关滑块圆点）。
+     注：方向 C 新增 --surface-1/2 表示"卡片表面"，与 --surface-solid（纯白装饰面）
+     不是同一语义，不要混用。 */
   --text-on-accent: #ffffff;
   --surface-solid: #ffffff;
 }
@@ -42,19 +90,43 @@
    ② 文本变量的 alpha 足够（本块，原 0.74/0.52 在纯白底上也分别只有 6.1/3.6:1）
    ③ 补齐此前完全缺失的选择器级覆盖（见本文件末尾的浅色主题补齐区） */
 [data-theme="light"] {
-  --text-primary: rgba(25, 28, 45, 0.95);
-  --text-secondary: rgba(25, 28, 45, 0.82);
-  --text-tertiary: rgba(25, 28, 45, 0.68);
-  /* 浅色主题改为"纸片"体系：此前卡片 0.50 白叠在 0.88 白背景上，明度差不足 4%，
-     卡片轮廓几乎消失、内容像浮在背景上。白度抬到 0.72/0.90，配 0.10 实边框与
-     可见阴影，恢复"背景 → 卡片 → 内容"三层。 */
-  --glass-bg: rgba(255, 255, 255, 0.72);
-  --glass-bg-hover: rgba(255, 255, 255, 0.90);
-  --glass-border: rgba(27, 32, 48, 0.10);
-  --glass-border-hover: rgba(27, 32, 48, 0.16);
-  --shadow-sm: 0 1px 3px rgba(24, 28, 45, 0.06), 0 4px 14px rgba(24, 28, 45, 0.05);
-  --shadow-md: 0 2px 6px rgba(24, 28, 45, 0.07), 0 10px 28px rgba(24, 28, 45, 0.08);
-  --shadow-lg: 0 6px 18px rgba(24, 28, 45, 0.10), 0 20px 48px rgba(24, 28, 45, 0.12);
+  /* 浅色主题：暖中性纸白，不是冷白。深色是石墨，浅色是纸——两种材质，
+     但共用同一套钴蓝强调与同一套圆角/字阶。 */
+  --text-primary: rgba(26, 28, 33, 0.95);
+  --text-secondary: rgba(44, 48, 56, 0.78);
+  --text-tertiary: rgba(38, 42, 52, 0.72);
+  /* 单层纸片：surface-1 近实心，靠 1px hairline 与极轻阴影分层；
+     不再依赖半透明白叠白（那正是"看不出边界"的根源）。 */
+  --surface-1: #fbfaf5;
+  --surface-2: #fffefb;
+  --surface-hover: #ffffff;
+  --hairline: rgba(28, 31, 38, 0.12);
+  --hairline-strong: rgba(28, 31, 38, 0.20);
+  --hover-tint: rgba(28, 31, 38, 0.05);
+
+  --brand: #2f49c8;
+  --brand-weak: rgba(47, 73, 200, 0.09);
+  --brand-line: rgba(47, 73, 200, 0.34);
+  --brand-fill: #2f49c8;
+  --brand-fill-hover: #283fae;
+  --focus-ring-light: #2f49c8;
+
+  --danger: #b3342a;
+  --danger-weak: rgba(179, 52, 42, 0.09);
+  --danger-fill: #b3342a;
+  --success: #157a52;
+  --warn: #9a5a20;
+  --brand-bar: rgba(47, 73, 200, 0.72);
+
+  --glass-bg: var(--surface-1);
+  --glass-bg-hover: var(--surface-hover);
+  --glass-border: var(--hairline);
+  --glass-border-hover: var(--hairline-strong);
+
+  --shadow-sm: 0 1px 2px rgba(43, 39, 30, 0.06), 0 3px 10px rgba(43, 39, 30, 0.05);
+  --shadow-md: 0 2px 6px rgba(43, 39, 30, 0.07), 0 10px 28px rgba(43, 39, 30, 0.07);
+  --shadow-lg: 0 6px 18px rgba(43, 39, 30, 0.10), 0 20px 48px rgba(43, 39, 30, 0.12);
+  --canvas: #f4f3ee;
 }
 
 /* UX-02 根因①：.bg-layer 的背景由 wallpaper.js 内联写入（样式表覆盖不了），
@@ -65,13 +137,10 @@
      此前试过"半透明白纱既留壁纸又保可读"，但 0.55 / 0.62 / 0.82 / 0.94 都落在
      "壁纸被洗成脏灰"与"文字压不住"之间，还得再叠一层标题晕影，观感反而更差。
      壁纸只在深色主题生效，浅色主题直接给纯色背景。 */
-  background: #f3f5fa;
+  background: var(--canvas);
 }
 
-/* 浅色主题没有壁纸，这层紫色装饰光晕已无叠加对象，留着只是脏点 */
-[data-theme="light"] .bg-glow {
-  display: none;
-}
+/* 方向 C：.bg-glow 的紫色装饰光晕已删除；此后的浅色规则不再需要 */
 
 /* UX-02 路线 C：深色主题下覆盖层强度按壁纸明度切换。
    data-wallpaper-tone 由 wallpaper.js 写在 <html> 上（预设读 themeHint，在线壁纸用采样结果）。
@@ -282,39 +351,36 @@ body {
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: #0a0a1a;
+  background: var(--canvas);
 }
 
-/* ===== 背景层 ===== */
+/* ===== 背景层 =====
+   方向 C：兜底背景改为石墨单向渐变（原来的紫蓝四层径向光晕是模板感的第一来源）。
+   运行时 wallpaper.js 仍会把用户选择的壁纸以内联 background 写到本元素上，所以：
+   ① 深色主题用 filter 降饱和 + 压亮度，让任何壁纸（含默认紫色预设）退成石墨底纹，
+      壁纸图像本身仍可见；
+   ② .bg-glow 这层紫色装饰光晕直接删除；
+   ③ 覆盖层加一点石墨色偏，把残余色偏收进中性区间。 */
 .bg-layer {
   position: fixed;
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  background:
-    radial-gradient(ellipse 70% 55% at 15% 20%, rgba(100, 60, 200, 0.40) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 50% at 85% 15%, rgba(40, 100, 220, 0.35) 0%, transparent 55%),
-    radial-gradient(ellipse 80% 60% at 50% 80%, rgba(120, 40, 180, 0.25) 0%, transparent 50%),
-    radial-gradient(ellipse 50% 40% at 50% 50%, rgba(180, 80, 255, 0.10) 0%, transparent 40%),
-    linear-gradient(135deg, #0d0d2b 0%, #1a1050 30%, #0d1a3a 60%, #0a0a1a 100%);
+  background: linear-gradient(160deg, #111318 0%, #171a20 55%, #0d0f13 100%);
   transition: background 1s var(--ease-out);
 }
+
+/* 方向 C：深色预设壁纸已由 wallpaper.js 改为石墨 + 钴蓝冷光，
+   不再需要 CSS 侧的 saturate/brightness 压制（那只是遮盖紫蓝的手段）。 */
 
 .bg-layer::after {
   content: '';
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, var(--bg-overlay-opacity, 0.15));
+  /* +0.10：预设壁纸 0.15→0.25、在线壁纸 0.35→0.45；
+     壁纸本身已是石墨底，只需轻微压暗保证标题与卡片边界，不必再洗掉色彩 */
+  background: rgba(10, 12, 16, calc(var(--bg-overlay-opacity, 0.15) + 0.10));
   transition: opacity 0.6s var(--ease-out);
-}
-
-.bg-glow {
-  position: fixed;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  background:
-    radial-gradient(ellipse 30% 25% at 50% 10%, rgba(150, 100, 255, 0.12) 0%, transparent 60%);
 }
 
 /* ===== 容器 ===== */
@@ -2124,7 +2190,7 @@ input[type="checkbox"]:focus-visible {
 
 /* 根背景被 .bg-layer 完全遮盖，但浅色主题留深色底会在壁纸解码完成前闪一下黑 */
 [data-theme="light"],
-[data-theme="light"] body { background: #f4f5f9; }
+[data-theme="light"] body { background: var(--canvas); }
 
 /* ===== 第二批命中区｜触屏（2026-11-07） =====
    细指针下这五个元素都已是 24×24 以上，触屏统一补到 40×40 一档。间距充足的用透明
@@ -2185,6 +2251,852 @@ input[type="checkbox"]:focus-visible {
     inset: -6px -2px;
     border-radius: 8px;
   }
+}
+
+/* ==========================================================================
+   方向 C｜品牌视觉层（2026-11-07）
+   ==========================================================================
+   目标：去掉"紫蓝光晕 + 多层毛玻璃"的模板感，让界面有自己的调性。
+   做法：石墨（深色）/ 纸白（浅色）两种单层材质 + 一枚钴蓝强调色。
+
+   三条原则：
+   ① 只改外观（颜色、材质、圆角、字阶、描边、阴影），不动布局尺寸、不改 DOM、不改 JS；
+   ② 表面一律"单层近实心 + 1px hairline + 极轻阴影"，不再叠 backdrop-filter；
+   ③ 强调色只出现在"可操作/当前状态"上（焦点环、选中项、主按钮、今天、当前小时），
+      其余位置一律回到中性灰阶。
+
+   为什么不直接改 --accent-*：wallpaper.js 会在运行时把 --accent-color 等四个变量
+   内联写到 <html> 上（壁纸取色），CSS 里改值会被覆盖。本段所有组件改走 --brand*。
+   ========================================================================== */
+
+/* --- 标题：字阶与字距 --- */
+.site-title {
+  font-size: var(--fs-title);
+  font-weight: 600;
+  letter-spacing: var(--tracking-title);
+  color: var(--text-primary);
+  line-height: 1.24;
+  text-shadow: none;
+}
+
+.site-subtitle {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.30em;
+  color: var(--text-tertiary);
+  text-shadow: none;
+}
+
+@media (max-width: 768px) {
+  .site-subtitle {
+    letter-spacing: 0.22em;
+  }
+}
+
+/* --- 顶栏状态 --- */
+.datetime,
+.weather-widget {
+  background: var(--surface-1);
+  border-color: var(--hairline);
+  color: var(--text-tertiary);
+}
+
+.datetime:hover,
+.weather-widget:hover {
+  background: var(--surface-hover);
+  border-color: var(--hairline-strong);
+}
+
+.weather-sep {
+  color: var(--hairline-strong);
+}
+
+[data-theme="light"] .site-title {
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .datetime,
+[data-theme="light"] .weather-widget {
+  background: var(--surface-1);
+  border-color: var(--hairline);
+}
+
+[data-theme="light"] .weather-widget:hover {
+  background: var(--surface-hover);
+  border-color: var(--hairline-strong);
+}
+
+[data-theme="light"] .weather-sep {
+  color: var(--hairline-strong);
+}
+
+/* --- 搜索框 --- */
+.search-inner {
+  background: var(--surface-1);
+  border-color: var(--hairline);
+  border-radius: var(--radius-lg);
+  padding: 4px 4px 4px 16px;
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.search-inner:focus-within {
+  background: var(--surface-2);
+  border-color: var(--brand-line);
+  box-shadow:
+    var(--shadow-sm),
+    0 0 0 2px var(--brand);
+}
+
+.search-icon {
+  opacity: 0.55;
+}
+
+.search-inner:focus-within .search-icon {
+  opacity: 0.8;
+}
+
+.engine-btn {
+  border-radius: var(--radius-sm);
+}
+
+.engine-btn:hover {
+  color: var(--text-primary);
+  background: var(--hover-tint);
+}
+
+.search-divider {
+  background: var(--hairline);
+}
+
+#searchInput {
+  font-weight: 400;
+  letter-spacing: 0.01em;
+}
+
+.search-clear {
+  border-radius: var(--radius-sm);
+}
+
+.search-clear.visible {
+  opacity: 0.55;
+}
+
+.search-clear:hover {
+  background: var(--hover-tint);
+  opacity: 0.85;
+}
+
+[data-theme="light"] .search-inner {
+  background: var(--surface-1);
+  border-color: var(--hairline);
+  box-shadow: var(--shadow-sm);
+}
+
+[data-theme="light"] .search-inner:focus-within {
+  background: var(--surface-2);
+  border-color: var(--brand-line);
+  box-shadow:
+    var(--shadow-sm),
+    0 0 0 2px var(--brand);
+}
+
+[data-theme="light"] .engine-btn {
+  color: var(--text-tertiary);
+}
+
+[data-theme="light"] .engine-btn:hover {
+  color: var(--text-primary);
+  background: var(--hover-tint);
+}
+
+[data-theme="light"] .search-divider {
+  background: var(--hairline);
+}
+
+[data-theme="light"] .search-icon {
+  opacity: 0.62;
+}
+
+[data-theme="light"] .search-clear.visible {
+  opacity: 0.62;
+}
+
+[data-theme="light"] .search-clear:hover {
+  background: var(--hover-tint);
+}
+
+/* --- 书签：统一表面 + 内圈，不再做玻璃片 --- */
+.bookmark-item:hover {
+  transform: translateY(-2px);
+}
+
+.bookmark-icon {
+  background: var(--surface-1);
+  border-color: var(--hairline);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.bookmark-item:hover .bookmark-icon {
+  background: var(--surface-hover);
+  border-color: var(--brand-line);
+  box-shadow: 0 0 0 1px var(--brand-weak);
+}
+
+/* 无 favicon 的兜底字母：色相由 main.js 的 stableHue 按域名注入（--bm-hue），
+   饱和度/明度在这里固定成两套档位。220 是 JS 尚未写值时的钴蓝兜底。 */
+.bookmark-icon.fallback {
+  background: hsl(var(--bm-hue, 220) 46% 17%);
+  border-color: hsl(var(--bm-hue, 220) 38% 34%);
+}
+
+.bookmark-icon.fallback::after {
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  color: hsl(var(--bm-hue, 220) 62% 78%);
+}
+
+.bookmark-title {
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+  text-shadow: none;
+}
+
+.bookmark-remove {
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border-color: var(--hairline-strong);
+  color: var(--text-secondary);
+}
+
+.bookmark-remove:hover,
+.bookmark-remove:focus-visible {
+  background: var(--danger-fill);
+  border-color: var(--danger-fill);
+  color: var(--text-on-accent);
+}
+
+.bookmark-add-icon {
+  border-color: var(--hairline-strong);
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.bookmark-tile-add:hover .bookmark-add-icon {
+  border-color: var(--brand);
+  color: var(--text-primary);
+}
+
+.empty-hint {
+  color: var(--text-secondary);
+  opacity: 1;
+}
+
+[data-theme="light"] .bookmark-icon {
+  background: var(--surface-1);
+  border-color: var(--hairline);
+  box-shadow: none;
+}
+
+[data-theme="light"] .bookmark-icon.fallback {
+  background: hsl(var(--bm-hue, 220) 52% 94%);
+  border-color: hsl(var(--bm-hue, 220) 40% 82%);
+}
+
+[data-theme="light"] .bookmark-icon.fallback::after {
+  color: hsl(var(--bm-hue, 220) 55% 32%);
+}
+
+[data-theme="light"] .bookmark-item:hover .bookmark-icon {
+  background: var(--surface-hover);
+  border-color: var(--brand-line);
+}
+
+[data-theme="light"] .bookmark-remove {
+  background: var(--surface-2);
+  border-color: var(--hairline-strong);
+  color: var(--text-secondary);
+}
+
+[data-theme="light"] .bookmark-remove:hover,
+[data-theme="light"] .bookmark-remove:focus-visible {
+  background: var(--danger-fill);
+  border-color: var(--danger-fill);
+  color: var(--text-on-accent);
+}
+
+[data-theme="light"] .bookmark-add-icon {
+  border-color: var(--hairline-strong);
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+[data-theme="light"] .bookmark-tile-add:hover .bookmark-add-icon {
+  border-color: var(--brand);
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .empty-hint {
+  color: var(--text-secondary);
+  opacity: 1;
+}
+
+/* --- 分类 --- */
+.category-card {
+  background: var(--surface-1);
+  border-color: var(--hairline);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.category-card:hover {
+  background: var(--surface-1);
+  border-color: var(--brand-line);
+}
+
+.category-card.dragging {
+  border-color: var(--brand-line);
+}
+
+.category-header:hover {
+  background: var(--hover-tint);
+}
+
+.category-header:focus-visible {
+  background: var(--hover-tint);
+  outline-color: var(--focus-ring);
+}
+
+.category-title {
+  color: var(--text-primary);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.category-title::before {
+  background: var(--brand);
+}
+
+.category-toggle {
+  color: var(--text-tertiary);
+}
+
+.category-link {
+  background: transparent;
+  border-color: var(--hairline);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+}
+
+.category-link:hover {
+  color: var(--text-primary);
+  background: var(--brand-weak);
+  border-color: var(--brand-line);
+}
+
+[data-theme="light"] .category-card,
+[data-theme="light"] .todo-card {
+  background: var(--surface-1);
+  border-color: var(--hairline);
+  box-shadow: var(--shadow-sm);
+}
+
+[data-theme="light"] .category-card:hover,
+[data-theme="light"] .todo-card:hover {
+  background: var(--surface-1);
+  border-color: var(--hairline-strong);
+}
+
+[data-theme="light"] .category-title {
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .category-title::before {
+  background: var(--brand);
+}
+
+[data-theme="light"] .category-link {
+  background: transparent;
+  border-color: var(--hairline);
+  color: var(--text-secondary);
+}
+
+[data-theme="light"] .category-link:hover {
+  background: var(--brand-weak);
+  border-color: var(--brand-line);
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .category-header:hover {
+  background: var(--hover-tint);
+}
+
+/* --- 待办 --- */
+.todo-card {
+  background: var(--surface-1);
+  border-color: var(--hairline);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.todo-card:hover {
+  border-color: var(--hairline-strong);
+}
+
+.todo-title {
+  color: var(--text-primary);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.todo-add-btn {
+  color: var(--text-tertiary);
+  border-radius: var(--radius-sm);
+}
+
+.todo-add-btn:hover {
+  color: var(--text-primary);
+  background: var(--hover-tint);
+}
+
+.todo-item:hover {
+  background: var(--hover-tint);
+}
+
+.todo-checkbox {
+  border-color: var(--hairline-strong);
+}
+
+.todo-checkbox:checked {
+  background: var(--brand-fill);
+  border-color: var(--brand-fill);
+}
+
+.todo-text {
+  color: var(--text-secondary);
+  letter-spacing: 0.01em;
+}
+
+.todo-text.done {
+  color: var(--text-tertiary);
+}
+
+.todo-delete-btn {
+  color: var(--text-tertiary);
+}
+
+.todo-item:hover .todo-delete-btn {
+  color: var(--text-secondary);
+  background: var(--hover-tint);
+}
+
+.todo-delete-btn:hover,
+.todo-delete-btn:focus-visible {
+  color: var(--danger);
+  background: var(--danger-weak);
+}
+
+.todo-input-wrapper {
+  background: var(--surface-2);
+  border-color: var(--hairline);
+  border-radius: var(--radius-md);
+}
+
+.todo-input-wrapper:focus-within {
+  background: var(--surface-2);
+  border-color: var(--brand-line);
+  box-shadow: none;
+}
+
+.todo-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.todo-submit-btn {
+  background: var(--brand-fill);
+  border-radius: var(--radius-sm);
+}
+
+.todo-submit-btn:hover {
+  background: var(--brand-fill-hover);
+  opacity: 1;
+}
+
+.feedback-error {
+  color: var(--danger);
+}
+
+.feedback-success {
+  color: var(--success);
+}
+
+[data-theme="light"] .todo-title,
+[data-theme="light"] .todo-add-btn {
+  color: var(--text-secondary);
+}
+
+[data-theme="light"] .todo-add-btn:hover {
+  color: var(--text-primary);
+  background: var(--hover-tint);
+}
+
+[data-theme="light"] .todo-text {
+  color: var(--text-secondary);
+}
+
+[data-theme="light"] .todo-text.done {
+  color: var(--text-tertiary);
+}
+
+[data-theme="light"] .todo-checkbox {
+  border-color: var(--hairline-strong);
+}
+
+[data-theme="light"] .todo-checkbox:checked {
+  background: var(--brand-fill);
+  border-color: var(--brand-fill);
+}
+
+[data-theme="light"] .todo-delete-btn {
+  color: var(--text-tertiary);
+}
+
+[data-theme="light"] .todo-delete-btn:hover {
+  color: var(--danger);
+}
+
+[data-theme="light"] .todo-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+[data-theme="light"] .todo-input-wrapper:focus-within {
+  background: var(--surface-2);
+  border-color: var(--brand-line);
+}
+
+[data-theme="light"] .todo-submit-btn {
+  background: var(--brand-fill);
+  color: var(--text-on-accent);
+}
+
+[data-theme="light"] .feedback-error {
+  color: var(--danger);
+}
+
+[data-theme="light"] .feedback-success {
+  color: var(--success);
+}
+
+/* --- 底栏 / toast / 空状态按钮 --- */
+.tool-btn {
+  background: var(--surface-1);
+  border-color: var(--hairline);
+  border-radius: var(--radius-sm);
+  padding: 7px 14px;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.tool-btn:hover {
+  background: var(--surface-hover);
+  border-color: var(--hairline-strong);
+  color: var(--text-secondary);
+}
+
+.tool-btn svg {
+  opacity: 0.7;
+}
+
+.tool-btn:hover svg {
+  opacity: 1;
+}
+
+.toast {
+  background: var(--surface-2);
+  border-color: var(--hairline);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-primary);
+}
+
+.toast-action {
+  background: var(--brand-weak);
+  border-radius: var(--radius-sm);
+  color: var(--brand);
+}
+
+.toast-action:hover {
+  background: var(--brand-weak);
+  box-shadow: 0 0 0 1px var(--brand-line);
+}
+
+.btn-ghost {
+  background: var(--surface-1);
+  border-color: var(--hairline);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+}
+
+.btn-ghost:hover {
+  background: var(--surface-hover);
+  border-color: var(--hairline-strong);
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .tool-btn {
+  background: var(--surface-1);
+  border-color: var(--hairline);
+}
+
+[data-theme="light"] .tool-btn:hover {
+  background: var(--surface-hover);
+  border-color: var(--hairline-strong);
+}
+
+[data-theme="light"] .toast {
+  background: var(--surface-2);
+  border-color: var(--hairline);
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .toast-action {
+  background: var(--brand-weak);
+  color: var(--brand);
+}
+
+[data-theme="light"] .toast-action:hover {
+  background: var(--brand-weak);
+}
+
+[data-theme="light"] .btn-ghost {
+  background: var(--surface-1);
+  border-color: var(--hairline);
+  color: var(--text-secondary);
+}
+
+[data-theme="light"] .btn-ghost:hover {
+  background: var(--surface-hover);
+  border-color: var(--hairline-strong);
+  color: var(--text-primary);
+}
+
+/* --- 滚动条：跟随新中性阶 --- */
+.main-content::-webkit-scrollbar-thumb,
+.settings-body::-webkit-scrollbar-thumb,
+.todo-list::-webkit-scrollbar-thumb {
+  background: var(--hairline-strong);
+}
+
+.main-content::-webkit-scrollbar-thumb:hover,
+.settings-body::-webkit-scrollbar-thumb:hover,
+.todo-list::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+/* --- 天气浮层 --- */
+.weather-hover-card,
+.datetime-hover-card {
+  background: var(--surface-2);
+  border-color: var(--hairline);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* 浮层的出现/收起过渡沿用基线（0.2s / 0.15s），本轮只换材质与描边，
+   不调整时序——时序属于交互手感，不在视觉层范围内。 */
+
+.whc-header {
+  color: var(--text-secondary);
+}
+
+.whc-bar {
+  width: 8px;
+  background: var(--brand-bar);
+  border-radius: 2px;
+}
+
+.whc-col.whc-now .whc-bar {
+  /* "现在"用亮钴而不是弱钴：在 24 根弱柱里像一根标记线，
+     与其余柱拉开层次。柱高由 weather.js 单独编码降雨概率，这里只管颜色 */
+  background: var(--brand);
+}
+
+.whc-hour {
+  color: var(--text-secondary);
+}
+
+.whc-col.whc-now .whc-hour {
+  color: var(--text-primary);
+}
+
+/* --- 日历浮层 --- */
+.dhc-header {
+  color: var(--text-secondary);
+}
+
+.dhc-nav {
+  color: var(--text-tertiary);
+  border-radius: var(--radius-sm);
+}
+
+.dhc-nav:hover {
+  color: var(--text-primary);
+  background: var(--hover-tint);
+}
+
+.dhc-week {
+  color: var(--text-secondary);
+}
+
+.dhc-week.dhc-weekend {
+  color: var(--text-tertiary);
+}
+
+.dhc-cell {
+  border-radius: var(--radius-sm);
+}
+
+.dhc-cell:hover {
+  background: var(--hover-tint);
+}
+
+.dhc-sub {
+  color: var(--text-tertiary);
+}
+
+.dhc-cell.dhc-outside .dhc-day,
+.dhc-cell.dhc-outside .dhc-sub {
+  color: var(--text-tertiary);
+}
+
+.dhc-cell.dhc-weekend .dhc-day {
+  color: var(--text-secondary);
+}
+
+.dhc-cell.dhc-off .dhc-day,
+.dhc-cell.dhc-off .dhc-sub {
+  color: var(--warn);
+}
+
+.dhc-cell.dhc-work .dhc-day,
+.dhc-cell.dhc-work .dhc-sub {
+  color: var(--brand);
+}
+
+.dhc-cell.dhc-today {
+  background: var(--brand-fill);
+  /* 深色主题下 brand-fill 与卡片底约 3.1:1（刚过非文本阈值），
+     再补一圈亮钴内描边，把"今天"的边界从"勉强可辨"抬到"一眼可见" */
+  box-shadow: inset 0 0 0 1px var(--brand);
+}
+
+.dhc-cell.dhc-today .dhc-day,
+.dhc-cell.dhc-today .dhc-sub {
+  color: var(--text-on-accent);
+}
+
+.dhc-badge-off {
+  background: var(--warn);
+  box-shadow: none;
+}
+
+.dhc-badge-work {
+  background: var(--brand-fill);
+  box-shadow: none;
+}
+
+.dhc-countdown {
+  color: var(--warn);
+}
+
+.dhc-source-note {
+  color: var(--text-tertiary);
+}
+
+.weather-retry {
+  background: var(--surface-1);
+  border-color: var(--hairline);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+}
+
+[data-theme="light"] .whc-hour {
+  color: var(--text-secondary);
+}
+
+[data-theme="light"] .whc-col.whc-now .whc-hour {
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .dhc-nav {
+  color: var(--text-tertiary);
+}
+
+[data-theme="light"] .dhc-nav:hover {
+  color: var(--text-primary);
+  background: var(--hover-tint);
+}
+
+[data-theme="light"] .dhc-week {
+  color: var(--text-secondary);
+}
+
+[data-theme="light"] .dhc-week.dhc-weekend {
+  color: var(--text-tertiary);
+}
+
+[data-theme="light"] .dhc-sub {
+  color: var(--text-tertiary);
+}
+
+[data-theme="light"] .dhc-cell.dhc-outside .dhc-day,
+[data-theme="light"] .dhc-cell.dhc-outside .dhc-sub {
+  color: var(--text-tertiary);
+}
+
+[data-theme="light"] .dhc-cell.dhc-off .dhc-day,
+[data-theme="light"] .dhc-cell.dhc-off .dhc-sub {
+  color: var(--warn);
+}
+
+[data-theme="light"] .dhc-cell.dhc-work .dhc-day,
+[data-theme="light"] .dhc-cell.dhc-work .dhc-sub {
+  color: var(--brand);
+}
+
+[data-theme="light"] .dhc-cell.dhc-today {
+  background: var(--brand-fill);
+}
+
+[data-theme="light"] .dhc-cell.dhc-today .dhc-day,
+[data-theme="light"] .dhc-cell.dhc-today .dhc-sub {
+  color: var(--text-on-accent);
+}
+
+[data-theme="light"] .dhc-badge-off {
+  background: var(--warn);
+}
+
+[data-theme="light"] .dhc-badge-work {
+  background: var(--brand-fill);
+}
+
+[data-theme="light"] .dhc-countdown {
+  color: var(--warn);
+}
+
+[data-theme="light"] .dhc-source-note {
+  color: var(--text-tertiary);
 }
 
 /* ===== 无障碍：减少动态效果 =====

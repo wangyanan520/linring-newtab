@@ -615,3 +615,366 @@
     min-width: 40px;
   }
 }
+
+/* ==========================================================================
+   方向 C｜设置面板视觉层（2026-11-07）
+   与 main.css 同源：单层表面 + 1px hairline + 极轻阴影，强调色只给
+   "当前 tab / 选中开关 / 焦点"。此段只覆盖外观，不动尺寸与布局。
+   ========================================================================== */
+
+/* 遮罩：去掉毛玻璃，改为中性石墨压暗（浅色主题用浅墨压暗，不漂白） */
+.settings-overlay {
+  background: rgba(6, 8, 12, 0.62);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+[data-theme="light"] .settings-overlay {
+  background: rgba(30, 32, 38, 0.28);
+}
+
+.settings-panel {
+  --panel-border: var(--hairline);
+  --panel-border-soft: rgba(255, 255, 255, 0.06);
+  --row-hover: var(--hover-tint);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  border-color: var(--hairline);
+  box-shadow: var(--shadow-lg);
+}
+
+[data-theme="light"] .settings-panel {
+  --panel-border: var(--hairline);
+  --panel-border-soft: rgba(28, 31, 38, 0.08);
+  --row-hover: var(--hover-tint);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  border-color: var(--hairline);
+  box-shadow: var(--shadow-lg);
+}
+
+.settings-header {
+  border-bottom-color: var(--hairline);
+}
+
+.settings-header h2 {
+  color: var(--text-primary);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+[data-theme="light"] .settings-header {
+  border-bottom-color: var(--hairline);
+}
+
+[data-theme="light"] .settings-header h2 {
+  color: var(--text-primary);
+}
+
+.settings-close {
+  color: var(--text-tertiary);
+  border-radius: var(--radius-sm);
+}
+
+.settings-close:hover {
+  background: var(--hover-tint);
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .settings-close {
+  color: var(--text-tertiary);
+}
+
+[data-theme="light"] .settings-close:hover {
+  background: var(--hover-tint);
+  color: var(--text-primary);
+}
+
+.settings-tabs {
+  border-bottom-color: var(--hairline);
+}
+
+.tab-btn {
+  color: var(--text-tertiary);
+}
+
+.tab-btn:hover {
+  color: var(--text-secondary);
+}
+
+.tab-btn.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--brand);
+}
+
+[data-theme="light"] .settings-tabs {
+  border-bottom-color: var(--hairline);
+}
+
+[data-theme="light"] .tab-btn {
+  color: var(--text-tertiary);
+}
+
+[data-theme="light"] .tab-btn:hover {
+  color: var(--text-secondary);
+}
+
+[data-theme="light"] .tab-btn.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--brand);
+}
+
+.btn-primary {
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  border-color: var(--hairline);
+  border-radius: var(--radius-sm);
+}
+
+.btn-primary:hover {
+  background: var(--surface-hover);
+  border-color: var(--hairline-strong);
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .btn-primary {
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  border-color: var(--hairline);
+}
+
+[data-theme="light"] .btn-primary:hover {
+  background: var(--surface-hover);
+  border-color: var(--hairline-strong);
+  color: var(--text-primary);
+}
+
+.btn-danger {
+  background: var(--danger-weak);
+  color: var(--danger);
+  border-color: var(--danger-weak);
+  border-radius: var(--radius-sm);
+}
+
+.btn-danger:hover {
+  background: var(--danger-weak);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.btn-edit {
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  border-color: var(--hairline);
+  border-radius: var(--radius-sm);
+}
+
+.btn-edit:hover {
+  background: var(--surface-hover);
+  border-color: var(--hairline-strong);
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .btn-edit {
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  border-color: var(--hairline);
+}
+
+[data-theme="light"] .btn-edit:hover {
+  background: var(--surface-hover);
+  border-color: var(--hairline-strong);
+  color: var(--text-primary);
+}
+
+.item-list {
+  border-color: var(--hairline);
+  border-radius: var(--radius-md);
+}
+
+.setting-item-title {
+  color: var(--text-primary);
+}
+
+.setting-item-url {
+  color: var(--text-tertiary);
+}
+
+[data-theme="light"] .setting-item-title {
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .setting-item-url {
+  color: var(--text-tertiary);
+}
+
+.inline-form input,
+.inline-form-sub input {
+  background: var(--surface-1);
+  border-color: var(--hairline);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+}
+
+.inline-form input:focus,
+.inline-form-sub input:focus {
+  border-color: var(--brand-line);
+  background: var(--surface-2);
+}
+
+.inline-form input::placeholder,
+.inline-form-sub input::placeholder {
+  color: var(--text-tertiary);
+}
+
+[data-theme="light"] .inline-form input,
+[data-theme="light"] .inline-form-sub input {
+  background: var(--surface-1);
+  border-color: var(--hairline);
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .inline-form input:focus,
+[data-theme="light"] .inline-form-sub input:focus {
+  border-color: var(--brand-line);
+  background: var(--surface-2);
+}
+
+[data-theme="light"] .inline-form input::placeholder,
+[data-theme="light"] .inline-form-sub input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.empty-state {
+  color: var(--text-tertiary);
+}
+
+[data-theme="light"] .empty-state {
+  color: var(--text-tertiary);
+}
+
+.setting-section-title {
+  color: var(--text-primary);
+}
+
+.setting-section-desc {
+  color: var(--text-tertiary);
+}
+
+[data-theme="light"] .setting-section-title {
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .setting-section-desc {
+  color: var(--text-tertiary);
+}
+
+.city-select {
+  background: var(--surface-1);
+  border-color: var(--hairline);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+}
+
+.city-select:hover,
+.city-select:focus {
+  border-color: var(--hairline-strong);
+  background: var(--surface-2);
+}
+
+.city-select option {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .city-select {
+  background: var(--surface-1);
+  border-color: var(--hairline);
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .city-select:hover,
+[data-theme="light"] .city-select:focus {
+  border-color: var(--hairline-strong);
+  background: var(--surface-2);
+}
+
+[data-theme="light"] .city-select option {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.toggle-row {
+  color: var(--text-secondary);
+  border-bottom-color: var(--panel-border-soft);
+}
+
+.toggle-row input[type="checkbox"] {
+  border-color: var(--hairline-strong);
+  background-color: var(--hover-tint);
+  background-image: radial-gradient(circle at 11px 11px, var(--surface-solid) 0 7px, transparent 7.5px);
+}
+
+.toggle-row input[type="checkbox"]:checked {
+  background-color: var(--brand-fill);
+  border-color: var(--brand-fill);
+}
+
+.toggle-row input[type="checkbox"]:focus-visible {
+  outline-color: var(--focus-ring);
+}
+
+[data-theme="light"] .toggle-row {
+  color: var(--text-secondary);
+}
+
+[data-theme="light"] .toggle-row input[type="checkbox"] {
+  border-color: var(--hairline-strong);
+  background-color: var(--hover-tint);
+}
+
+[data-theme="light"] .toggle-row input[type="checkbox"]:checked {
+  background-color: var(--brand-fill);
+  border-color: var(--brand-fill);
+}
+
+[data-theme="light"] .toggle-row input[type="checkbox"]:focus-visible {
+  outline-color: var(--focus-ring);
+}
+
+.privacy-list {
+  color: var(--text-secondary);
+}
+
+.privacy-list b {
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .privacy-list {
+  color: var(--text-secondary);
+}
+
+[data-theme="light"] .privacy-list b {
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .item-list {
+  border-color: var(--hairline);
+}
+
+[data-theme="light"] .settings-body::-webkit-scrollbar-thumb {
+  background: var(--hairline-strong);
+}
+
+[data-theme="light"] .settings-body::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+.settings-body::-webkit-scrollbar-thumb {
+  background: var(--hairline-strong);
+}
+
+.settings-body::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+

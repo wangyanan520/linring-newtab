@@ -766,10 +766,14 @@ const Weather = {
       const showLabel = idx === 0 || idx % 3 === 0;
       const showIcon = idx === 0 || idx % 3 === 0;
       // ADV-02：缓存可经备份导入注入，字段必须先收敛/转义再拼 innerHTML。
-      // 降水值限定在 0-100，避免非数值产出 NaN 的 height/opacity 破坏布局。
+      // 降水值限定在 0-100，避免非数值产出 NaN 的 height 破坏布局。
       const rain = Math.max(0, Math.min(100, Number(h.rain) || 0));
-      const heightPct = Math.max(6, Math.round(rain));
-      const opacity = 0.35 + (rain / 100) * 0.65;
+      // 柱高是降雨概率的唯一编码：0% 保留 8% 的可见基线，100% 接近满高。
+      // 此前高度与内联 opacity 同时编码降雨量（0% 时 6% 高 + 0.35 透明），
+      // 低概率时段几乎看不见，也无法用高度做横向比较；CSS 只能用
+      // opacity:1 !important 与内联样式对打。透明度不再写入，颜色区分由
+      // .whc-now / 普通柱两个 CSS 档位负责。
+      const heightPct = 8 + Math.round(rain * 0.92);
       const hourLabel = idx === 0 ? '现在' : String(h.hour).padStart(2, '0');
       const nowClass = idx === 0 ? ' whc-now' : '';
       return `
@@ -777,7 +781,7 @@ const Weather = {
           <div class="whc-icon">${showIcon ? escapeHtml(h.icon) : ''}</div>
           <div class="whc-temp">${showIcon ? escapeHtml(String(h.temp)) + '°' : ''}</div>
           <div class="whc-bar-wrap">
-            <div class="whc-bar" style="height:${heightPct}%; opacity:${opacity.toFixed(2)}"></div>
+            <div class="whc-bar" style="height:${heightPct}%"></div>
           </div>
           <div class="whc-hour">${showLabel ? escapeHtml(hourLabel) : ''}</div>
         </div>

@@ -5,17 +5,16 @@ const WALLPAPERS = [
     type: 'preset',
     themeHint: 'dark',
     css: `
-      radial-gradient(ellipse 70% 55% at 15% 20%, rgba(100, 60, 200, 0.40) 0%, transparent 60%),
-      radial-gradient(ellipse 60% 50% at 85% 15%, rgba(40, 100, 220, 0.35) 0%, transparent 55%),
-      radial-gradient(ellipse 80% 60% at 50% 80%, rgba(120, 40, 180, 0.25) 0%, transparent 50%),
-      radial-gradient(ellipse 50% 40% at 50% 50%, rgba(180, 80, 255, 0.10) 0%, transparent 40%),
-      linear-gradient(135deg, #0d0d2b 0%, #1a1050 30%, #0d1a3a 60%, #0a0a1a 100%)
+      radial-gradient(ellipse 68% 52% at 16% 18%, rgba(74, 99, 212, 0.20) 0%, transparent 62%),
+      radial-gradient(ellipse 56% 46% at 84% 14%, rgba(126, 148, 232, 0.10) 0%, transparent 58%),
+      radial-gradient(ellipse 78% 58% at 50% 82%, rgba(52, 66, 104, 0.16) 0%, transparent 54%),
+      linear-gradient(135deg, #0b0d12 0%, #111520 34%, #0c0f17 66%, #08090d 100%)
     `,
     colors: {
-      accent: 'rgba(150, 100, 255, 0.8)',
-      accentLight: 'rgba(180, 160, 255, 0.4)',
-      accentGlow: 'rgba(150, 100, 255, 0.15)',
-      accentBorder: 'rgba(150, 100, 255, 0.12)'
+      accent: 'rgba(126, 148, 232, 0.8)',
+      accentLight: 'rgba(147, 169, 255, 0.4)',
+      accentGlow: 'rgba(126, 148, 232, 0.14)',
+      accentBorder: 'rgba(126, 148, 232, 0.12)'
     }
   },
   {
@@ -23,10 +22,10 @@ const WALLPAPERS = [
     type: 'preset',
     themeHint: 'dark',
     css: `
-      radial-gradient(ellipse 70% 55% at 20% 30%, rgba(0, 180, 120, 0.35) 0%, transparent 60%),
-      radial-gradient(ellipse 60% 50% at 80% 20%, rgba(20, 200, 160, 0.25) 0%, transparent 55%),
-      radial-gradient(ellipse 80% 60% at 50% 80%, rgba(0, 100, 80, 0.20) 0%, transparent 50%),
-      linear-gradient(135deg, #0a1a12 0%, #0d2a1a 30%, #0a1a10 60%, #060d08 100%)
+      radial-gradient(ellipse 68% 52% at 20% 28%, rgba(0, 168, 118, 0.15) 0%, transparent 62%),
+      radial-gradient(ellipse 56% 46% at 80% 18%, rgba(30, 190, 152, 0.09) 0%, transparent 58%),
+      radial-gradient(ellipse 78% 58% at 50% 82%, rgba(20, 92, 74, 0.12) 0%, transparent 54%),
+      linear-gradient(135deg, #0a100e 0%, #0d1713 34%, #0a1210 66%, #070b09 100%)
     `,
     colors: {
       accent: 'rgba(0, 200, 140, 0.8)',
@@ -40,10 +39,10 @@ const WALLPAPERS = [
     type: 'preset',
     themeHint: 'dark',
     css: `
-      radial-gradient(ellipse 70% 55% at 25% 30%, rgba(220, 100, 40, 0.40) 0%, transparent 60%),
-      radial-gradient(ellipse 60% 50% at 75% 20%, rgba(200, 120, 20, 0.30) 0%, transparent 55%),
-      radial-gradient(ellipse 80% 60% at 50% 80%, rgba(180, 60, 30, 0.20) 0%, transparent 50%),
-      linear-gradient(135deg, #1a0d08 0%, #2a1508 30%, #1a0d0a 60%, #0d0806 100%)
+      radial-gradient(ellipse 68% 52% at 25% 28%, rgba(214, 96, 38, 0.17) 0%, transparent 62%),
+      radial-gradient(ellipse 56% 46% at 76% 18%, rgba(196, 118, 24, 0.10) 0%, transparent 58%),
+      radial-gradient(ellipse 78% 58% at 50% 82%, rgba(150, 52, 26, 0.10) 0%, transparent 54%),
+      linear-gradient(135deg, #120c09 0%, #18100b 34%, #110c09 66%, #0a0705 100%)
     `,
     colors: {
       accent: 'rgba(220, 130, 50, 0.8)',
