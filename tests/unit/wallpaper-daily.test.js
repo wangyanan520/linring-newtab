@@ -156,3 +156,24 @@ test('每日图：旧字段 wallpaperApiCache 迁移（仅 bing、仅合法记�
   assert.strictEqual(migrateLegacyDailyCache({ type: 'bing', date: TODAY, url: 'javascript:1' }), null);
   assert.strictEqual(migrateLegacyDailyCache(null), null);
 });
+
+/* ---- 2.1.0：Bing 每日图的版权署名 ---- */
+
+test('2.1.0 署名随缓存读写：可选的 credit 字段，非法内容不写入', () => {
+  const withCredit = buildDailyCache(BAIDU_IMG, TODAY, null, '美国·古拉悬崖 © Chiara Salvadori/Getty Images');
+  assert.strictEqual(withCredit.credit, '美国·古拉悬崖 © Chiara Salvadori/Getty Images');
+  assert.strictEqual(resolveDailyWallpaper(withCredit, TODAY).credit, withCredit.credit,
+    '解析结果要把署名带到渲染层');
+
+  const noCredit = buildDailyCache(BAIDU_IMG, TODAY, null);
+  assert.ok(!('credit' in noCredit), '没有署名时不写这个键，缓存形状与 1.x 一致');
+  assert.strictEqual(resolveDailyWallpaper(noCredit, TODAY).credit, '');
+
+  const poisoned = normalizeDailyCache({ v: 1, date: TODAY, url: BAIDU_IMG, credit: 'x\u0000y' });
+  assert.ok(!('credit' in poisoned), '控制字符必须被丢弃，否则会污染渲染文本');
+
+  const longCredit = normalizeDailyCache({ v: 1, date: TODAY, url: BAIDU_IMG, credit: 'a'.repeat(400) });
+  assert.ok(!('credit' in longCredit), '超长署名丢弃（挡住被塞进来的大段文本）');
+
+  assert.strictEqual(resolveDailyWallpaper(null, TODAY).credit, '', '默认图没有第三方署名');
+});

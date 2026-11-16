@@ -2,7 +2,7 @@
 
 > 本文档是对仓库代码的结构化导览：整体架构、模块职责、关键对象与函数、数据模型、
 > 依赖关系、运行与测试方式。面向首次接手本仓库的开发者与 AI 编程代理。
-> 内容基于源码逐文件核对，最后更新对应版本 **1.2.7**（2026-10-25）。
+> 内容基于源码逐文件核对，最后更新对应版本 **2.1.0**（2026-11-16）。
 > 产品背景与需求文档见 `docs/product/`，评估与审查记录见 `docs/reviews/`。
 
 ---
@@ -319,7 +319,7 @@ Node 导出：`Storage` 与全部共享纯函数、`DEFAULT_SETTINGS`、`SUPPORT
 | id | 标题 | 生命周期钩子 |
 |----|------|-------------|
 | `search` | 搜索框 | `locked: true` 常驻不可关 |
-| `calendar` | 农历日历 | `init`：先 `App.startClock()` 再 `Calendar.init()` |
+| `calendar` | 农历日历 | `init`：先 `App.startDatePill()` 再 `Calendar.init()` |
 | `weather` | 天气 | `init/onShow/onHide`（`Weather.init/startRefresh/stopRefresh`） |
 | `bookmarks` | 快捷书签 | `init → App.renderBookmarks()` |
 | `categories` | 分类导航 | `init → App.renderCategories()` |
@@ -335,10 +335,17 @@ Node 导出：`Storage` 与全部共享纯函数、`DEFAULT_SETTINGS`、`SUPPORT
   MutationObserver 持续移除 + 200ms×20 次轮询兜底）。
 - 跨标签页：`bindCrossTabSync()` 订阅 `chrome.storage.onChanged`，按 key 重渲染
   书签/分类/待办或应用设置；只订阅不回写，无写环。
-- 搜索交互：`bindEvents`、`cycleEngine`、`updateEngineBtn`、`doSearch`、
-  `openBookmarkByIndex`；全局快捷键 `/` 聚焦、`Esc` 清空失焦、`1-9` 打开第 N 个书签、
+- 搜索交互：`bindEvents`、`renderEngineMenu` / `toggleEngineMenu` / `closeEngineMenu` /
+  `setEngine` / `updateEngineBtn`、`doSearch`、`updateSearchHint`、`openBookmarkByIndex`；
+  全局快捷键 `/` 聚焦、`Esc` 清空失焦、`⌘K` / `Ctrl+K` 打开设置、`1-9` 打开第 N 个书签、
   `?` 速查提示（输入框内/设置面板打开时不拦截，带修饰键让位浏览器快捷键）。
-- 时钟：`startClock()`（每秒更新；日期跨天时重建农历卡片；点击切换、外部点击关闭）。
+  - 2.1.0 起引擎按钮由“点击轮换”改为**下拉菜单**（`#engineMenu`，3 个候选），
+    选中写设置并同步按钮文案；菜单与其它浮层统一为“点击开合 + `Esc`/点空白收起”。
+  - `updateSearchHint()` 按输入实时切换提示行：形如网址时渲染
+    `.url-go`「直接访问 xxx · 按 Enter 打开」，否则恢复快捷键速查（`/` / `Esc` / `⌘K`）。
+- 日期胶囊：`startDatePill()`（每 30s 校准跨天）、`refreshDatePill()` / `refreshDateText()` /
+  `renderDateText()`——**只显示「M月D日 周X」+（农历日）+（距下一个节假日的天数），不再显示时钟**；
+  `ensureCalendarCard()` 在点击胶囊时惰性建卡。设计口径见 AGENTS.md「日期胶囊不显示时钟」。
 - 书签渲染：`renderBookmarks()` —— 按 `sortOrder` 排序；空状态渲染
   “添加第一个书签 / 从浏览器导入”行动按钮；每条渲染为 `.bookmark-cell`
   （`<a>` 导航 + 兄弟删除按钮，避免 `<button>` 嵌套 `<a>` 的无效 HTML；`draggable`
@@ -346,7 +353,9 @@ Node 导出：`Storage` 与全部共享纯函数、`DEFAULT_SETTINGS`、`SUPPORT
   `https://<domain>/favicon.ico`，再失败显示标题首字符；末尾可选“+ 添加”磁贴
   （`showQuickAdd`）；悬浮删除给 5 秒 Toast 撤销；接拖拽排序。
 - 分类渲染：`renderCategories()` —— 卡片含折叠头与链接列表，折叠态持久化
-  （`collapsed`）；同样有空状态与拖拽。
+  （`collapsed`）；同样有空状态与拖拽。2.1.0 起卡片头改为文字行
+  （`.category-icon` + `.category-title` + `.category-count` + `.category-toggle`），
+  链接改为纯文字列表 `.category-link`（不再用图标磁贴），主网格按原型 4 列排布。
 - 通用拖拽：`attachDrag(container, reorderFn)` —— HTML5 DnD，容器静态只绑一次；
   落空按坐标最近中心推导插入索引；**持久化成功后才移动 DOM**（失败保序），
   且用 DOM 移动代替整池重渲染，避免大量 favicon 重载闪烁。
@@ -405,8 +414,14 @@ http/https/chrome-extension 协议白名单放行；任何失败返回空串（�
 - `resolveWwoWeather(code, weatherDesc)`：码表优先 → 描述映射 → 兜底“未知天气”，
   **任何路径都不向中文界面泄漏英文**，且结构异常不抛错。
 - `WMO_CODE_MAP` + `mapWmoCode`：Open-Meteo 的 WMO 码是另一套体系，单独维护。
-- `CACHE_DURATION` 30 分钟；`CACHE_VERSION = 7`（缓存结构版本，改结构需递增）。
-  `isValidWeatherCache` 在恢复缓存前校验版本与关键字段形状，旧结构直接丢弃重建（ADV-03）。
+- `CACHE_DURATION` 30 分钟；`CACHE_VERSION = 8`（缓存结构版本，改结构需递增；
+  2.1.0 因新增 `facts` 指标块由 7 升到 8）。
+  `isValidWeatherCache` 在恢复缓存前校验版本与关键字段形状（含 `facts` 形状），
+  旧结构直接丢弃重建（ADV-03）。
+- `WIND_DIRS_ZH` + `windDirZh(deg)`：风向角度 → 八方位中文（非法角度返回空串）。
+- `buildFacts(current)`：把体感温度 / 湿度 / 风向风速 / 气压收敛成浮层指标行；
+  只用有效数值，缺字段整段省略，**不产出 NaN**（内部 `num()` 挡掉 `null`/`''`，
+  否则 `Number(null)` 会变 0）。
 
 #### Weather 对象
 
@@ -419,7 +434,7 @@ http/https/chrome-extension 协议白名单放行；任何失败返回空串（�
   `detectLocation()`；`resolveCoords()`（优先选中城市坐标，其次定位坐标）。
 - 主源 `fetchWeather(retries=0, onFirstFail)`：`wttr.in/<城市或坐标>?format=j1&lang=zh`，
   5 秒超时（覆盖 body 读取）；首次失败立即回调渲染降级文案；成功后构建
-  {temp, icon, desc, hourly(24 点), todayHigh/Low, timestamp, version, source}。
+  {temp, icon, desc, facts, hourly(24 点), todayHigh/Low, timestamp, version, source}。
 - 24 小时曲线：`parseLocalHour` 从 `localObsDateTime` 取**城市当地小时**（P3-4，
   不能用浏览器本地时间），`buildHourly24` 把 wttr 的 3 小时间隔数据插值成 24 点。
 - 备源 `fetchOpenMeteoWeather()`：仅主源失败后调用，只认经纬度，5s 超时；
@@ -429,13 +444,22 @@ http/https/chrome-extension 协议白名单放行；任何失败返回空串（�
 - `setCity(query)`：切城市清缓存、失败态重置并立即刷新；切回自动定位时重新取坐标。
   入口开启请求代次 `_reqGen`，`refresh` 走 `_refreshWithGen`，迟到的旧城市响应直接丢弃（ADV-04）。
 - 渲染：`render()` 区分“加载中 / 离线 / 失败重试 / 无位置引导选城市 / 正常”五态；
-  `renderHoverCard()` 输出 24 小时降水概率柱状悬浮卡（含城市、今日温差、更新时间），
-  对缓存字段与主 render 同一套转义，降水值收敛到 0–100（ADV-02）；
-  `bindHoverEvents()` 静态容器只绑一次监听（防 render 累积泄漏），卡片节点每次重绑。
+  正常态输出**胶囊**结构 `.weather-icon` + `.weather-city`（`getShortCity()`，
+  未选城市/匹配不到时整段省略）+ `.dot` + `.weather-temp` + `.weather-desc`。
+  `renderHoverCard()` 输出浮层：`.whc-city` / `.whc-temp`（大温度 + 体感）/
+  `.whc-big-icon` / `.whc-facts` 指标行 / `.whc-grid`（**12 根** `.whc-col` 逐时柱，
+  `title` 带小时与降雨概率）/ `.whc-legend`（含“更新于”）/ `.whc-src`（主备两枚
+  `.whc-badge`）。对缓存字段与主 render 同一套转义，降水值收敛到 0–100（ADV-02）。
+  - 柱数口径：界面收敛 12 根（一屏读完），`hourly` 数据仍保留 24 条供后续使用，
+    E2E 同时断言两者。
+- `bindHoverEvents()` 静态容器只绑一次监听（防 render 累积泄漏），卡片节点每次重绑。
+  **2.1.0 起去掉 `mouseenter/mouseleave`，只保留点击 / `Enter`·`Space` / 点空白 / `Esc`**：
+  胶囊很窄，悬停展开会与“点一下展开”互相打架（点开即被 mouseleave 收起），
+  触屏、键盘与鼠标现在共用同一处状态（AGENTS.md 已列为不许回退的约束）。
 
 Node 导出：`Weather`、两套码表、`resolveWwoWeather`、`buildHourly24`、
 `buildOpenMeteoCache`、`buildHourlyFromOpenMeteo`、`mapWmoCode`、`loadCityData`、
-`findCityByQuery`、`getProvinces()`。
+`findCityByQuery`、`getProvinces()`、`buildFacts`、`windDirZh`。
 
 ---
 
@@ -445,8 +469,9 @@ Node 导出：`Weather`、两套码表、`resolveWwoWeather`、`buildHourly24`�
   晨雾白，`themeHint:'light'`，每套含 CSS 背景与一组 `--accent-*` 颜色）
   + 2 个在线源（Bing 每日壁纸 `apiType:'bing'`、随机壁纸 `'random'`，`themeHint:null`）。
 - 在线壁纸工具：`fetchBingUrl()`（cn.bing.com 的 HPImageArchive 接口，校验
-  `urlbase` 形态，拼 1920×1080，8s 超时）、`getRandomWallpaperUrl()`
-  （bing.biturl.top，时间戳防缓存）、`fetchApiWallpaperUrl(type)`。
+  `urlbase` 形态，拼 1920×1080，8s 超时）——2.1.0 起返回 `{ url, credit }`，
+  `credit` 取 `images[0].copyright`（如「美国·古拉悬崖 © 某某」）；
+  `getRandomWallpaperUrl()`（bing.biturl.top，时间戳防缓存）、`fetchApiWallpaperUrl(type)`。
 - 明度采样：`sampleImageBrightness(url)` 优先用 `<img crossOrigin="anonymous">` +
   8×8 canvas 计算平均相对亮度（Canvas 的跨域规则只认服务端 CORS 头，不认扩展
   host_permissions；随机壁纸源不在 manifest 白名单，这正是 ADV-05 的修复点），
@@ -457,7 +482,11 @@ Node 导出：`Weather`、两套码表、`resolveWwoWeather`、`buildHourly24`�
   - `init / apply(index) / set / next / refreshCurrent / getWallpapers`；
   - `apply` 用**代次标记 `_applyGen`** 防止在线壁纸的慢响应覆盖用户后发的切换
     （每个 await 后校验代次，过期结果直接丢弃且不写缓存）；
-  - Bing 壁纸按日缓存于 `settings.wallpaperApiCache`（`{url,type,date}`）；
+  - Bing 壁纸按日缓存于 `settings.wallpaperApiCache`（`{url,type,date}`，2.1.0 起
+    可选带 `credit`）；`normalizeDailyCache()` **只在有合法署名时才写 `credit` 键**
+    （长度 ≤160 且无控制字符），无署名的旧缓存保持原形状，向后兼容；
+  - `setWallCredit(text)` 把署名渲染到 `#wallCredit`（`.wall-credit.visible`），
+    照片档显示、预设渐变档隐藏——署名是 Bing 的使用条款要求，不能丢；
     API 失败回退第一张预设；
   - `setWallpaperTone` 把壁纸明暗写到 `<html data-wallpaper-tone>`，保底层强度
     交给 CSS 按“主题 × 壁纸明度”决定；
@@ -481,11 +510,17 @@ Node 导出：`brightnessToThemeHint`、`WALLPAPERS`。
   因此年度数据跟随运行时数据源自动更新，**不依赖每年升级 lunar**；记录 `holidaySource`
   （network/cache/partial/fallback）供浮层标注“数据可能不完整”。
 - 月历：`getMonthMatrix(y,m)` 生成含前后月补位的 7 列格子；`getLunarLabel`
-  （节气优先，初一显示“X月”，否则农历日）、`getGanZhiHeader`（干支年月）；
-  `render()` 输出完整悬浮卡（导航、倒计时、周末/今日/放假/调休样式与徽标）。
+  （节气优先，初一显示“X月”，否则农历日）。
+- 2.1.0 把原 `getGanZhiHeader` 拆成两个更容易复用的标题函数：
+  `getMonthTitle(y,m)`（「2026 年 11 月」）与 `getLunarTitle(y,m)`
+  （「丙午年 · 十月小」，含大小月标记），另有 `getCountdownText()` 供日期胶囊与
+  浮层共用同一句倒计时。
+- `render()` 输出完整悬浮卡：`.dhc-header`（`.dhc-month` + `.dhc-lunar` + `.dhc-navs`）、
+  `.dhc-week-row`、`.dhc-grid`、`.dhc-foot`（两条 `.dhc-legend` + `.dhc-countdown`）；
+  周末/今日/放假/调休用单元格样式区分，`.dhc-badge` 改为**数字内联的「休/班」小标签**。
 - 节假日倒计时：`getNextHoliday()` 找今天或最近的未来放假日。
 - 交互：`prevMonth/nextMonth/resetView`、`bindCardEvents`（事件委托 `data-action`）、
-  `rerenderCard`。时钟挂载在 main.js 的 `startClock` 中，跨午夜自动重建。
+  `rerenderCard`。跨天重建由 main.js 的 `startDatePill` 驱动（原 `startClock` 已移除）。
 
 ---
 
@@ -493,7 +528,12 @@ Node 导出：`brightnessToThemeHint`、`WALLPAPERS`。
 
 全局 `Todos`：`init/render/add/toggleForm/showFeedback`。
 
-- 渲染输入表单（`showForm` 开关）+ 按 `createdAt` 升序的列表；空态文案。
+- 渲染输入表单（`showForm` 开关）+ 按 `createdAt` 升序的列表；空态为
+  「今天没有待办」+ `.todo-empty-add`「+ 添加第一条」按钮（点按钮直接开表单）。
+- 卡片头部有计数 `#todoCount`：`已完成 / 总数`，无待办时显示「0 项」；
+  页脚 `.todo-foot` 固定「已完成 x 项 · 仅保存在本机」。
+- 卡片为**定高**（236px）内部滚动，不再随分类卡长高——2.1.0 按原型口径接线，
+  E2E `[34]` 断言“定高不随分类长高”。
 - 提交只认回车（`isCommitEnter`，防输入法误提交）与按钮；`_saving` 防重复提交，
   失败有内联错误反馈。
 - 勾选走 `Storage.toggleTodo`；删除前留存整条数据，删除后弹 5 秒可撤销 Toast，
@@ -554,7 +594,7 @@ getName/isWork` 生成节假日兜底（详见 `src/THIRD-PARTY.md`）。lunar �
 ```json
 {
   "wallpaperName": "深邃星空",
-  "wallpaperApiCache": null,
+  "wallpaperApiCache": null,  // 每日一图缓存 {v,date,url,(credit)}，credit 为 Bing 署名，可缺省
   "searchEngine": "百度",
   "theme": "dark",          // dark | light | auto（跟随壁纸）
   "weatherCity": "",       // cities.json 中的拼音 query；'' 表示自动定位
@@ -589,29 +629,38 @@ getName/isWork` 生成节假日兜底（详见 `src/THIRD-PARTY.md`）。lunar �
 
 - 背景：`#bgLayer`（壁纸由 JS 内联写入此元素）+ `.bg-glow`；可读性保底层是
   `.bg-layer::after`（CSS 按主题/壁纸明度调节）。
-- `.top-bar`：`#datetime`（时钟+农历卡，`data-component="calendar"`）与
-  `#weatherWidget`（`data-component="weather"`）。
-- 主体：标题组、搜索框（引擎按钮+输入框+清除键，`data-component="search"`）、
-  快捷书签网格 `#bookmarkContainer`、主网格（分类 `#categoryContainer` + 待办卡）。
-- 底栏：壁纸按钮（`data-component="wallpaper"`）+ 设置按钮。
+- `.top-bar`：双胶囊——`#datetime`（内嵌 `button.datetime-trigger` + `.datetime-text`，
+  点开农历卡，`data-component="calendar"`）与 `#weatherWidget`（点开天气浮层，
+  `data-component="weather"`）。
+- 主体：标题组、搜索框（引擎按钮 `#engineBtn` + 输入框 + 清除键 + `#searchHint` 提示行
+  + `#engineMenu` 下拉，`data-component="search"`）、快捷书签网格 `#bookmarkContainer`、
+  主网格 `.main-grid`（分类 `#categoryContainer` + 待办卡）。
+- 底栏：壁纸按钮（`data-component="wallpaper"`）+ 设置按钮，整体右对齐；
+  `#wallCredit` 是壁纸署名条（绝对定位在右下，仅照片档可见）。
 - `#toastRoot` 与 `#settingsOverlay`（4 tab 的设置对话框，含完整 ARIA：
   `role="dialog" aria-modal`、tablist/tab/tabpanel）。
 - `<head>` 内联一小段 CSS 用于初始隐藏 Chrome 注入的自定义按钮（JS 再持续清理）。
 
 ### 7.2 样式体系
 
-- 两个样式表：`main.css`（主页，约 1800 行）与 `settings.css`（设置面板）。
-- 分区（main.css）：浅色主题、背景层、容器、顶部状态栏、主体/标题、搜索框、
-  快捷书签、分类导航、双栏布局、待办、响应式、滚动条、toast、空状态、
-  天气 24h 悬浮卡、农历日历悬浮卡等。
-- **主题机制**：`<html data-theme="dark|light">` + `<html data-wallpaper-tone=
-  "dark|light">` 两个属性驱动；颜色全部走 CSS 自定义属性
-  （`:root` 默认深色，`[data-theme="light"]` 覆盖文字/玻璃/阴影变量；
-  `--accent-*` 由壁纸在运行时写入）。
+- 两个样式表：`main.css`（主页，约 3300 行）与 `settings.css`（设置面板）。
+- **三层叠加**（改样式前先确认命中哪一层，后层覆盖前层）：
+  1. 基础层：布局与组件的最初定义；
+  2. 方向 C 品牌视觉层：Graphite & Cobalt 令牌落地；
+  3. **原型 v1 对齐层（2.1.0，追加在 `main.css` 末尾）**：按
+     `docs/prototype/ui-ux-prototype.html` 收敛尺寸与结构——胶囊、54px 搜索框、
+     `.main-grid`(max 1040 / `1fr 286px`)、4 列分类、定高 236px 待办、
+     `.dhc-*` 日历浮层、`.whc-*` 天气浮层、`.wall-credit`、两档窄屏断点。
+     新尺寸一律写进这一层，不要再改基础层里同名的值（否则三份规则互相打架）。
+- **主题机制**：只有深色。`<html data-theme="dark">` + `<html data-wallpaper-tone=
+  "dark|light">` 两个属性驱动；颜色全部走 CSS 自定义属性（`--surface-*`、`--hairline*`、
+  `--brand*`、`--text-*`、`--radius-*`、`--shadow-*`；`--accent-*` 由壁纸在运行时写入）。
+  **2.0.0 已下线浅色，不得重新引入**（单测与 E2E `[47]` 会扫描样式表防止浅色规则回流）。
 - 对比度按 WCAG AA 设计，以真实截图像素采样验证（正文 4.5:1、大字 3:1），
   不能用断言 `data-theme` 属性值代替。
-- 响应式断点：768px（移动端单列等）与 769–1024px（平板）；CSS 能力门槛刻意压在
-  Chrome 88（用 `aspect-ratio`，不用 `:has()`）。
+- 响应式断点：原型层两档 **1180px**（主网格降单列/收窄）与 **760px**（移动端单列、
+  分类降 2 列）；基础层另有 768px 与 769–1024px 的历史断点，改窄屏表现时优先看原型层。
+  CSS 能力门槛刻意压在 Chrome 88（用 `aspect-ratio`，不用 `:has()`）。
 
 ---
 
@@ -667,6 +716,7 @@ flowchart LR
 `apply(index)` → 写 accent CSS 变量与 `data-wallpaper-tone` → 预设直接上渐变；
 在线源查当日缓存/发请求（代次校验贯穿每个 await）→ 上背景图 → 非阻塞采样图片明度
 回写 tone；`theme=auto` 时据 tone 切 `data-theme`，手动主题不跟随。
+照片档同时把 Bing 署名写进 `#wallCredit`（`setWallCredit`），切回预设档即隐藏。
 
 ### 9.3 组件生命周期与网络隐私
 
@@ -725,7 +775,7 @@ require，`main.js` 等带受控的顶层副作用。注意 `css-hygiene.test.js
 它只能证明"没写被禁的写法"，证明不了"过渡真的生效"——效果类改动仍必须在真实浏览器里
 读 computed 值（本项目在 `transition: a, b, c 0.35s` 上翻过车）。
 
-### 11.2 E2E（`tests/e2e/nav-e2e.js`，Playwright，四模式 398 项断言）
+### 11.2 E2E（`tests/e2e/nav-e2e.js`，Playwright，四模式）
 
 | 模式 | 命令 | 环境 | 价值 |
 |------|------|------|------|
@@ -734,11 +784,15 @@ require，`main.js` 等带受控的顶层副作用。注意 `css-hygiene.test.js
 | file:// | 全量时附带 | 直接开 `file://…/src/index.html` | 验证 US-20 离线行为（cities.json 等 fetch 受限时的降级） |
 | extension | `node tests/e2e/nav-e2e.js --extension` | Chrome for Testing + 有头 GUI，`--load-extension` 真实加载，验证 newtab 覆盖/CSP/chrome.storage | 需本机 GUI 与 CFT（`CFT_PATH`） |
 
-- `runCore(page, label)` 是四模式共享的断言主体，编号 `[1]…[45]`：渲染、存储隔离、
+- `runCore(page, label)` 是四模式共享的断言主体，编号 `[1]…[49]`：渲染、存储隔离、
   主题、组件开关、键盘排序、导入导出与备份、恶意 id/协议拒绝、日历、快捷键、
   天气缓存/降级/容灾/语种、**网络白名单全量比对 [12]**、控制台零错误、超时生效、
   无障碍（名称/dialog/tab/焦点）、监听器生命周期、跨标签同步、壁纸慢响应代次、
-  **随机壁纸明度采样**、输入法回车、网址直跳对照、空状态、像素级对比度等。
+  **随机壁纸明度采样**、输入法回车、网址直跳对照、空状态、像素级对比度等；
+  `[49]` 是 2.1.0 的界面契约段（日期胶囊/天气胶囊、日历与天气浮层结构、
+  引擎下拉菜单、搜索提示行、设置主按钮钴蓝实底）。
+- 单次 core 断数量：preview **162** 项、shim **165** 项（shim 多 3 项存储后端时序），
+  两个模式都必须 `FAIL=0`。改界面时同步改这里，别让断言与原型脱钩。
 - 第三方响应通过 `page.route` 按 `weatherMode/openMeteoMode/ipLocateMode/
   holidayMode/bingDelayMs` 开关 mock 成功/失败/挂起。
 - **内嵌静态服务器必须按扩展名给对 Content-Type**：历史上一律 `text/html` 导致

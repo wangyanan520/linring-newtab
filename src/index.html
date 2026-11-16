@@ -29,10 +29,20 @@
 <body>
   <div class="bg-layer" id="bgLayer"></div>
   <div class="bg-glow"></div>
+  <!-- 2.1.0：Bing 每日一图的版权署名（照片来源 / 摄影者），只在照片壁纸下出现 -->
+  <div class="wall-credit" id="wallCredit" aria-hidden="true"></div>
 
   <div class="container" id="app">
     <header class="top-bar">
-      <div class="datetime" id="datetime" data-component="calendar"></div>
+      <!-- 2.1.0：日期胶囊与天气胶囊按原型 v1 重排——
+           日期 = 公历 + 星期 + 农历 + 最近节假日倒计时（时间不再上屏，新标签页打开时用户已知时刻）；
+           天气 = 图标 + 城市 + 温度 + 天气。两者的浮层依旧挂在同一节点内部，
+           方便「点击/悬停 → 展开」共用一套定位与关闭逻辑。 -->
+      <div class="datetime" id="datetime" data-component="calendar">
+        <button class="pill datetime-trigger" type="button" aria-haspopup="dialog" aria-expanded="false">
+          <span class="datetime-text"><span class="pill-loading">加载日期…</span></span>
+        </button>
+      </div>
       <div class="weather-widget" id="weatherWidget" data-component="weather">
         <span class="weather-loading">获取天气中...</span>
       </div>
@@ -46,7 +56,13 @@
 
       <div class="search-box" data-component="search">
         <div class="search-inner">
-          <button class="engine-btn" id="engineBtn" title="切换搜索引擎" aria-label="切换搜索引擎">百度</button>
+          <button class="engine-btn" id="engineBtn" title="切换搜索引擎" aria-label="切换搜索引擎"
+                  aria-haspopup="listbox" aria-expanded="false">
+            <span class="engine-label">百度</span>
+            <svg class="engine-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" aria-hidden="true">
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </button>
           <span class="search-divider" aria-hidden="true"></span>
           <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <circle cx="11" cy="11" r="8" />
@@ -59,6 +75,10 @@
             </svg>
           </button>
         </div>
+        <!-- 2.1.0：搜索框下方一行常驻提示。默认给快捷键速查，输入域名时整行换成
+             「直接访问 xxx」——UX-03 此前只做后台判定，用户看不到"回车会跳站"这件事。 -->
+        <div class="search-hint" id="searchHint"></div>
+        <div class="engine-menu" id="engineMenu" role="listbox" aria-label="选择搜索引擎"></div>
       </div>
 
       <section class="quick-links" data-component="bookmarks">
@@ -70,6 +90,7 @@
         <aside class="todo-card" data-component="todos">
           <div class="todo-header">
             <span class="todo-title">待办</span>
+            <span class="todo-count" id="todoCount"></span>
             <button class="todo-add-btn" id="todoAddBtn">+ 添加</button>
           </div>
           <div id="todoContent"></div>

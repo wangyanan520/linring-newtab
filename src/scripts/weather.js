@@ -160,14 +160,15 @@ function resolveWwoWeather(code, weatherDesc) {
 }
 
 const CACHE_DURATION = 30 * 60 * 1000;
-const CACHE_VERSION = 7;
+const CACHE_VERSION = 8;
 
 /* ---- 备用数据源 Open-Meteo ----
  * 2026-09-15 wttr.in 的 Let's Encrypt 证书过期（valid_to = Sep 15 08:35 GMT），
  * 浏览器侧直接 CERT_HAS_EXPIRED，天气在全新安装的电脑上必然失败。
  * 备用源只在主源失败后启用，且必须用经纬度查询（城市坐标随 cities.json 分发）。 */
 const OPEN_METEO_API = 'https://api.open-meteo.com/v1/forecast';
-const OPEN_METEO_QUERY = 'current=temperature_2m,weather_code'
+const OPEN_METEO_QUERY = 'current=temperature_2m,weather_code,apparent_temperature,'
+  + 'relative_humidity_2m,surface_pressure,wind_speed_10m,wind_direction_10m'
   + '&hourly=temperature_2m,precipitation_probability,weather_code'
   + '&daily=temperature_2m_max,temperature_2m_min'
   + '&timezone=auto&forecast_days=2';
@@ -203,6 +204,40 @@ const WMO_CODE_MAP = {
   96: { icon: '⛈️', text: '雷暴伴冰雹' },
   99: { icon: '⛈️', text: '雷暴伴大冰雹' }
 };
+
+/* 风向：两个数据源都能给角度，统一按 8 方位转中文。
+   不用 wttr.in 的 winddir16Point —— 它是英文缩写（"NNE"），中文界面里属于泄漏原文。 */
+const WIND_DIRS_ZH = ['北', '东北', '东', '东南', '南', '西南', '西', '西北'];
+
+function windDirZh(deg) {
+  const n = Number(deg);
+  if (!Number.isFinite(n)) return '';
+  const idx = Math.round((((n % 360) + 360) % 360) / 45) % 8;
+  return WIND_DIRS_ZH[idx] + '风';
+}
+
+/* 指标行（体感 / 湿度 / 风 / 气压）：缺字段就整段不显示，不做 "—" 占位。
+   两个源的字段并不保证都在（备用源初次回退时历史缓存也没有），
+   显示半行破折号比不显示更让人怀疑数据。 */
+function buildFacts(current) {
+  if (!current || typeof current !== 'object') return null;
+  // Number(null) 是 0、Number('') 也是 0：缺字段会被"补"成 0% 湿度/0 hPa，
+  // 所以先挡掉空值再转数字
+  const num = v => (v == null || v === '' ? NaN : Number(v));
+  const facts = {};
+  const feels = num(current.feelsLike);
+  if (Number.isFinite(feels)) facts.feelsLike = Math.round(feels);
+  const humidity = num(current.humidity);
+  if (Number.isFinite(humidity)) facts.humidity = Math.round(humidity);
+  const wind = num(current.windSpeed);
+  if (Number.isFinite(wind)) {
+    const dir = windDirZh(current.windDeg);
+    facts.wind = `${dir ? dir + ' ' : ''}${Math.round(wind)} km/h`;
+  }
+  const pressure = num(current.pressure);
+  if (Number.isFinite(pressure)) facts.pressure = Math.round(pressure);
+  return Object.keys(facts).length > 0 ? facts : null;
+}
 
 function mapWmoCode(code) {
   return WMO_CODE_MAP[code] || { icon: '🌤️', text: '—' };
@@ -249,6 +284,13 @@ function buildOpenMeteoCache(data) {
     temp: String(Math.round(Number(current.temperature_2m))),
     icon: mapped.icon,
     desc: mapped.text,
+    facts: buildFacts({
+      feelsLike: current.apparent_temperature,
+      humidity: current.relative_humidity_2m,
+      windSpeed: current.wind_speed_10m,
+      windDeg: current.wind_direction_10m,
+      pressure: current.surface_pressure
+    }),
     hourly: buildHourlyFromOpenMeteo(data.hourly, current.time),
     todayHigh: highs.length && Number.isFinite(Number(highs[0])) ? Math.round(Number(highs[0])) : null,
     todayLow: lows.length && Number.isFinite(Number(lows[0])) ? Math.round(Number(lows[0])) : null,
@@ -267,6 +309,13 @@ function isValidWeatherCache(cache) {
   if (cache.version !== CACHE_VERSION) return false;
   if (cache.temp == null || String(cache.temp).trim() === '' || !Number.isFinite(Number(cache.temp))) return false;
   if (typeof cache.icon !== 'string' || typeof cache.desc !== 'string') return false;
+  if (cache.facts != null) {
+    if (typeof cache.facts !== 'object' || Array.isArray(cache.facts)) return false;
+    for (const key of ['feelsLike', 'humidity', 'pressure']) {
+      if (cache.facts[key] != null && !Number.isFinite(Number(cache.facts[key]))) return false;
+    }
+    if (cache.facts.wind != null && typeof cache.facts.wind !== 'string') return false;
+  }
   if (cache.timestamp != null && !Number.isFinite(cache.timestamp)) return false;
   if (cache.hourly != null) {
     if (!Array.isArray(cache.hourly)) return false;
@@ -558,6 +607,13 @@ const Weather = {
           temp: current.temp_C,
           icon: mapped.icon,
           desc: mapped.text,
+          facts: buildFacts({
+            feelsLike: current.FeelsLikeC,
+            humidity: current.humidity,
+            windSpeed: current.windspeedKmph,
+            windDeg: current.winddirDegree,
+            pressure: current.pressure
+          }),
           hourly,
           todayHigh,
           todayLow,
@@ -646,6 +702,8 @@ const Weather = {
     Settings.switchTab('weather');
   },
 
+  /* 胶囊（2.1.0）：图标 + 城市 + 温度 + 天气，等宽数字让温度不随数字跳动。
+     浮层与胶囊同源渲染：cards 只依赖 cache，降级态（无 cache）只出胶囊文案。 */
   render() {
     const el = document.getElementById('weatherWidget');
     if (!el) return;
@@ -679,49 +737,45 @@ const Weather = {
       el.innerHTML = '<span class="weather-loading">获取天气中...</span>';
       return;
     }
-    const display = this.getDisplayCity();
-    const loc = display ? `<span class="weather-sep">|</span><span class="weather-desc">${display}</span>` : '';
+
+    const city = this.getShortCity();
+    const temp = escapeHtml(String(this.cache.temp == null ? '' : this.cache.temp));
+    const desc = escapeHtml(this.cache.desc);
     el.innerHTML = `
       <span class="weather-icon">${escapeHtml(String(this.cache.icon == null ? '' : this.cache.icon))}</span>
-      <span class="weather-temp" role="button" tabindex="0" aria-expanded="false">${escapeHtml(String(this.cache.temp == null ? '' : this.cache.temp))}°C</span>
-      <span class="weather-sep">|</span>
-      <span class="weather-desc">${escapeHtml(this.cache.desc)}</span>
-      ${loc}
+      ${city ? `<span class="weather-city">${escapeHtml(city)}</span><span class="dot"></span>` : ''}
+      <span class="weather-temp" role="button" tabindex="0" aria-expanded="false">${temp}°</span>
+      <span class="dot"></span>
+      <span class="weather-desc">${desc}</span>
       ${this.renderHoverCard()}
     `;
     this.bindHoverEvents(el);
   },
 
+  /* 胶囊里的城市只要市名（"杭州"）；"省 · 市" 留给浮层，避免胶囊被塞满 */
+  getShortCity() {
+    if (!this.selectedCityQuery) return '';
+    const match = findCityByQuery(this.selectedCityQuery);
+    return match ? match.city.name : '';
+  },
+
+  /* 点击/键盘开合浮层。悬停开合在 2.1.0 去掉：
+     胶囊很窄，鼠标划过就会弹层，与"点一下展开"互相打架（点开即被 mouseleave 收起）。
+     触屏、键盘与鼠标因此走同一条路径，只有一处状态。 */
   bindHoverEvents(el) {
     const card = el.querySelector('.weather-hover-card');
     if (!card) return;
-    // #weatherWidget 是静态元素，但 render() 会反复重建它的 innerHTML。
-    // 绑定在 el 自身的监听器必须只绑一次：否则每次 render 净增 2 个，且闭包会一直持有
-    // 已被移除的旧卡片节点使其无法回收（P2-11：实测 16 次 render 累积到 34 个监听器）
-    // UI 审查 P2：温度文字是浮层的触发器，补 role/tabindex/aria-expanded；
-    // 触屏无 hover、键盘也无入口，因此补 click 与 Enter/Space 切换（与日历浮层一致）。
+
     const setExpanded = (open) => {
-      clearTimeout(this._hideTimer);
       el.classList.toggle('show-weather-card', open);
       const t = el.querySelector('.weather-temp');
       if (t) t.setAttribute('aria-expanded', String(open));
     };
+
     if (!this._hoverBound) {
       this._hoverBound = true;
-      this._hideTimer = null;
-      this._showCard = () => setExpanded(true);
-      this._hideCard = () => {
-        this._hideTimer = setTimeout(() => setExpanded(false), 200);
-      };
-      // UI 审查 P2：触屏点击会合成 mouseenter/mouseleave，若绑定悬停逻辑，
-      // 刚点开的卡片会被 200ms 后的 mouseleave 定时器立刻收起。只在真有 hover
-      // 能力的设备上注册悬停开合，其余（触屏/键盘）统一走 show-weather-card。
-      if (window.matchMedia('(hover: hover)').matches) {
-        el.addEventListener('mouseenter', this._showCard);
-        el.addEventListener('mouseleave', this._hideCard);
-      }
       el.addEventListener('click', (e) => {
-        // 触屏没有 hover：点天气区域即可切换；卡片内部与重试/选城市按钮不切换
+        // 卡片内部与重试/选城市按钮不切换
         if (e.target.closest('.weather-hover-card')) return;
         if (e.target.closest('button, a, select')) return;
         setExpanded(!el.classList.contains('show-weather-card'));
@@ -733,65 +787,79 @@ const Weather = {
           setExpanded(!el.classList.contains('show-weather-card'));
         }
       });
-      // 触屏点击空白处收起（鼠标用户由 mouseleave 负责）
       document.addEventListener('click', (e) => {
         if (!el.contains(e.target)) setExpanded(false);
       });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && el.classList.contains('show-weather-card')) setExpanded(false);
+      });
     }
+
     // render 会重置模板里的 aria-expanded，需按当前展示状态回填
     const t = el.querySelector('.weather-temp');
     if (t) t.setAttribute('aria-expanded', String(el.classList.contains('show-weather-card')));
-    // 悬停卡片每次 render 都是新节点，需重新绑定；旧节点随 innerHTML 重建被回收
-    card.addEventListener('mouseenter', this._showCard);
-    card.addEventListener('mouseleave', this._hideCard);
   },
 
   renderHoverCard() {
-    const hourly = this.cache && this.cache.hourly;
-    if (!hourly || hourly.length === 0) return '';
+    const hourly = (this.cache && this.cache.hourly) || [];
+    const display = this.getDisplayCity() || this.getShortCity();
+    const facts = (this.cache && this.cache.facts) || null;
 
-    const display = this.getDisplayCity();
-    const high = this.cache.todayHigh;
-    const low = this.cache.todayLow;
-    const range = (high != null && low != null) ? `今日 ${low}° ~ ${high}°` : '';
-    // PBI-18：有缓存时标注数据时间。ADV-02/03：非法时间戳不得产出 "NaN:NaN"
     let updated = '';
     if (Number.isFinite(Number(this.cache.timestamp))) {
       const d = new Date(Number(this.cache.timestamp));
       updated = `更新于 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
     }
-    const header = [display, range, updated].filter(Boolean).map(escapeHtml).join(' &middot; ');
 
-    const bars = hourly.map((h, idx) => {
-      const showLabel = idx === 0 || idx % 3 === 0;
-      const showIcon = idx === 0 || idx % 3 === 0;
-      // ADV-02：缓存可经备份导入注入，字段必须先收敛/转义再拼 innerHTML。
-      // 降水值限定在 0-100，避免非数值产出 NaN 的 height 破坏布局。
+    // 逐时柱：原型给 12 根（一屏能读完的窗口），数据仍保留 24 根供后续使用。
+    // 柱高是降雨概率的唯一编码：0% 留 8% 基线，100% 接近满高。
+    const bars = hourly.slice(0, 12).map((h, idx) => {
       const rain = Math.max(0, Math.min(100, Number(h.rain) || 0));
-      // 柱高是降雨概率的唯一编码：0% 保留 8% 的可见基线，100% 接近满高。
-      // 此前高度与内联 opacity 同时编码降雨量（0% 时 6% 高 + 0.35 透明），
-      // 低概率时段几乎看不见，也无法用高度做横向比较；CSS 只能用
-      // opacity:1 !important 与内联样式对打。透明度不再写入，颜色区分由
-      // .whc-now / 普通柱两个 CSS 档位负责。
       const heightPct = 8 + Math.round(rain * 0.92);
       const hourLabel = idx === 0 ? '现在' : String(h.hour).padStart(2, '0');
       const nowClass = idx === 0 ? ' whc-now' : '';
       return `
-        <div class="whc-col${nowClass}">
-          <div class="whc-icon">${showIcon ? escapeHtml(h.icon) : ''}</div>
-          <div class="whc-temp">${showIcon ? escapeHtml(String(h.temp)) + '°' : ''}</div>
-          <div class="whc-bar-wrap">
-            <div class="whc-bar" style="height:${heightPct}%"></div>
-          </div>
-          <div class="whc-hour">${showLabel ? escapeHtml(hourLabel) : ''}</div>
-        </div>
-      `;
+        <div class="whc-col${nowClass}" title="${escapeHtml(String(hourLabel))} · 降雨概率 ${rain}%">
+          <div class="whc-bar-wrap"><div class="whc-bar" style="height:${heightPct}%"></div></div>
+          <div class="whc-hour">${escapeHtml(hourLabel)}</div>
+        </div>`;
     }).join('');
 
+    const factsHtml = facts ? `
+      <div class="whc-facts">
+        ${facts.feelsLike != null ? `<span>体感 <b>${escapeHtml(String(facts.feelsLike))}°</b></span>` : ''}
+        ${facts.humidity != null ? `<span>湿度 <b>${escapeHtml(String(facts.humidity))}%</b></span>` : ''}
+        ${facts.wind ? `<span><b>${escapeHtml(facts.wind)}</b></span>` : ''}
+        ${facts.pressure != null ? `<span>气压 <b>${escapeHtml(String(facts.pressure))} hPa</b></span>` : ''}
+      </div>` : '';
+
+    const isPrimary = this.cache.source !== 'open-meteo';
+    const srcHtml = `
+      <div class="whc-src">
+        数据源
+        <span class="whc-badge">${isPrimary ? '<i class="led"></i>' : ''}wttr.in（主${isPrimary ? '' : '，未使用'}）</span>
+        <span class="whc-badge">${isPrimary ? '' : '<i class="led"></i>'}Open-Meteo（备${isPrimary ? '，未使用' : ''}）</span>
+      </div>`;
+
     return `
-      <div class="weather-hover-card" role="tooltip">
-        <div class="whc-header">${header}</div>
-        <div class="whc-grid">${bars}</div>
+      <div class="weather-hover-card" role="dialog" aria-label="天气">
+        <div class="whc-header">
+          <div>
+            <div class="whc-city">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+              </svg>
+              ${escapeHtml(display)}
+            </div>
+            <p class="whc-temp">${escapeHtml(String(this.cache.temp == null ? '' : this.cache.temp))}°${facts && facts.feelsLike != null ? `<span>体感 ${escapeHtml(String(facts.feelsLike))}°</span>` : ''}</p>
+          </div>
+          <span class="whc-big-icon">${escapeHtml(String(this.cache.icon == null ? '' : this.cache.icon))}</span>
+        </div>
+        ${factsHtml}
+        ${bars ? `<div class="whc-grid">${bars}</div>
+        <div class="whc-legend"><span class="k"></span>柱高 = 降雨概率，当前小时为钴蓝实心
+          ${updated ? `<span class="whc-updated">${escapeHtml(updated)}</span>` : ''}</div>` : ''}
+        ${srcHtml}
       </div>
     `;
   }
@@ -809,6 +877,8 @@ if (typeof module !== 'undefined' && module.exports) {
     buildHourlyFromOpenMeteo,
     buildOpenMeteoCache,
     buildHourly24,
+    buildFacts,
+    windDirZh,
     loadCityData,
     findCityByQuery,
     getProvinces: () => WEATHER_PROVINCES

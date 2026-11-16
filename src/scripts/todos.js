@@ -25,7 +25,7 @@ const Todos = {
     ` : '';
 
     const todoHtml = todos.length === 0
-      ? '<div class="todo-empty">还没有待办事项</div>'
+      ? `<div class="todo-empty">今天没有待办<div><button type="button" class="todo-empty-add">+ 添加第一条</button></div></div>`
       : todos.map(t => `
         <div class="todo-item" data-id="${escapeAttr(t.id)}">
           <!-- UI 审查：原勾选框无标签、删除按钮无名称，读屏只能读到"复选框""乘号"；
@@ -38,7 +38,27 @@ const Todos = {
         </div>
       `).join('');
 
-    container.innerHTML = formHtml + `<div class="todo-list">${todoHtml}</div>`;
+    // 2.1.0：卡片头部给「已完成 / 总数」，底部给一行说明。
+    // 计数是待办卡最常被扫的信息，藏在列表里要数一遍才能知道还剩多少。
+    const done = todos.filter(t => t.done).length;
+    const countEl = document.getElementById('todoCount');
+    if (countEl) countEl.textContent = todos.length ? `${done} / ${todos.length}` : '0 项';
+
+    const footHtml = todos.length
+      ? `<div class="todo-foot">已完成 ${done} 项 · 仅保存在本机</div>`
+      : '';
+
+    container.innerHTML = formHtml
+      + (todos.length ? `<div class="todo-list">${todoHtml}</div>` : todoHtml)
+      + footHtml;
+
+    const emptyAdd = container.querySelector('.todo-empty-add');
+    if (emptyAdd) {
+      emptyAdd.addEventListener('click', () => {
+        this.showForm = true;
+        this.render();
+      });
+    }
 
     if (this.showForm) {
       const input = document.getElementById('todoInput');

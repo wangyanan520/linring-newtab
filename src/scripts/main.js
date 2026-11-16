@@ -86,10 +86,12 @@ const COMPONENTS = [
   {
     id: 'calendar', title: '农历日历',
     init: async () => {
-      // 时钟不依赖节假日网络数据：先启动时钟（startClock 每秒自检 Calendar.loaded，
-      // 数据到位后自动挂载农历浮层），否则慢网络下时间区域会长时间空白
-      App.startClock();
+      // 胶囊不依赖节假日网络数据：先渲染公历与星期（农历/倒计时等
+      // Calendar.loaded 之后由下一次 tick 补上），否则慢网络下顶部会长时间空白
+      App.startDatePill();
       if (typeof Calendar !== 'undefined' && !Calendar.loaded) await Calendar.init();
+      // 节假日数据到位后立刻补一次农历与倒计时：否则要等 30s 的 tick 才上屏
+      App.refreshDatePill();
     }
   },
   { id: 'weather', title: '天气', init: () => Weather.init(), onShow: () => Weather.startRefresh(), onHide: () => Weather.stopRefresh() },
@@ -113,6 +115,8 @@ const App = {
       if (idx !== -1) this.currentEngine = idx;
     }
     this.updateEngineBtn();
+    this.renderEngineMenu();
+    this.updateSearchHint();
     this.applySettings(settings);
     this.bindEvents();
     this.bindCrossTabSync(); // P3-2
@@ -245,7 +249,22 @@ const App = {
       searchInput.focus();
     });
 
-    engineBtn.addEventListener('click', () => this.cycleEngine());
+    // 2.1.0：引擎按钮从"点一下轮换"改为下拉菜单——轮换看不见可选项，
+    // 想切到第三个引擎必须先猜顺序；菜单把三个候选与当前选中态一次摆出来。
+    engineBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.toggleEngineMenu();
+    });
+    document.addEventListener('click', (e) => {
+      const menu = document.getElementById('engineMenu');
+      if (!menu || !menu.classList.contains('open')) return;
+      if (menu.contains(e.target) || e.target === engineBtn || engineBtn.contains(e.target)) return;
+      this.closeEngineMenu();
+    });
+
+    // UX-03 的可见化：输入域名时提示行换成「直接访问 xxx」，
+    // 否则用户只知道回车搜索，不知道回车会跳到站点
+    searchInput.addEventListener('input', () => this.updateSearchHint());
 
     document.getElementById('wallpaperBtn').addEventListener('click', async () => {
       await Wallpaper.next();
@@ -281,8 +300,13 @@ const App = {
       } else if (e.key === '?' && !isTyping && !settingsOpen) {
         e.preventDefault();
         if (typeof Toast !== 'undefined') {
-          Toast.show('快捷键：/ 搜索 · 1-9 打开书签 · Esc 取消', { duration: 4000 });
+          Toast.show('快捷键：/ 搜索 · 1-9 打开书签 · ⌘K 设置 · Esc 取消', { duration: 4000 });
         }
+      } else if ((e.metaKey || e.ctrlKey) && String(e.key).toLowerCase() === 'k') {
+        // 提示行承诺了 ⌘K，就必须真的能用：全局拦截（含输入态），
+        // 设置面板已打开时不重复打开，改为把焦点送回面板
+        e.preventDefault();
+        if (!settingsOpen && typeof Settings !== 'undefined') Settings.open();
       }
     });
 
@@ -292,15 +316,86 @@ const App = {
     }
   },
 
-  cycleEngine() {
-    this.currentEngine = (this.currentEngine + 1) % SEARCH_ENGINES.length;
+  /* 引擎下拉：候选项由 SEARCH_ENGINES 生成，选中态用 aria-checked 表达，
+     与其余浮层保持"同一时刻只开一个"的约定（打开自己的时候顺手收起别的） */
+  renderEngineMenu() {
+    const menu = document.getElementById('engineMenu');
+    if (!menu) return;
+    menu.innerHTML = SEARCH_ENGINES.map((engine, idx) => `
+      <button type="button" role="option" data-engine="${escapeAttr(engine.name)}"
+              aria-checked="${idx === this.currentEngine}">
+        <span>${escapeHtml(engine.name)}</span>
+        <svg class="engine-check" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.4" width="14" height="14" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
+      </button>`).join('');
+    menu.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.setEngine(btn.dataset.engine);
+        this.closeEngineMenu();
+      });
+    });
+  },
+
+  toggleEngineMenu() {
+    const menu = document.getElementById('engineMenu');
+    if (!menu) return;
+    const open = !menu.classList.contains('open');
+    menu.classList.toggle('open', open);
+    const btn = document.getElementById('engineBtn');
+    if (btn) btn.setAttribute('aria-expanded', String(open));
+    if (open) {
+      // 打开时把焦点送到当前选项，键盘用户不必再 Tab 进去
+      const checked = menu.querySelector('button[aria-checked="true"]') || menu.querySelector('button');
+      if (checked) checked.focus();
+    }
+  },
+
+  closeEngineMenu() {
+    const menu = document.getElementById('engineMenu');
+    const btn = document.getElementById('engineBtn');
+    if (menu) menu.classList.remove('open');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  },
+
+  setEngine(name) {
+    const idx = SEARCH_ENGINES.findIndex(e => e.name === name);
+    if (idx === -1) return;
+    this.currentEngine = idx;
     this.updateEngineBtn();
-    Storage.updateSettings({ searchEngine: SEARCH_ENGINES[this.currentEngine].name });
+    const menu = document.getElementById('engineMenu');
+    if (menu) {
+      menu.querySelectorAll('button').forEach(b => {
+        b.setAttribute('aria-checked', String(b.dataset.engine === name));
+      });
+    }
+    Storage.updateSettings({ searchEngine: name });
   },
 
   updateEngineBtn() {
     const btn = document.getElementById('engineBtn');
-    btn.textContent = SEARCH_ENGINES[this.currentEngine].name;
+    const label = btn && btn.querySelector('.engine-label');
+    const name = SEARCH_ENGINES[this.currentEngine].name;
+    if (label) label.textContent = name;
+    else if (btn) btn.textContent = name;
+  },
+
+  /* 提示行：默认给快捷键速查（kbd 小键帽），输入像网址时换成「直接访问」
+     判定复用 resolveInput，避免"提示说会跳站、实际却去搜索"的两套口径 */
+  updateSearchHint() {
+    const hint = document.getElementById('searchHint');
+    const input = document.getElementById('searchInput');
+    if (!hint || !input) return;
+    const value = input.value.trim();
+    const resolved = value ? resolveInput(value) : null;
+    if (resolved && resolved.type === 'url') {
+      const shown = resolved.target.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');
+      hint.innerHTML = `<span class="url-go">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" aria-hidden="true"><path d="M7 17L17 7M9 7h8v8"/></svg>
+          直接访问 ${escapeHtml(shown)}
+        </span><span>· 按 Enter 打开</span>`;
+      return;
+    }
+    hint.innerHTML = '<span>按 <kbd>/</kbd> 聚焦 · <kbd>Esc</kbd> 清空 · <kbd>⌘K</kbd> 打开设置</span>';
   },
 
   doSearch() {
@@ -326,67 +421,99 @@ const App = {
     return true;
   },
 
-  startClock() {
-    if (this._clockStarted) return;
-    this._clockStarted = true;
+  /* 数据到位（或跨天）后重绘一次胶囊文本与浮层，不必等下一次 tick */
+  refreshDatePill() {
     const el = document.getElementById('datetime');
-    let hoverCardMounted = false;
-    let mountedDateKey = '';
+    if (!el) return;
+    const text = el.querySelector('.datetime-text');
+    if (text) text.innerHTML = this.renderDateText();
+    this.ensureCalendarCard();
+    const trigger = el.querySelector('.datetime-trigger');
+    if (trigger) trigger.setAttribute('aria-expanded', String(el.classList.contains('show-card')));
+  },
 
-    function update() {
-      const now = new Date();
-      const options = {
-        year: 'numeric', month: 'long', day: 'numeric',
-        weekday: 'long'
-      };
-      const dateStr = now.toLocaleDateString('zh-CN', options);
-      const timeStr = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-      // P3-3：卡片里的"今天"高亮与节假日倒计时都基于渲染时刻的日期，
-      // 标签页常驻跨过午夜后会停留在昨天，因此日期变化时需重建卡片而非只更新文本
-      const dateKey = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
-      const needMount = (!hoverCardMounted || dateKey !== mountedDateKey)
-        && typeof Calendar !== 'undefined' && Calendar.loaded;
+  /* 日期胶囊（2.1.0）：公历 + 星期 + 农历 + 最近节假日倒计时，一枚胶囊三层信息。
+     时间不再上屏——新标签页打开时用户已知时刻，农历与倒计时才是这里不可替代的信息。
+     农历/倒计时依赖 Calendar 的节假日数据（异步、可能失败），所以每次 tick 重新拼装：
+     数据到位前后各渲染一次即可，不需要额外的回调链路。 */
+  startDatePill() {
+    if (this._datePillStarted) return;
+    this._datePillStarted = true;
+    const el = document.getElementById('datetime');
+    if (!el) return;
 
-      if (needMount) {
-        // UI 审查 P2：日期文本是浮层的触发器，补 role/tabindex/aria-expanded
-        // 使其可被键盘与读屏器识别（日历卡片内的翻页按钮保持独立可聚焦）
-        el.innerHTML = `<span class="datetime-text" role="button" tabindex="0" aria-expanded="false">${dateStr}  ${timeStr}</span>${Calendar.render()}`;
-        hoverCardMounted = true;
-        mountedDateKey = dateKey;
-        const card = el.querySelector('.datetime-hover-card');
-        if (card) Calendar.bindCardEvents(card);
-        const trigger = el.querySelector('.datetime-text');
-        if (trigger) trigger.setAttribute('aria-expanded', String(el.classList.contains('show-card')));
-      } else {
-        const textEl = el.querySelector('.datetime-text');
-        const target = textEl || el;
-        target.textContent = `${dateStr}  ${timeStr}`;
-      }
-    }
-    update();
-    setInterval(update, 1000);
+    const paint = () => {
+      const text = el.querySelector('.datetime-text');
+      if (text) text.innerHTML = this.renderDateText();
+      this.ensureCalendarCard();
+      const trigger = el.querySelector('.datetime-trigger');
+      if (trigger) trigger.setAttribute('aria-expanded', String(el.classList.contains('show-card')));
+    };
 
-    // UI 审查 P2：触屏没有 hover、键盘也无法触发，浮层此前只有鼠标可达。
-    // 点击/Enter/Space 切换，并与 aria-expanded 保持同步（文本节点每次重建，需实时查询）
+    paint();
+    // 30s 一次：胶囊里最细的粒度是"天"，只需保证跨午夜能翻页；
+    // 每秒重排一次文本只会带来无意义的布局抖动
+    this._datePillTimer = setInterval(paint, 30000);
+
     const setCardOpen = (open) => {
       el.classList.toggle('show-card', open);
-      const trigger = el.querySelector('.datetime-text');
+      const trigger = el.querySelector('.datetime-trigger');
       if (trigger) trigger.setAttribute('aria-expanded', String(open));
     };
+    // 触屏没有 hover、键盘也无法触发，浮层此前只有鼠标可达（UI 审查 P2）。
+    // 现在触发器是真 button，Enter/Space 天然触发 click，无需额外键盘分支。
     el.addEventListener('click', (e) => {
       if (e.target.closest('.datetime-hover-card')) return;
       setCardOpen(!el.classList.contains('show-card'));
     });
-    el.addEventListener('keydown', (e) => {
-      if (!e.target.classList.contains('datetime-text')) return;
-      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
-        e.preventDefault();
-        setCardOpen(!el.classList.contains('show-card'));
-      }
-    });
     document.addEventListener('click', (e) => {
       if (!el.contains(e.target)) setCardOpen(false);
     });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && el.classList.contains('show-card')) setCardOpen(false);
+    });
+  },
+
+  /* 胶囊文本：农历/倒计时拿不到（数据未到、请求失败）时自动省略，不留空占位 */
+  renderDateText() {
+    const now = new Date();
+    const weekday = ['日', '一', '二', '三', '四', '五', '六'][now.getDay()];
+    const out = [`<span class="pill-date">${now.getMonth() + 1}月${now.getDate()}日 周${weekday}</span>`];
+    if (typeof Calendar === 'undefined' || !Calendar.loaded) return out.join('');
+
+    const lunar = Calendar.getLunarLabel(now.getFullYear(), now.getMonth() + 1, now.getDate());
+    if (lunar) {
+      out.push('<span class="dot hide-sm"></span>');
+      out.push(`<span class="lunar hide-sm">${escapeHtml(lunar)}</span>`);
+    }
+    const countdown = Calendar.getCountdownText();
+    if (countdown) {
+      out.push('<span class="dot"></span>');
+      out.push(`<span class="countdown">${escapeHtml(countdown)}</span>`);
+    }
+    return out.join('');
+  },
+
+  /* 日历浮层按需挂载，并跟随日期变化重建"今天"高亮（P3-3：跨午夜后标错日期） */
+  ensureCalendarCard() {
+    if (typeof Calendar === 'undefined' || !Calendar.loaded) return;
+    const el = document.getElementById('datetime');
+    if (!el) return;
+    const now = new Date();
+    const dateKey = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+    const existing = el.querySelector('.datetime-hover-card');
+
+    if (!existing) {
+      el.insertAdjacentHTML('beforeend', Calendar.render());
+      const card = el.querySelector('.datetime-hover-card');
+      if (card) Calendar.bindCardEvents(card);
+      this._cardDateKey = dateKey;
+      return;
+    }
+    if (this._cardDateKey !== dateKey) {
+      Calendar.rerenderCard();
+      this._cardDateKey = dateKey;
+    }
   },
 
   async renderBookmarks() {
@@ -547,22 +674,32 @@ const App = {
       return;
     }
 
-    container.innerHTML = categories.map(cat => `
+    // 2.1.0：分类卡从"标签块"改成"文字列表 + 计数"。
+    // 标签块的每项都有描边与底色，一屏十几块色块会盖过链接本身；
+    // 列表行更省空间（同高度能放 5–6 条），也让"这是某一类链接"的分组关系更清楚。
+    container.innerHTML = categories.map(cat => {
+      const items = [...(cat.items || [])].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+      return `
       <div class="category-card" data-id="${escapeAttr(cat.id)}" draggable="true">
         <!-- UI 审查 P2：分类头是 div 上的点击交互，键盘与读屏器都不可达；
              补 role/tabindex/aria-expanded，Enter/Space 切换（见下方事件绑定） -->
         <div class="category-header" data-action="toggle" data-id="${escapeAttr(cat.id)}"
              role="button" tabindex="0" aria-expanded="${cat.collapsed ? 'false' : 'true'}">
+          <svg class="category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.6" aria-hidden="true"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
           <span class="category-title">${escapeHtml(cat.title)}</span>
-          <span class="category-toggle ${cat.collapsed ? 'collapsed' : ''}">▼</span>
+          <span class="category-count">${items.length}</span>
+          <span class="category-toggle ${cat.collapsed ? 'collapsed' : ''}" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M9 6l6 6-6 6"/></svg>
+          </span>
         </div>
         <div class="category-items ${cat.collapsed ? 'collapsed' : ''}">
-          ${[...(cat.items || [])].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)).map(item => `
+          ${items.map(item => `
             <a href="${escapeAttr(item.url)}" class="category-link" target="_blank">${escapeHtml(item.title)}</a>
           `).join('')}
         </div>
       </div>
-    `).join('');
+    `}).join('');
 
     container.querySelectorAll('[data-action="toggle"]').forEach(header => {
       const toggle = async () => {

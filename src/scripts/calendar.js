@@ -221,13 +221,22 @@ const Calendar = {
     }
   },
 
-  getGanZhiHeader(y, m) {
-    if (typeof Solar === 'undefined') return `${y} 年 ${m} 月`;
+  /* 浮层头部左：公历年月 */
+  getMonthTitle(y, m) {
+    return `${y} 年 ${m} 月`;
+  },
+
+  /* 浮层头部右：干支年 + 农历月 + 大小月。
+     "十月小" 里的"小"是农历月 29 天，属于本地化细节，农历族用户一眼能对上。 */
+  getLunarTitle(y, m) {
+    if (typeof Solar === 'undefined') return '';
     try {
       const lunar = Solar.fromYmd(y, m, 15).getLunar();
-      return `${y} 年 ${m} 月 · 农历${lunar.getYearInGanZhi()}年 ${lunar.getMonthInChinese()}月`;
+      const days = typeof lunar.getDayCount === 'function' ? lunar.getDayCount() : null;
+      const size = days == null ? '' : (days < 30 ? '小' : '大');
+      return `${lunar.getYearInGanZhi()}年 · ${lunar.getMonthInChinese()}月${size}`;
     } catch {
-      return `${y} 年 ${m} 月`;
+      return '';
     }
   },
 
@@ -251,6 +260,17 @@ const Calendar = {
     return { todayH, next };
   },
 
+  /* 倒计时文案（2.1.0）：胶囊与浮层共用一处，避免"胶囊说 46 天、浮层说 45 天"。
+     今天放假/今天调休时直接说"今天"，不再显示"还有 0 天"。 */
+  getCountdownText() {
+    const { todayH, next } = this.getNextHoliday();
+    if (todayH) {
+      return todayH.off ? `今天 · ${todayH.name}（放假）` : `今日调休上班 · ${todayH.name}`;
+    }
+    if (next && next.days > 0) return `距${next.name} ${next.days} 天`;
+    return '';
+  },
+
   /* PBI-12：数据源状态标注文案（fallback/partial 时显示，US-14 AC2/UC-09 2a） */
   getSourceNote() {
     if (this.holidaySource === 'fallback' || this.holidaySource === 'partial') {
@@ -268,26 +288,13 @@ const Calendar = {
 
     const cells = this.getMonthMatrix(year, month);
     const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
-    const weekRow = weekdays.map((w, i) =>
-      `<div class="dhc-week ${i >= 5 ? 'dhc-weekend' : ''}">${w}</div>`
-    ).join('');
-
-    // PBI-11：节假日倒计时行（今天放假 / 今日调休 / 下个节假日还有 N 天）
-    let countdown = '';
-    const { todayH, next } = this.getNextHoliday();
-    if (todayH) {
-      countdown = todayH.off
-        ? `<div class="dhc-countdown">今天 · ${escapeHtml(todayH.name)}（放假）</div>`
-        : `<div class="dhc-countdown">今日调休上班 · ${escapeHtml(todayH.name)}</div>`;
-    } else if (next && next.days > 0) {
-      countdown = `<div class="dhc-countdown">${escapeHtml(next.name)}还有 ${next.days} 天</div>`;
-    }
+    const weekRow = weekdays.map(w => `<div class="dhc-week">${w}</div>`).join('');
 
     const dayCells = cells.map(cell => {
       const key = this.formatDate(cell.y, cell.m, cell.d);
       const dow = (new Date(cell.y, cell.m - 1, cell.d).getDay() + 6) % 7;
       const isWeekend = dow >= 5;
-      const isToday = key === todayKey;
+      const isToday = key === todayKey && !cell.outside;
       const holiday = this.holidays[key];
       const lunar = this.getLunarLabel(cell.y, cell.m, cell.d);
 
@@ -295,12 +302,11 @@ const Calendar = {
       if (cell.outside) classes.push('dhc-outside');
       if (isWeekend && !cell.outside) classes.push('dhc-weekend');
       if (isToday) classes.push('dhc-today');
-      if (holiday && !cell.outside) {
-        classes.push(holiday.off ? 'dhc-off' : 'dhc-work');
-      }
+      if (holiday && !cell.outside) classes.push(holiday.off ? 'dhc-off' : 'dhc-work');
 
+      // 休 / 班 跟日期数字同行内联：绝对定位压右上角时，两位数日期（26–30）会与标记相撞
       const badge = holiday && !cell.outside
-        ? `<span class="dhc-badge dhc-badge-${holiday.off ? 'off' : 'work'}"></span>`
+        ? `<i class="dhc-badge dhc-badge-${holiday.off ? 'off' : 'work'}">${holiday.off ? '休' : '班'}</i>`
         : '';
       const title = holiday
         ? `${holiday.name}${holiday.off ? ' · 放假' : ' · 调休上班'}`
@@ -308,25 +314,39 @@ const Calendar = {
 
       return `
         <div class="${classes.join(' ')}" title="${escapeAttr(title)}">
-          ${badge}
-          <div class="dhc-day">${cell.d}</div>
-          <div class="dhc-sub">${lunar}</div>
+          <span class="dhc-day">${cell.d}${badge}</span>
+          <span class="dhc-sub">${lunar}</span>
         </div>
       `;
     }).join('');
 
+    const countdown = this.getCountdownText();
+
     return `
-      <div class="datetime-hover-card" role="tooltip">
+      <div class="datetime-hover-card" role="dialog" aria-label="日历">
         <div class="dhc-header">
-          <button class="dhc-nav" data-action="prev-month">◀</button>
-          ${this.getGanZhiHeader(year, month)}
-          <button class="dhc-nav" data-action="next-month">▶</button>
-          <button class="dhc-nav dhc-nav-today" data-action="reset-view" title="回到今天">●</button>
+          <span class="dhc-month">${this.getMonthTitle(year, month)}</span>
+          <span class="dhc-lunar">${escapeHtml(this.getLunarTitle(year, month))}</span>
+          <div class="dhc-navs">
+            <button class="dhc-nav" type="button" data-action="prev-month" aria-label="上一月">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+            </button>
+            <button class="dhc-nav" type="button" data-action="next-month" aria-label="下一月">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+            </button>
+            <button class="dhc-nav" type="button" data-action="reset-view" aria-label="回到今天" title="回到今天">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" aria-hidden="true"><circle cx="12" cy="12" r="4"/></svg>
+            </button>
+          </div>
         </div>
-        ${countdown}
         ${this.getSourceNote()}
         <div class="dhc-week-row">${weekRow}</div>
         <div class="dhc-grid">${dayCells}</div>
+        <div class="dhc-foot">
+          <span class="dhc-legend"><i style="background:var(--warn)"></i>休 调休</span>
+          <span class="dhc-legend"><i style="background:var(--brand)"></i>班 补班</span>
+          <span class="dhc-countdown">${escapeHtml(countdown)}</span>
+        </div>
       </div>
     `;
   }

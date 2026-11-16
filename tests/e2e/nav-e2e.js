@@ -212,6 +212,12 @@ const MOCK_WEATHER = {
   current_condition: [{
     weatherCode: '116',
     temp_C: '25',
+    // 2.1.0：浮层指标行（体感/湿度/风/气压）来自这些字段，mock 必须与真实响应同构
+    FeelsLikeC: '24',
+    humidity: '62',
+    windspeedKmph: '12',
+    winddirDegree: '135',
+    pressure: '1014',
     weatherDesc: [{ value: '多云' }],
     // 城市当地时间故意取「浏览器时间 +6 小时」，用于验证小时轴按城市时间对齐（P3-4）：
     // 若代码回退到浏览器本地时间，[23] 的第二个刻度就会对不上
@@ -251,7 +257,11 @@ const MOCK_WEATHER_HAZE = {
 /* 备用源 Open-Meteo 的固定响应（结构与真实返回一致，timezone=auto 下 time 为当地时间）。
    2026-09-15 wttr.in 证书过期后，天气可用性就靠这条回退链路兜住，必须有断言覆盖。 */
 const MOCK_OPEN_METEO = {
-  current: { time: '2026-01-01T12:00', temperature_2m: 26.4, weather_code: 2 },
+  current: {
+    time: '2026-01-01T12:00', temperature_2m: 26.4, weather_code: 2,
+    apparent_temperature: 25.1, relative_humidity_2m: 58,
+    surface_pressure: 1008, wind_speed_10m: 9.4, wind_direction_10m: 200
+  },
   hourly: {
     time: Array.from({ length: 48 }, (_, i) => {
       const day = i < 24 ? '2026-01-01' : '2026-01-02';
@@ -432,7 +442,9 @@ async function runCore(page, label) {
     return r.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ images: [{ urlbase: '/th?id=OHR.MockWallpaper' }] })
+      body: JSON.stringify({
+        images: [{ urlbase: '/th?id=OHR.MockWallpaper', copyright: '美国·古拉悬崖 © Mock Author' }]
+      })
     });
   });
   // ADV-05：随机壁纸源不在 host_permissions，扩展页 fetch 必失败；
@@ -650,7 +662,8 @@ async function runCore(page, label) {
     const el = document.querySelector('.dhc-countdown');
     return el ? el.textContent : '';
   });
-  check('[11] PBI-11 节假日倒计时行', /还有 \d+ 天|今天|调休/.test(countdownText), countdownText || '(无)');
+  // 2.1.0 把倒计时文案统一成「距元旦 46 天」（胶囊与浮层共用 Calendar.getCountdownText）
+  check('[11] PBI-11 节假日倒计时行', /距.+\d+ 天|还有 \d+ 天|今天|调休/.test(countdownText), countdownText || '(无)');
   await page.keyboard.press('Escape');
   await sleep(300);
 
@@ -694,11 +707,13 @@ async function runCore(page, label) {
     requests.some(u => /ipwho\.is/.test(u)) || locState.source === 'geo');
 
   // [13] PBI-18 天气：缓存时间标注 + 失败降级 + 重试恢复
-  const whcHeader = await page.evaluate(() => {
-    const el = document.querySelector('.whc-header');
+  const whcCardText = await page.evaluate(() => {
+    const el = document.querySelector('.weather-hover-card');
     return el ? el.textContent : '';
   });
-  check('[13] 缓存时间标注', /更新于/.test(whcHeader), whcHeader.slice(0, 60));
+  // 2.1.0 把「更新于 hh:mm」从头部移到图例行末尾（头部让位给城市与大温度）
+  check('[13] 缓存时间标注', /更新于/.test(whcCardText),
+    (whcCardText || '').replace(/\s+/g, ' ').slice(0, 60));
   weatherMode = 'fail'; // 由 runCore 开头的固定响应 handler 读取
   openMeteoMode = 'fail'; // 备用源也失败，才会走到降级文案（容灾链路见 [26]）
   await page.evaluate(() => {
@@ -725,7 +740,7 @@ async function runCore(page, label) {
     const el = document.getElementById('weatherWidget');
     return el ? el.innerText : '';
   });
-  check('[13] 重试后恢复天气', /°C/.test(afterRetry), afterRetry.slice(0, 60));
+  check('[13] 重试后恢复天气', /°/.test(afterRetry), afterRetry.slice(0, 60));
 
   // [26] 天气容灾：主源失败时自动回退备用源（2026-09-15 wttr.in 证书过期的直接回归）
   // 修复前这里只会显示"天气暂不可用"：全新安装的电脑没有缓存，证书过期即彻底没有天气
@@ -744,14 +759,21 @@ async function runCore(page, label) {
     const el = document.getElementById('weatherWidget');
     return el ? el.innerText : '';
   });
-  check('[26] 主源失败时备用源接管天气', /°C/.test(failoverText), failoverText.slice(0, 60));
+  check('[26] 主源失败时备用源接管天气', /°/.test(failoverText), failoverText.slice(0, 60));
   check('[26] 缓存标注数据来源为备用源',
     await page.evaluate(() => typeof Weather !== 'undefined' && !!Weather.cache && Weather.cache.source === 'open-meteo'));
   const failoverHourly = await page.evaluate(() => {
     const el = document.querySelector('.weather-hover-card');
-    return el ? el.querySelectorAll('.whc-col').length : 0;
+    return {
+      cols: el ? el.querySelectorAll('.whc-col').length : 0,
+      data: (typeof Weather !== 'undefined' && Weather.cache && Weather.cache.hourly)
+        ? Weather.cache.hourly.length : 0
+    };
   });
-  check('[26] 备用源同样提供 24 小时预报', failoverHourly === 24, `列数=${failoverHourly}`);
+  // 2.1.0：浮层一次显示 12 根（一屏可读完），缓存里仍保留 24 条逐时数据
+  check('[26] 备用源逐时柱为 12 根、数据仍是 24 条',
+    failoverHourly.cols === 12 && failoverHourly.data === 24,
+    `列数=${failoverHourly.cols} 数据=${failoverHourly.data}`);
 
   // [44] 中文界面不得渲染英文天气描述（主源未覆盖代码的兜底路径）
   // 修复前：码表漏了 137/149，而 lang=zh 对 weatherDesc 不生效，英文原文直接上屏。
@@ -772,10 +794,20 @@ async function runCore(page, label) {
   });
   const hazeFlat = hazeText.replace(/\n/g, ' ');
   check('[44] 未覆盖代码（149 烟霾）显示为中文描述', /烟霾/.test(hazeText), hazeFlat.slice(0, 70));
-  // 关键断言：文案不得含英文字母。回退兜底逻辑后这里会拿到 "Smoky haze"。
-  // 温度单位 °C 要排除掉 —— 它是固定单位不是文案，否则断言会永远为红（首版即栽在这里）
-  check('[44] 天气文案不含英文字母（°C 除外）',
-    !/[A-Za-z]/.test(hazeText.replace(/°C/g, '')), hazeFlat.slice(0, 70));
+  // 关键断言：天气描述里不得出现英文字母。回退兜底逻辑后这里会拿到 "Smoky haze"。
+  // 2.1.0 起浮层底部有数据源徽标（wttr.in / Open-Meteo 是专有名词，原型里也是原文），
+  // 所以断言收敛到天气文案本身（描述 + 城市 + 指标行），不再整块 innerText
+  const hazeDesc = await page.evaluate(() => {
+    const pick = sel => {
+      const el = document.querySelector(sel);
+      return el ? el.textContent : '';
+    };
+    return [pick('.weather-desc'), pick('.whc-city'), pick('.whc-facts')].join(' ');
+  });
+  // 单位（km/h、hPa）与度数符号是固定写法，不算"英文文案"；描述里的 "Smoky haze" 才会被拦下
+  check('[44] 天气文案不含英文描述',
+    !/[A-Za-z]/.test(hazeDesc.replace(/km\/h|hPa|°/g, '')),
+    hazeDesc.replace(/\s+/g, ' ').slice(0, 70));
 
   weatherMode = 'ok';
   openMeteoMode = 'ok';
@@ -1170,10 +1202,12 @@ async function runCore(page, label) {
     Weather.render();
     return [...document.querySelectorAll('.whc-hour')].map(e => e.textContent.trim()).filter(Boolean);
   });
-  const expectTick = String((MOCK_CITY_HOUR + 3) % 24).padStart(2, '0');
+  // 2.1.0：12 根柱子逐时连续标注（此前 24 根、每 3 根标一个刻度），
+  // 因此第 2 个刻度是城市当前小时 +1，而不是 +3
+  const expectTick = String((MOCK_CITY_HOUR + 1) % 24).padStart(2, '0');
   check('[23] 小时轴按城市当地时间对齐（P3-4）',
-    hourTicks[0] === '现在' && hourTicks[1] === expectTick,
-    `刻度=${JSON.stringify(hourTicks)}，期望第 2 个=${expectTick}`);
+    hourTicks.length === 12 && hourTicks[0] === '现在' && hourTicks[1] === expectTick,
+    `刻度=${JSON.stringify(hourTicks)}，期望 12 个且第 2 个=${expectTick}`);
 
   // [24] 跨标签页同步（P3-2）
   // 在第二个标签页写入数据，本页应通过 storage.onChanged 自动刷新。
@@ -1246,7 +1280,10 @@ async function runCore(page, label) {
   check('[28] 40 书签/12 分类下搜索框与标题仍可见（UX-01）',
     stress.searchTop >= 0 && stress.titleTop >= 0,
     `搜索框 top=${stress.searchTop}，标题 top=${stress.titleTop}`);
-  check('[34] 待办卡片与分类容器等高（UX-07）', Math.abs(stress.catH - stress.todoH) <= 2,
+  // 2.1.0：待办卡改为定高 236px（原型口径），不再跟着分类容器一起长高。
+  // 等高是 1.x 的权宜之计——分类多了以后待办卡下方会空出一大片"没有内容的卡片面积"
+  check('[34] 待办卡保持定高、不随分类容器一起长高（UX-07）',
+    stress.todoH <= 240 && stress.catH > stress.todoH,
     `分类 ${stress.catH}px / 待办 ${stress.todoH}px`);
   check('[34] 12 条待办在卡片内滚动而非撑高页面（UX-07）',
     stress.todoScrollH > stress.todoClientH,
@@ -1431,14 +1468,16 @@ async function runCore(page, label) {
   });
   // 阈值取"占容器 90% 以上"而不是绝对值：塌陷时是 52/640 ≈ 8%，
   // 修复后是 624/640 ≈ 98%，与视口宽度无关，也不会因为布局微调而误报
-  check('[45] 空状态提示占满容器宽度，不被 auto-fit 折叠压成竖排',
-    emptyLayout.gridW > 0 && emptyLayout.hintW >= emptyLayout.gridW * 0.9,
+  // 2.1.0：空态改成虚线卡片（宽 560 居中），所以判据从"铺满容器"改为
+  // "提示文字有正常行宽"——塌陷时是 52px，正常是 510px，两者相差一个数量级
+  check('[45] 空状态卡片宽度正常，不被 auto-fit 折叠压成竖排',
+    emptyLayout.gridW > 0 && emptyLayout.hintW >= 400 && emptyLayout.hintW <= emptyLayout.gridW,
     `提示 ${emptyLayout.hintW}px / 容器 ${emptyLayout.gridW}px（列模板 ${emptyLayout.cols}）`);
   check('[45] 空状态按钮不被压成窄条',
     emptyLayout.btns.length >= 2 && emptyLayout.btns.every(b => b.w >= 100 && b.h <= 60),
     emptyLayout.btns.length ? emptyLayout.btns.map(b => `${b.t}=${b.w}×${b.h}`).join(' / ') : '(无按钮)');
   // 分类区是两列：跨列后应占满容器，未跨列时只有约 49%
-  check('[45] 分类空状态跨满两列，不偏在左列',
+  check('[45] 分类空状态占满整行，不偏在左列',
     emptyLayout.catGridW > 0 && emptyLayout.catBlockW >= emptyLayout.catGridW * 0.9,
     `分类空状态块 ${emptyLayout.catBlockW}px / 容器 ${emptyLayout.catGridW}px`);
 
@@ -1942,8 +1981,11 @@ async function runCore(page, label) {
       && /OHR\.MockWallpaper/.test(fetchedToday.daily.url),
     JSON.stringify(fetchedToday.daily));
   check('[46] 缓存只保留当天一张（不累积历史）',
-    fetchedToday.daily && Object.keys(fetchedToday.daily).sort().join(',') === 'date,url,v',
+    fetchedToday.daily && Object.keys(fetchedToday.daily).sort().join(',') === 'credit,date,url,v',
     `字段=${fetchedToday.daily ? Object.keys(fetchedToday.daily).join(',') : '(空)'}`);
+  check('[46] 版权署名随缓存持久化并上屏',
+    !!fetchedToday.daily && /Mock Author/.test(fetchedToday.daily.credit || ''),
+    JSON.stringify(fetchedToday.daily));
 
   // ⑤ 升级迁移：旧字段里的当天图要接过来，并清掉旧键
   const legacyMigrated = await applyDailyBing({
@@ -2034,6 +2076,117 @@ async function runCore(page, label) {
   check('[47] 深色材质未被带偏（石墨近实心、无模糊）',
     /rgba\(24, 27, 33, 0\.94\)/.test(darkOnly.card.bg) && (!darkOnly.card.blur || darkOnly.card.blur === 'none'),
     JSON.stringify(darkOnly.card));
+
+  /* ---- [49] 2.1.0 界面按原型 v1 升级 ---- */
+  await page.evaluate(async () => {
+    await Storage.updateSettings({ wallpaperName: '深邃星空' });
+    await Wallpaper.apply(0);
+  });
+  // 胶囊里的城市名来自"用户选的城市"（getShortCity）：未选城市时按定位取坐标、
+  // 拿不到城市名就省略这一段，所以先显式选一个城市再读胶囊，否则断言没有区分度
+  await page.evaluate(() => {
+    Weather.selectedCityQuery = 'Beijing';
+    Weather.render();
+  });
+  await sleep(300);
+  const pills = await page.evaluate(() => {
+    const date = document.querySelector('#datetime .datetime-text');
+    const weather = document.getElementById('weatherWidget');
+    return {
+      date: date ? date.innerText.replace(/\s+/g, ' ').trim() : '',
+      hasLunar: !!document.querySelector('#datetime .lunar'),
+      hasCountdown: !!document.querySelector('#datetime .countdown'),
+      hasCity: !!weather.querySelector('.weather-city'),
+      cityText: (weather.querySelector('.weather-city') || {}).textContent || '',
+      weatherText: weather ? weather.innerText.replace(/\s+/g, ' ').trim() : ''
+    };
+  });
+  check('[49] 日期胶囊含公历 + 星期', /\d{1,2}月\d{1,2}日 周[一二三四五六日]/.test(pills.date), pills.date);
+  check('[49] 日期胶囊含农历与节假日倒计时',
+    pills.hasLunar && pills.hasCountdown, JSON.stringify(pills));
+  check('[49] 日期胶囊不再显示时钟（时分不上屏）', !/\d{1,2}:\d{2}/.test(pills.date), pills.date);
+  check('[49] 天气胶囊含城市 / 温度 / 天气',
+    /°/.test(pills.weatherText) && pills.hasCity && /北京/.test(pills.cityText),
+    `${pills.cityText} | ${pills.weatherText.slice(0, 40)}`);
+
+  await page.click('#datetime .datetime-trigger');
+  await sleep(500);
+  const calMeta = await page.evaluate(() => ({
+    month: (document.querySelector('.dhc-month') || {}).textContent || '',
+    lunar: (document.querySelector('.dhc-lunar') || {}).textContent || '',
+    legends: document.querySelectorAll('.dhc-foot .dhc-legend').length,
+    cells: document.querySelectorAll('.dhc-cell').length
+  }));
+  check('[49] 日历浮层头部为「年月 + 干支农历」',
+    /\d{4} 年 \d{1,2} 月/.test(calMeta.month) && /年 · .+月/.test(calMeta.lunar),
+    JSON.stringify(calMeta));
+  check('[49] 日历浮层页脚有休/班图例', calMeta.legends === 2, `图例 ${calMeta.legends} 个`);
+  await page.keyboard.press('Escape');
+  await sleep(300);
+
+  await page.evaluate(() => {
+    // 胶囊里的城市名来自"用户选的城市"（getShortCity）：未选城市时按定位取坐标，
+    // 拿不到城市名就省略这一段，所以这里显式选一个城市来验证胶囊结构
+    Weather.selectedCityQuery = 'Beijing';
+    Weather.cache = {
+      temp: '18', icon: '⛅', desc: '多云',
+      facts: { feelsLike: 17, humidity: 62, wind: '东南风 12 km/h', pressure: 1014 },
+      hourly: Array.from({ length: 24 }, (_, i) => ({ hour: i, temp: 18, rain: 10, icon: '⛅' })),
+      timestamp: Date.now(), version: 8, source: 'wttr.in'
+    };
+    Weather.render();
+  });
+  await sleep(300);
+  const wpop = await page.evaluate(() => {
+    const card = document.querySelector('.weather-hover-card');
+    return {
+      cols: card ? card.querySelectorAll('.whc-col').length : 0,
+      facts: (document.querySelector('.whc-facts') || {}).textContent || '',
+      badges: card ? card.querySelectorAll('.whc-badge').length : 0,
+      src: (document.querySelector('.whc-src') || {}).textContent || ''
+    };
+  });
+  check('[49] 天气浮层 12 根逐时柱 + 指标行', wpop.cols === 12 && /体感/.test(wpop.facts),
+    `柱 ${wpop.cols} 根 / 指标「${wpop.facts.replace(/\s+/g, ' ').trim().slice(0, 30)}」`);
+  check('[49] 天气浮层标注数据源（主/备各一枚徽标）',
+    wpop.badges === 2 && /wttr\.in/.test(wpop.src) && /Open-Meteo/.test(wpop.src),
+    wpop.src.replace(/\s+/g, ' ').slice(0, 50));
+
+  await page.click('#engineBtn');
+  await sleep(300);
+  const menuOpen = await page.evaluate(() => {
+    const menu = document.getElementById('engineMenu');
+    return menu ? { open: menu.classList.contains('open'), items: menu.querySelectorAll('button').length } : null;
+  });
+  check('[49] 引擎按钮展开下拉菜单（三个候选）',
+    !!menuOpen && menuOpen.open && menuOpen.items === 3, JSON.stringify(menuOpen));
+  await page.click('#engineMenu button[data-engine="Google"]');
+  await sleep(300);
+  const engineLabel = await page.evaluate(() => (document.querySelector('#engineBtn .engine-label') || {}).textContent || '');
+  check('[49] 选择引擎后按钮文案与设置同步', engineLabel.trim() === 'Google', engineLabel);
+  const savedEngine = await page.evaluate(async () => (await Storage.getSettings()).searchEngine);
+  check('[49] 引擎选择写入设置', savedEngine === 'Google', String(savedEngine));
+  await page.evaluate(async () => { await App.setEngine('百度'); });
+
+  await page.fill('#searchInput', 'github.com');
+  await sleep(250);
+  const urlHint = await page.evaluate(() => (document.getElementById('searchHint') || {}).textContent || '');
+  check('[49] 输入域名时提示「直接访问」', /直接访问/.test(urlHint) && /github\.com/.test(urlHint),
+    urlHint.replace(/\s+/g, ' ').slice(0, 40));
+  await page.fill('#searchInput', '');
+  await sleep(250);
+  const kbdHint = await page.evaluate(() => (document.getElementById('searchHint') || {}).textContent || '');
+  check('[49] 清空后提示行回到快捷键速查', /按 \/ 聚焦/.test(kbdHint), kbdHint.replace(/\s+/g, ' ').slice(0, 40));
+
+  const primaryColor = await page.evaluate(() => {
+    Settings.open();
+    Settings.switchTab('content');
+    const btn = document.querySelector('#addBookmarkBtn');
+    return btn ? getComputedStyle(btn).backgroundColor : '';
+  });
+  check('[49] 设置面板主按钮回到钴蓝实底', /79, 104, 219/.test(primaryColor), primaryColor);
+  await page.evaluate(() => Settings.close());
+  await sleep(300);
 
   // 还原：后面的用例与退出都按深色 + 默认预设断言
   await page.evaluate(async () => {

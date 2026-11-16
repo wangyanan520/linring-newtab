@@ -97,7 +97,12 @@ async function fetchBingUrl() {
       throw new Error('Bing API 返回的 urlbase 不可用');
     }
     /* 用 urlbase 拼接 1920x1080 高清图，比 url 字段的图片更清晰 */
-    return 'https://cn.bing.com' + img.urlbase + '_1920x1080.jpg';
+    return {
+      url: 'https://cn.bing.com' + img.urlbase + '_1920x1080.jpg',
+      // copyright 形如「美国·古拉悬崖民居 © Chiara Salvadori/Getty Images」，
+      // 缺失或非字符串时按无版权处理（不因为署名缺失就丢弃整张图）
+      credit: typeof img.copyright === 'string' ? img.copyright.trim() : ''
+    };
   } finally {
     clearTimeout(timer);
   }
@@ -171,27 +176,37 @@ function normalizeDailyCache(raw) {
   if (raw.v !== DAILY_CACHE_VERSION) return null;
   if (!isValidDateStr(raw.date)) return null;
   if (!isSafeImageUrl(raw.url)) return null;
-  // 只保留已知字段，丢掉历史遗留/被塞进来的额外键
-  return { v: DAILY_CACHE_VERSION, date: raw.date, url: raw.url };
+  // 只保留已知字段，丢掉历史遗留/被塞进来的额外键。
+  // credit 是 2.1.0 追加的可选字段：老记录没有它，按"无署名"处理而不是判整条缓存无效
+  const credit = typeof raw.credit === 'string' ? raw.credit.trim() : '';
+  const out = { v: DAILY_CACHE_VERSION, date: raw.date, url: raw.url };
+  // 没有署名就不写这个键：缓存形状与 1.x 完全一致，旧记录读进来不会被"补齐"成空字段
+  if (credit && credit.length <= 160 && !/[\u0000-\u001f]/.test(credit)) out.credit = credit;
+  return out;
 }
 
 /* 三态解析：纯函数，不读 storage、不碰网络 —— 单测直接覆盖这张决策表 */
 function resolveDailyWallpaper(cache, today) {
   const record = normalizeDailyCache(cache);
   if (!record) {
-    return { url: DEFAULT_DAILY_IMAGE, source: 'default', date: null };
+    return { url: DEFAULT_DAILY_IMAGE, source: 'default', date: null, credit: '' };
   }
   const isToday = record.date === today;
-  return { url: record.url, source: isToday ? 'today' : 'last', date: record.date };
+  return {
+    url: record.url,
+    source: isToday ? 'today' : 'last',
+    date: record.date,
+    credit: record.credit || ''
+  };
 }
 
 /* 获取成功后的新缓存：整体替换，旧记录不保留（不变量 2）。
    若传入的 url/date 不合法，返回原记录而不是 null —— 宁可留着上一张，
    也不要把「这次数据奇怪」变成「把用户的图删了」。 */
-function buildDailyCache(url, today, previous = null) {
+function buildDailyCache(url, today, previous = null, credit = '') {
   const prev = normalizeDailyCache(previous);
   if (!isSafeImageUrl(url) || !isValidDateStr(today)) return prev;
-  return { v: DAILY_CACHE_VERSION, date: today, url };
+  return normalizeDailyCache({ v: DAILY_CACHE_VERSION, date: today, url, credit }) || prev;
 }
 
 /* 联网时的清理：把用不了的东西剔掉，但绝不因为「不是今天」就删 last。
@@ -361,6 +376,20 @@ const Wallpaper = {
     bgLayer.style.backgroundPosition = '';
   },
 
+  /* 壁纸署名（2.1.0）：Bing 图的版权行只在"当前显示的是远程照片"时出现，
+     预设渐变与内置默认图都不是第三方素材，不该挂署名。 */
+  setWallCredit(text) {
+    const el = document.getElementById('wallCredit');
+    if (!el) return;
+    if (!text) {
+      el.textContent = '';
+      el.classList.remove('visible');
+      return;
+    }
+    el.textContent = `Bing 每日一图 · ${text}`;
+    el.classList.add('visible');
+  },
+
   setBgImage(bgLayer, url) {
     bgLayer.style.background = 'none';
     bgLayer.style.backgroundImage = `url(${url})`;
@@ -390,6 +419,7 @@ const Wallpaper = {
       document.documentElement.style.setProperty('--bg-overlay-opacity', '0.15');
       this.clearBgImage(bgLayer);
       bgLayer.style.background = this.presetCss(wallpaper);
+      this.setWallCredit('');
       return;
     }
 
@@ -403,6 +433,7 @@ const Wallpaper = {
       // 现在与 Bing 一样，拿到图片地址后做一次明度采样
       const randomUrl = getRandomWallpaperUrl();
       this.setBgImage(bgLayer, randomUrl);
+      this.setWallCredit('');
       this.syncToneFromImage(randomUrl);
       return;
     }
@@ -417,6 +448,7 @@ const Wallpaper = {
     // 内置默认图是石墨材质：浅色主题下要让纱罩更厚，否则会透成一片中灰
     this.setWallpaperType(resolved.source === 'default' ? 'default' : 'api');
     this.setBgImage(bgLayer, resolved.url);
+    this.setWallCredit(resolved.source === 'default' ? '' : resolved.credit);
     // UX-13：图先上屏，明度采样随后（不 await，采样只做附加修正）
     this.syncToneFromImage(resolved.url);
 
@@ -430,14 +462,15 @@ const Wallpaper = {
     if (!this.isOnline()) return;
 
     try {
-      const url = await this.fetchDailyOnce();
+      const fetched = await this.fetchDailyOnce();
       if (gen !== this._applyGen) return; // 用户已切到别的壁纸，丢弃迟到结果（也不写缓存）
-      const next = buildDailyCache(url, today, cached);
+      const next = buildDailyCache(fetched && fetched.url, today, cached, fetched && fetched.credit);
       // 接口给了非法地址：不动缓存也不动画面，继续显示本地那张
       if (!next) return;
       await this.persistDailyCache(next);
       if (gen !== this._applyGen) return; // 写缓存期间又被取代
       this.setBgImage(bgLayer, next.url);
+      this.setWallCredit(next.credit);
       this.syncToneFromImage(next.url);
     } catch (e) {
       if (gen !== this._applyGen) return;
@@ -588,13 +621,14 @@ const Wallpaper = {
 
     try {
       // 手动刷新走同一套缓存写入：成功后替换为当天图，失败保留当前图（不清空）
-      const url = await fetchApiWallpaperUrl(wallpaper.apiType);
-      const next = buildDailyCache(url, todayStr(), null);
+      const fetched = await fetchApiWallpaperUrl(wallpaper.apiType);
+      const next = buildDailyCache(fetched && fetched.url, todayStr(), null, fetched && fetched.credit);
       if (!next) throw new Error('接口返回的图片地址不可用');
       await this.persistDailyCache(next);
       const bgLayer = document.getElementById('bgLayer');
       if (bgLayer) {
         this.setBgImage(bgLayer, next.url);
+        this.setWallCredit(next.credit);
         this.syncToneFromImage(next.url);
       }
     } catch (e) {

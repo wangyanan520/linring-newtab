@@ -245,7 +245,7 @@ test('天气容灾链：两个源都失败时置失败标记，且不覆盖已�
 
   Weather.selectedCityQuery = 'Shenzhen';
   Weather.render = () => {};
-  const stale = { temp: '18', icon: '☀️', desc: '晴', hourly: null, timestamp: 1, version: 7 };
+  const stale = { temp: '18', icon: '☀️', desc: '晴', hourly: null, timestamp: 1, version: 8 };
   Weather.cache = stale;
   Weather._failed = false;
 
@@ -281,7 +281,7 @@ test('天气容灾链：无城市且无坐标时不请求备用源（避免发�
 
 const VALID_CACHE = {
   temp: '25', icon: '⛅', desc: '多云', todayHigh: 31, todayLow: 23,
-  timestamp: Date.now(), version: 7,
+  timestamp: Date.now(), version: 8,
   hourly: [{ hour: 10, temp: 24, rain: 10, icon: '🌦️' }]
 };
 
@@ -336,14 +336,16 @@ test('ADV-02 悬停卡片对缓存字段转义，且非数值降水不产出 NaN
     Weather.selectedCityQuery = 'Shenzhen';
     Weather.cache = {
       temp: '<b>1</b>', icon: '<svg onload=alert(1)>', desc: '晴',
-      todayHigh: 30, todayLow: 20, timestamp: Date.now(), version: 7,
+      todayHigh: 30, todayLow: 20, timestamp: Date.now(), version: 8,
       hourly: [
         { hour: 10, temp: '<img src=x onerror=alert(1)>', rain: 'not-a-number', icon: '<svg onload=alert(1)>' },
         { hour: 11, temp: 20, rain: 10, icon: '☀️' }
       ]
     };
     const html = Weather.renderHoverCard();
-    assert.ok(!html.includes('<svg'), '图标不得原样输出标签');
+    // 2.1.0 起浮层自带定位图标（<svg> 字面量是设计的一部分），
+    // 断言收敛到"注入的恶意属性"上，避免把正常图标一起判红
+    assert.ok(!html.includes('<svg onload'), '恶意图标不得原样输出');
     assert.ok(!html.includes('<img src=x'), '温度不得原样输出标签');
     assert.ok(!html.includes('NaN'), '非数值降水不得产出 NaN 样式');
     assert.ok(html.includes('&lt;svg'), '恶意图标应被转义为文本');
@@ -418,4 +420,30 @@ test('ADV-04 快速切换城市：慢响应不得覆盖后选城市的数据', a
   } finally {
     global.Storage.updateSettings = origUpdate;
   }
+});
+
+/* ---- 2.1.0：浮层指标行（体感 / 湿度 / 风 / 气压） ---- */
+
+test('2.1.0 风向按 8 方位转中文，非法角度返回空串', () => {
+  const { windDirZh } = loadWeather();
+  assert.strictEqual(windDirZh(0), '北风');
+  assert.strictEqual(windDirZh(45), '东北风');
+  assert.strictEqual(windDirZh(135), '东南风');
+  assert.strictEqual(windDirZh(200), '南风', '200° 更接近正南（180°）而不是西南');
+  assert.strictEqual(windDirZh(350), '北风', '越界的 350° 归一后仍是北风');
+  assert.strictEqual(windDirZh(-45), '西北风', '负角度按 360 归一');
+  assert.strictEqual(windDirZh(undefined), '');
+  assert.strictEqual(windDirZh('abc'), '');
+});
+
+test('2.1.0 指标行只收有效数值：缺字段整段省略，不产出 NaN', () => {
+  const { buildFacts } = loadWeather();
+  assert.deepStrictEqual(
+    buildFacts({ feelsLike: '17.6', humidity: 62, windSpeed: 12.4, windDeg: 135, pressure: 1013.6 }),
+    { feelsLike: 18, humidity: 62, wind: '东南风 12 km/h', pressure: 1014 }
+  );
+  assert.deepStrictEqual(buildFacts({ feelsLike: 'x', humidity: null }), null, '全无有效字段时返回 null');
+  assert.strictEqual(buildFacts(null), null);
+  const partial = buildFacts({ humidity: 80 });
+  assert.deepStrictEqual(partial, { humidity: 80 });
 });

@@ -1409,16 +1409,6 @@ input[type="checkbox"]:focus-visible {
   transition-delay: 0.15s;
 }
 
-/* UI 审查 P2：触屏上 :hover 会"粘住"（点击后一直命中），点空白处也收不起来。
-   悬停开卡只在真有 hover 能力的设备生效，触屏/键盘统一由 .show-weather-card 控制。 */
-@media (hover: hover) {
-  .weather-widget:hover .weather-hover-card {
-    opacity: 1;
-    transform: translateY(0);
-    pointer-events: auto;
-    transition-delay: 0.15s;
-  }
-}
 
 .whc-header {
   font-size: 13px;
@@ -1535,15 +1525,6 @@ input[type="checkbox"]:focus-visible {
   transition-delay: 0.15s;
 }
 
-/* UI 审查 P2：同天气浮层，触屏的 :hover 粘滞会让浮层无法收起 */
-@media (hover: hover) {
-  .datetime:hover .datetime-hover-card {
-    opacity: 1;
-    transform: translateY(0);
-    pointer-events: auto;
-    transition-delay: 0.15s;
-  }
-}
 
 .dhc-header {
   display: flex;
@@ -2355,4 +2336,1025 @@ input[type="checkbox"]:focus-visible {
     transition-delay: 0ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ==========================================================================
+   原型 v1 对齐层（2.1.0）
+   ==========================================================================
+   来源：docs/prototype/ui-ux-prototype.html 的主页场景（1440 桌面 / 1024 / 390）。
+   只对齐「信息架构与尺寸」，颜色仍全部取自 1.4.0 起的 Graphite & Cobalt 令牌，
+   因此本层不引入任何新颜色，也不含 [data-theme="light"] 规则。
+
+   为什么单独一层：上面两层（基础层 + 方向 C 品牌层）用「只改外观不改布局」的口径
+   叠出来的，而这一轮改的是尺寸与结构（胶囊高度、搜索框 54px、卡片内边距、
+   分类从标签块改成文字列表）。逐块回改会让跨文件的引用关系再次漂移；
+   统一在这一层覆盖，读样式时"最后一段就是当前形态"。
+   ========================================================================== */
+
+/* --- 1. 顶部状态胶囊 --- */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-full);
+  background: var(--surface-1);
+  color: var(--text-tertiary);
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.pill:hover {
+  background: var(--surface-hover);
+  border-color: var(--hairline-strong);
+  color: var(--text-secondary);
+}
+
+.pill .dot {
+  width: 3px;
+  height: 3px;
+  flex: none;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.5;
+}
+
+.pill .countdown {
+  color: var(--brand);
+  font-weight: 500;
+}
+
+/* .datetime 从「胶囊本身」降级为「胶囊的定位容器」：浮层要绝对定位在它里面，
+   而 button 里塞一个 div 是无效结构（button 只允许 phrasing content）。 */
+.datetime {
+  position: relative;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: inherit;
+  letter-spacing: 0;
+  cursor: default;
+}
+
+.datetime-trigger {
+  font: inherit;
+  color: inherit;
+}
+
+.datetime-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pill-loading {
+  opacity: 0.8;
+}
+
+.weather-widget {
+  height: 30px;
+  padding: 0 14px;
+  gap: 8px;
+  border-radius: var(--radius-full);
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.weather-icon {
+  font-size: 14px;
+}
+
+.weather-temp {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.weather-desc,
+.weather-city {
+  color: var(--text-tertiary);
+}
+
+/* 温度与城市之间改用 3px 圆点，不再用竖线：竖线在 12.5px 字阶下像边框残片 */
+.weather-sep {
+  display: none;
+}
+
+/* --- 2. 搜索框 --- */
+.search-box {
+  position: relative;
+  width: 560px;
+  max-width: 100%;
+}
+
+.search-inner {
+  height: 54px;
+  padding: 4px 6px 4px 14px;
+}
+
+.engine-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 9px;
+  border: 0;
+  background: none;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.engine-chev {
+  opacity: 0.7;
+  flex: none;
+}
+
+.search-divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 10px 0 4px;
+  flex: none;
+}
+
+.search-icon {
+  width: 18px;
+  height: 18px;
+  margin-right: 10px;
+  flex: none;
+}
+
+#searchInput {
+  font-size: 14.5px;
+}
+
+.search-clear {
+  width: 30px;
+  height: 30px;
+  flex: none;
+}
+
+.search-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 16px;
+  margin: 8px 2px 0;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+}
+
+.search-hint kbd {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  padding: 1px 5px;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  color: var(--text-tertiary);
+}
+
+.search-hint .url-go {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--brand);
+}
+
+/* 引擎下拉：默认不占布局（display:none），避免它把提示行挤下去 */
+.engine-menu {
+  position: absolute;
+  z-index: 30;
+  top: 62px;
+  left: 0;
+  min-width: 132px;
+  padding: 5px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  display: none;
+}
+
+.engine-menu.open {
+  display: block;
+}
+
+.engine-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.engine-menu button:hover {
+  background: var(--hover-tint);
+  color: var(--text-primary);
+}
+
+.engine-menu button[aria-checked="true"] {
+  color: var(--brand);
+}
+
+.engine-menu .engine-check {
+  opacity: 0;
+  flex: none;
+}
+
+.engine-menu button[aria-checked="true"] .engine-check {
+  opacity: 1;
+}
+
+/* --- 3. 书签 --- */
+.quick-links {
+  width: 100%;
+  max-width: 712px;
+}
+
+.links-grid {
+  gap: 22px 24px;
+  max-width: 712px;
+  width: 100%;
+}
+
+.bookmark-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: var(--radius-md);
+  font-size: 17px;
+}
+
+.bookmark-icon img {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+}
+
+.bookmark-title {
+  color: var(--text-secondary);
+}
+
+/* --- 4. 分类卡：标签块 → 文字列表 --- */
+.main-grid {
+  width: 100%;
+  max-width: 1040px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 286px;
+  gap: 16px;
+  align-items: start;
+}
+
+.categories {
+  max-width: none;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 0;
+}
+
+.category-card {
+  border-radius: var(--radius-lg);
+  padding: 14px 14px 10px;
+}
+
+.category-header {
+  gap: 7px;
+  /* 卡身已有 14px 内边距，头部不再叠一层横向内边距：
+     叠了之后标题只剩 108px 可用，4 个汉字（含 0.04em 字距）差 1.5px 就被截成省略号 */
+  padding: 0 0 9px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--hairline);
+  border-radius: 0;
+  font-size: 12.5px;
+}
+
+.category-header:hover {
+  background: none;
+  color: var(--text-primary);
+}
+
+.category-icon {
+  width: 14px;
+  height: 14px;
+  opacity: 0.6;
+  flex: none;
+}
+
+.category-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  /* 卡片在 4 列布局下只有 ~174px：标题吃掉剩余宽度而不是均分，
+     均分时 4 个汉字（含 0.04em 字距）刚好差 2px 就被省略号截掉 */
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.category-title::before {
+  content: none;
+}
+
+.category-count {
+  margin-left: auto;
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 折叠箭头用 chevron-right 本体：展开时转 90° 指向下，收起时指右。
+   与设置面板 details 的箭头同一套语义，不再用 "▼" 字符（字符在 9px 下糊成三角块） */
+.category-toggle {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: var(--text-tertiary);
+  transition: transform 0.2s var(--ease-out);
+  transform: rotate(90deg);
+}
+
+.category-toggle.collapsed {
+  transform: rotate(0deg);
+}
+
+.category-items {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.category-link {
+  display: block;
+  padding: 6px 8px;
+  margin-left: -8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-size: 13px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.category-link:hover {
+  background: var(--hover-tint);
+  color: var(--text-primary);
+}
+
+/* --- 5. 待办卡 --- */
+.todo-card {
+  border-radius: var(--radius-lg);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: 236px;
+  overflow: hidden;
+}
+
+.todo-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--hairline);
+  flex: none;
+}
+
+.todo-title {
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.todo-count {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.todo-add-btn {
+  margin-left: auto;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: none;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+}
+
+.todo-add-btn:hover {
+  background: var(--hover-tint);
+  color: var(--text-primary);
+}
+
+.todo-list {
+  overflow-y: auto;
+  padding: 4px 6px 8px;
+  scrollbar-width: thin;
+}
+
+.todo-item {
+  gap: 9px;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+}
+
+.todo-checkbox {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  margin-top: 1px;
+  border-radius: 4px;
+}
+
+.todo-text {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.todo-delete-btn {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  opacity: 0;
+}
+
+.todo-item:hover .todo-delete-btn,
+.todo-delete-btn:focus-visible {
+  opacity: 1;
+}
+
+.todo-empty {
+  padding: 26px 14px 30px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--text-tertiary);
+}
+
+.todo-empty-add {
+  margin-top: 10px;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.todo-empty-add:hover {
+  border-color: var(--hairline-strong);
+  color: var(--text-primary);
+}
+
+.todo-foot {
+  flex: none;
+  padding: 7px 12px;
+  border-top: 1px solid var(--hairline);
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+}
+
+/* --- 6. 底部工具栏：居中 → 右下角 --- */
+.bottom-bar {
+  justify-content: flex-end;
+  gap: 4px;
+  padding-top: 4px;
+}
+
+.tool-btn {
+  height: 30px;
+  padding: 0 10px;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.tool-btn:hover {
+  background: var(--surface-1);
+  border-color: var(--hairline);
+  color: var(--text-primary);
+}
+
+/* --- 7. 空状态：虚线卡片 --- */
+.empty-state-block {
+  width: 560px;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 22px 24px;
+  border: 1px dashed var(--hairline-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  text-align: center;
+}
+
+.empty-hint {
+  padding: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.03em;
+  opacity: 1;
+}
+
+/* 分类区的空状态要占满整行（原型 .empty-cats 同理）：固定 560 会在 738 宽的区域里
+   偏左一截，与上方书签空态的居中卡对不齐 */
+.categories .empty-state-block,
+.links-grid.is-empty .empty-state-block {
+  width: 100%;
+  max-width: 712px;
+}
+
+.empty-state-block .empty-actions {
+  justify-content: center;
+  margin-top: 14px;
+}
+
+/* --- 8. 壁纸署名 --- */
+.wall-credit {
+  position: fixed;
+  left: 18px;
+  bottom: 14px;
+  z-index: 11;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.62);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  opacity: 0;
+  transition: opacity 0.4s var(--ease-out);
+  pointer-events: none;
+}
+
+.wall-credit.visible {
+  opacity: 1;
+}
+
+.wall-credit b {
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+/* --- 9. 日历浮层 --- */
+.datetime-hover-card {
+  top: 42px;
+  left: 0;
+  width: 318px;
+  padding: 14px 14px 10px;
+}
+
+.dhc-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px 10px;
+}
+
+.dhc-month {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-primary);
+}
+
+.dhc-lunar {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-left: 2px;
+}
+
+.dhc-navs {
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+}
+
+.dhc-nav {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.dhc-nav:hover {
+  background: var(--hover-tint);
+  color: var(--text-primary);
+}
+
+.dhc-week-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.dhc-week {
+  text-align: center;
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+  padding: 4px 0 6px;
+}
+
+.dhc-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.dhc-cell {
+  height: 40px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-secondary);
+}
+
+.dhc-cell:hover {
+  background: var(--hover-tint);
+}
+
+.dhc-day {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12.5px;
+  line-height: 1;
+}
+
+.dhc-sub {
+  font-size: 9px;
+  line-height: 1.2;
+  color: var(--text-tertiary);
+}
+
+.dhc-outside {
+  opacity: 0.32;
+}
+
+.dhc-today {
+  background: var(--brand-fill);
+  color: var(--text-on-accent);
+}
+
+.dhc-today .dhc-sub {
+  color: var(--text-on-accent);
+  opacity: 0.82;
+}
+
+/* 休 / 班 与日期数字同行内联：绝对定位压右上角时，两位数日期会与标记相撞 */
+.dhc-badge {
+  font-size: 8px;
+  line-height: 1;
+  padding: 1px 2px;
+  border-radius: 3px;
+  background: var(--hover-tint);
+}
+
+.dhc-badge-off {
+  color: var(--warn);
+}
+
+.dhc-badge-work {
+  color: var(--brand);
+}
+
+.dhc-today .dhc-badge {
+  color: var(--text-on-accent);
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.dhc-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding-top: 9px;
+  border-top: 1px solid var(--hairline);
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+}
+
+.dhc-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dhc-legend i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.dhc-countdown {
+  margin-left: auto;
+  color: var(--brand);
+  font-size: 10.5px;
+}
+
+.dhc-source-note {
+  margin: 0 0 6px;
+  font-size: 10.5px;
+  color: var(--warn);
+}
+
+/* --- 10. 天气浮层 --- */
+.weather-hover-card {
+  top: 40px;
+  right: 0;
+  width: 372px;
+  max-width: calc(100vw - 32px);
+  padding: 16px 16px 12px;
+  overflow: visible;
+}
+
+.whc-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 0;
+  font-size: inherit;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.whc-city {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.whc-city svg {
+  width: 13px;
+  height: 13px;
+  opacity: 0.6;
+  flex: none;
+}
+
+.whc-temp {
+  margin: 4px 0 0;
+  font-size: 34px;
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  height: auto;
+  color: var(--text-primary);
+}
+
+.whc-temp span {
+  font-size: 15px;
+  margin-left: 6px;
+  letter-spacing: 0;
+  color: var(--text-tertiary);
+}
+
+.whc-big-icon {
+  margin-left: auto;
+  font-size: 38px;
+  line-height: 1;
+  opacity: 0.9;
+}
+
+.whc-facts {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.whc-facts b {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.whc-grid {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 4px;
+  align-items: end;
+  height: 76px;
+  min-width: 0;
+}
+
+.whc-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  min-width: 0;
+  justify-content: flex-end;
+}
+
+.whc-col.is-hidden {
+  display: none;
+}
+
+.whc-bar-wrap {
+  width: 100%;
+  height: auto;
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.whc-bar {
+  width: 100%;
+  min-height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--brand-bar);
+  transition: background-color 0.2s var(--ease-out);
+}
+
+.whc-col.whc-now .whc-bar {
+  background: var(--brand);
+}
+
+.whc-hour {
+  font-size: 9.5px;
+  line-height: 1;
+  height: auto;
+  margin-top: 0;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.whc-col.whc-now .whc-hour {
+  color: var(--brand);
+  font-weight: 500;
+}
+
+
+.whc-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+}
+
+.whc-legend .k {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--brand-bar);
+  flex: none;
+}
+
+.whc-src {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--hairline);
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+}
+
+.whc-badge {
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-full);
+  background: var(--surface-1);
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.whc-badge .led {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--success);
+  flex: none;
+}
+
+/* --- 11. 窄屏：与原型 1024 / 390 两档同口径 --- */
+@media (max-width: 1180px) {
+  .categories {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .main-grid {
+    grid-template-columns: minmax(0, 1fr) 260px;
+  }
+}
+
+@media (max-width: 760px) {
+  .container {
+    padding: 16px 16px 12px;
+  }
+  .search-box {
+    width: 100%;
+  }
+  .pill {
+    height: 27px;
+    padding: 0 10px;
+    font-size: 11px;
+  }
+  .pill .hide-sm {
+    display: none;
+  }
+  .links-grid {
+    grid-template-columns: repeat(4, 68px);
+    gap: 16px 18px;
+  }
+  .main-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .todo-card {
+    max-height: none;
+  }
+  .bottom-bar {
+    justify-content: center;
+  }
+  .datetime-hover-card,
+  .weather-hover-card {
+    left: 0;
+    right: 0;
+    width: auto;
+  }
+}
+
+/* 日历徽标：基础层把它做成右上角 5px 圆点（与两位数日期相撞），
+   2.1.0 改回与日期数字同行内联的 休 / 班 小标签 */
+.dhc-badge {
+  position: static;
+  display: inline-block;
+  width: auto;
+  height: auto;
+  border-radius: 3px;
+  background: var(--hover-tint);
+  box-shadow: none;
+}
+
+.dhc-badge-off,
+.dhc-badge-work {
+  background: var(--hover-tint);
+  box-shadow: none;
+}
+
+.dhc-cell.dhc-today .dhc-badge {
+  display: inline-block;
+}
+
+.dhc-header > :nth-child(2) {
+  flex: none;
+}
+
+/* 更新时间放在图例行末尾：数据源那一行要塞两个徽标 + 标签，
+   再加一段"更新于"必然换行（实测 366px > 372px 的可用宽度） */
+.whc-updated {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
 }

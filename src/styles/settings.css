@@ -506,17 +506,20 @@
   box-shadow: inset 2px 0 0 var(--brand);
 }
 
+/* 2.1.0：主按钮回到钴蓝实底（原型口径）。此前为了"界面里只留一枚低调强调色"
+   把它压成了和普通按钮一样的表面色，结果「添加书签」与「编辑」在视觉上同级，
+   主次操作分不出来。白字压 #4f68db 实测 4.84:1，仍在大字号/正文阈值之上。 */
 .btn-primary {
-  background: var(--surface-1);
-  color: var(--text-secondary);
-  border-color: var(--hairline);
+  background: var(--brand-fill);
+  color: var(--text-on-accent);
+  border-color: transparent;
   border-radius: var(--radius-sm);
 }
 
 .btn-primary:hover {
-  background: var(--surface-hover);
-  border-color: var(--hairline-strong);
-  color: var(--text-primary);
+  background: var(--brand-fill-hover);
+  border-color: transparent;
+  color: var(--text-on-accent);
 }
 
 .btn-danger {
@@ -532,11 +535,19 @@
   border-color: var(--danger);
 }
 
+/* 行内次级操作（↑ ↓ 编辑）走 ghost：一行里四个描边按钮会把注意力从内容抢走，
+   原型里只有「删除」保留底色，因为它是不可逆操作 */
 .btn-edit {
-  background: var(--surface-1);
-  color: var(--text-secondary);
-  border-color: var(--hairline);
+  background: transparent;
+  color: var(--text-tertiary);
+  border-color: transparent;
   border-radius: var(--radius-sm);
+}
+
+.btn-edit:hover {
+  background: var(--hover-tint);
+  color: var(--text-primary);
+  border-color: transparent;
 }
 
 .btn-edit:hover {
