@@ -37,6 +37,19 @@ lunar 1.7.7 的 `HolidayUtil` 生成；年度数据由运行时 `holiday-cn` + �
   预设壁纸改为石墨底 + 克制单色光、天气柱收敛为单一高度编码、书签兜底字母按域名稳定色相
 - **1.4.0**：设置面板信息结构重排（左栏导航 + 分组折叠、700 宽、≤640 单列降级、
   roving tabindex、折叠态不持久化）
+- **1.5.0**：每日一图改为「内置默认图 + 单条记录缓存」三态策略（断网保留最后一张、
+  首次离线走默认图、联网成功后只留当天一张）
+- **1.6.0**：浅色主题恢复显示壁纸（不透明画布 → 半透明纱罩），深色预设补浅色版
+- **1.7.0**：浅色主题改为「白化背景 + 75% 白毛玻璃」：照片档加提亮去色滤镜、
+  表面统一为 `--glass-1/-2` + `backdrop-filter`（深色材质不变）
+- **1.8.0**：浅色背景层不再有任何半透明覆盖层（纱罩全删）：照片改成"不透明的近白影像"，
+  预设直接用浅色渐变；半透明只留给元素（75% 白玻璃）
+- **1.9.0**：浅色下照片原样显示（撤销 1.8.0 的洗白滤镜）；元素玻璃 75% → 86%，
+  标题组与书签名称加局部底片承担可读性
+- **2.0.0**：**浅色主题下线**，界面只保留深色。移除设置里的主题下拉、`theme` 的
+  `light`/`auto` 取值（存量归一为 dark）、预设壁纸的 `lightCss`、浅色预设「晨雾白」、
+  主题↔壁纸联动与 `data-theme` 观察器；`main.css`/`settings.css` 中 237 条
+  `[data-theme="light"]` 规则与 `--glass-*` 令牌一并删除
 
 **未上架应用商店**（`06-MVP.md` 3.2 战略排除项，属既定决策而非未完成）。
 
@@ -81,21 +94,39 @@ lunar 1.7.7 的 `HolidayUtil` 生成；年度数据由运行时 `holiday-cn` + �
 > 给对，否则 preview/shim 两种模式会静默失去全部样式，样式类断言变成永远通过的绿灯。
 > **改动主题或配色时**跑 `node tools/ux-audit.js --contrast`：对比度用真实截图采样
 > （背景取像素众数色、前景取 computed color），不能只断言 `data-theme` 属性值。
-> 白色不要写裸 `#fff`，**也不要换成 `--text-primary`**——后者在浅色主题下是深色，
-> 红底删除键、accent 主按钮上的字会变成深色压深底。用 `--text-on-accent`（彩色/深色
-> 底上的文字与图形）或 `--surface-solid`（实心白面），`tests/unit/css-hygiene.test.js`
-> 会拦。
+> 白色不要写裸 `#fff`，**也不要换成 `--text-primary`**——它跟随主题（历史上浅色主题下
+> 是深色），用在红底删除键、accent 主按钮上会变成深色压深底。用 `--text-on-accent`
+> （彩色/深色底上的文字与图形）或 `--surface-solid`（实心白面），
+> `tests/unit/css-hygiene.test.js` 会拦。
 > **改动过渡或动画时**：不要用 `transition: all`，也**不要写
 > `transition: a, b, c 0.35s`**——那是 3 个独立条目，只有 c 拿到时长，a、b 按 0s
 > 处理，过渡静默消失且 CSS 不报错。用 `transition-property` + `transition-duration` +
 > `transition-timing-function` 长写。改完跑 css-hygiene，并在真实浏览器里用
 > `reducedMotion: 'reduce'` 读一次 computed `transitionDuration`，确认兜底生效。
+> **界面只有深色一套（2.0.0），不要重新引入浅色主题**：浅色走过四版
+> （不透明画布 → 纸色纱罩 → 洗白滤镜 → 照片原样 + 局部底片），每一版都卡在同一处矛盾——
+> 背景"要清晰"与文字"要清晰"互相拆台，最终被用户否掉，结论是只保留深色。
+> 现在的约束是：`<html data-theme="dark">` 恒成立（`Storage` 会把存量的 `light`/`auto`
+> 归一掉），样式表里**不允许再出现 `[data-theme="light"]` 规则**，E2E `[47]` 会扫
+> 样式表拦下来。`[data-theme="dark"]` 前缀的规则照旧保留，深色下的玻璃与压暗层都在那里。
+> 新增主题相关逻辑时先问一句"深色之外还需要吗"——答案默认是否，不要为对称而写分支。
+> **背景层保持原样**：照片档 `filter: none`、`::after` 只做压暗（按 `data-wallpaper-tone`
+> 分档），不要再给用户调过好几轮的背景加任何白色覆盖层或白化滤镜。
+> **预设壁纸只有深色渐变**：每套预设只留 `css` 字段，`lightCss` 已删除；
+> 浅色底预设「晨雾白」也下线了（深色界面下会整片过曝）。`tests/unit/wallpaper-preset.test.js`
+> 锁住"都是深底、无 lightCss、无晨雾白"。改完跑 `tools/ux-audit.js --contrast`（3 预设）
+> 与 E2E `[47]`。
+> **改动每日图缓存时先读 `wallpaper.js` 的「每日一图」段注释**：缓存只有一条记录
+> （`settings.wallpaperDaily`），语义是「最后一张成功获取的图」，三态解析
+> `resolveDailyWallpaper` 是唯一决策入口。**任何失败分支都不许清空它或回退默认图**——那等于
+> 把「断网时还能看到图」变成「只剩默认图」；只有从未成功获取过才允许走
+> `images/wallpaper-default.svg`。新增/修改分支后跑单测 `wallpaper-daily` 与 E2E `[46]`。
 > **改动天气缓存或切城市逻辑时**：恢复缓存前必须过 `isValidWeatherCache`（版本 +
 > 字段形状），城市切换/刷新必须走 `_reqGen` 代次——否则旧结构会渲染出 NaN，
 > 慢响应会覆盖后选城市（ADV-03/ADV-04）。
 > **改动壁纸明度采样时**：优先 `<img crossOrigin>` + canvas（Canvas 只认服务端 CORS 头，
 > **不认扩展 host_permissions**），`fetch` 只适合已有 host 权限的域；随机壁纸源不在
-> manifest 白名单里，若改回 fetch，`auto` 主题会再次对该源静默失效（ADV-05）。
+> manifest 白名单里，若改回 fetch，该源的明度采样会静默失效，压暗层强度随之失准（ADV-05）。
 > **改动节假日逻辑时**：年度数据由运行时 `holiday-cn` 自动更新，缓存即使过期也保留作
 > 双源失败时的兜底；lunar 的 `HolidayUtil` 只负责首次离线安装的历史数据，
 > **升级 lunar 是可选项，不要写成年度运维要求**。改完跑 `tests/unit/calendar.test.js`
@@ -137,7 +168,7 @@ lunar 1.7.7 的 `HolidayUtil` 生成；年度数据由运行时 `holiday-cn` + �
 4. 工作区中已有的未提交改动（可能来自其他任务包）一律保留，禁止回退。
 5. **对外分发前必须递增 `src/manifest.json` 的 `version`，并在 `CHANGELOG.md` 补一节**。
    Chrome Web Store 与 Edge 加载项商店都要求版本号严格递增，重复或回退会被拒。
-   版本语义（主/次/修订）与判定标准见 `CHANGELOG.md` 开头。当前版本：**1.4.0**。
+   版本语义（主/次/修订）与判定标准见 `CHANGELOG.md` 开头。当前版本：**2.0.0**。
 
 ## 多 Agent 协作
 

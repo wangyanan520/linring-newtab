@@ -301,7 +301,8 @@ async function measureContrast(page, shotB64) {
       const d = cx.getImageData(x, y, w, h).data;
       const hist = new Map();
       for (let i = 0; i < d.length; i += 4) {
-        const k = `${d[i] >> 2},${d[i + 1] >> 2},${d[i + 2] >> 2}`;
+        // 与 E2E 内嵌版同口径：8 级分桶，避免平滑底色的众数被拆散给文字笔画拿走
+        const k = `${d[i] >> 3},${d[i + 1] >> 3},${d[i + 2] >> 3}`;
         const e = hist.get(k) || { n: 0, r: 0, g: 0, b: 0 };
         e.n++; e.r += d[i]; e.g += d[i + 1]; e.b += d[i + 2];
         hist.set(k, e);
@@ -327,9 +328,10 @@ async function measureContrast(page, shotB64) {
 }
 
 async function checkContrast(browser) {
-  // 含 UX-02 路线 C 的浅色预设：浅色壁纸 + 深色主题是新增组合，必须一起验
-  const wallpapers = ['深邃星空', '极光绿', '落日暖阳', '晨雾白'];
-  const themes = ['dark', 'light'];
+  /* 2.0.0 起界面只有深色一套：主题维度不再需要遍历，
+     浅色预设「晨雾白」也随之下线（浅底配深色界面会整片过曝）。 */
+  const wallpapers = ['深邃星空', '极光绿', '落日暖阳'];
+  const themes = ['dark'];
   raw.contrast = [];
   for (const wp of wallpapers) {
     for (const theme of themes) {

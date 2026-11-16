@@ -82,64 +82,6 @@
   --surface-solid: #ffffff;
 }
 
-/* ===== V3 浅色主题 =====
-   UX-02：浅色主题此前只改前景色、不改背景，三个预设壁纸底色都是深色，
-   结果是"深色文字压在深色壁纸上"——实测 10 项关键元素里 8-9 项不达 WCAG AA
-   （副标题 1.34:1、书签名称 1.41:1）。修复分三层，缺一不可：
-   ① 背景层真的变亮（见下面的 .bg-layer::after）
-   ② 文本变量的 alpha 足够（本块，原 0.74/0.52 在纯白底上也分别只有 6.1/3.6:1）
-   ③ 补齐此前完全缺失的选择器级覆盖（见本文件末尾的浅色主题补齐区） */
-[data-theme="light"] {
-  /* 浅色主题：暖中性纸白，不是冷白。深色是石墨，浅色是纸——两种材质，
-     但共用同一套钴蓝强调与同一套圆角/字阶。 */
-  --text-primary: rgba(26, 28, 33, 0.95);
-  --text-secondary: rgba(44, 48, 56, 0.78);
-  --text-tertiary: rgba(38, 42, 52, 0.72);
-  /* 单层纸片：surface-1 近实心，靠 1px hairline 与极轻阴影分层；
-     不再依赖半透明白叠白（那正是"看不出边界"的根源）。 */
-  --surface-1: #fbfaf5;
-  --surface-2: #fffefb;
-  --surface-hover: #ffffff;
-  --hairline: rgba(28, 31, 38, 0.12);
-  --hairline-strong: rgba(28, 31, 38, 0.20);
-  --hover-tint: rgba(28, 31, 38, 0.05);
-
-  --brand: #2f49c8;
-  --brand-weak: rgba(47, 73, 200, 0.09);
-  --brand-line: rgba(47, 73, 200, 0.34);
-  --brand-fill: #2f49c8;
-  --brand-fill-hover: #283fae;
-  --focus-ring-light: #2f49c8;
-
-  --danger: #b3342a;
-  --danger-weak: rgba(179, 52, 42, 0.09);
-  --danger-fill: #b3342a;
-  --success: #157a52;
-  --warn: #9a5a20;
-  --brand-bar: rgba(47, 73, 200, 0.72);
-
-  --glass-bg: var(--surface-1);
-  --glass-bg-hover: var(--surface-hover);
-  --glass-border: var(--hairline);
-  --glass-border-hover: var(--hairline-strong);
-
-  --shadow-sm: 0 1px 2px rgba(43, 39, 30, 0.06), 0 3px 10px rgba(43, 39, 30, 0.05);
-  --shadow-md: 0 2px 6px rgba(43, 39, 30, 0.07), 0 10px 28px rgba(43, 39, 30, 0.07);
-  --shadow-lg: 0 6px 18px rgba(43, 39, 30, 0.10), 0 20px 48px rgba(43, 39, 30, 0.12);
-  --canvas: #f4f3ee;
-}
-
-/* UX-02 根因①：.bg-layer 的背景由 wallpaper.js 内联写入（样式表覆盖不了），
-   纯 CSS 唯一可控点就是这个伪元素。原值 rgba(255,255,255,0.16) 叠在深色壁纸上
-   只把底部抬到等效灰阶 40，而卡片底是 121 —— 文字夹在中间必然不可读。 */
-[data-theme="light"] .bg-layer::after {
-  /* 浅色主题不使用壁纸：用不透明纸面色完整覆盖壁纸图像与遮罩。
-     此前试过"半透明白纱既留壁纸又保可读"，但 0.55 / 0.62 / 0.82 / 0.94 都落在
-     "壁纸被洗成脏灰"与"文字压不住"之间，还得再叠一层标题晕影，观感反而更差。
-     壁纸只在深色主题生效，浅色主题直接给纯色背景。 */
-  background: var(--canvas);
-}
-
 /* 方向 C：.bg-glow 的紫色装饰光晕已删除；此后的浅色规则不再需要 */
 
 /* UX-02 路线 C：深色主题下覆盖层强度按壁纸明度切换。
@@ -150,190 +92,9 @@
   background: rgba(6, 8, 18, 0.85);
 }
 
-[data-theme="light"] .datetime,
-[data-theme="light"] .weather-widget {
-  background: rgba(255, 255, 255, 0.72);
-  border-color: rgba(27, 32, 48, 0.10);
-}
-
-[data-theme="light"] .weather-widget:hover {
-  background: rgba(255, 255, 255, 0.90);
-  border-color: rgba(27, 32, 48, 0.16);
-}
-
-[data-theme="light"] .search-inner {
-  background: rgba(255, 255, 255, 0.90);
-  border-color: rgba(27, 32, 48, 0.10);
-  box-shadow: var(--shadow-md);
-}
-
-[data-theme="light"] .search-inner:focus-within {
-  background: rgba(255, 255, 255, 0.98);
-  border-color: rgba(27, 32, 48, 0.14);
-  box-shadow:
-    var(--shadow-md),
-    0 0 0 2px var(--focus-ring-light, #6d4bd8);
-}
-
-[data-theme="light"] .engine-btn {
-  color: var(--text-tertiary);
-}
-
-[data-theme="light"] .engine-btn:hover {
-  color: var(--text-secondary);
-  background: rgba(25, 28, 45, 0.06);
-}
-
-[data-theme="light"] .search-divider {
-  background: rgba(25, 28, 45, 0.12);
-}
-
-[data-theme="light"] .search-clear:hover {
-  background: rgba(25, 28, 45, 0.06);
-}
-
-[data-theme="light"] .bookmark-icon {
-  background: rgba(255, 255, 255, 0.92);
-  border-color: rgba(27, 32, 48, 0.12);
-  box-shadow: 0 1px 2px rgba(24, 28, 45, 0.06), 0 4px 12px rgba(24, 28, 45, 0.06);
-}
-
-[data-theme="light"] .bookmark-item:hover .bookmark-icon {
-  background: var(--surface-solid);
-  border-color: rgba(27, 32, 48, 0.18);
-}
-
-[data-theme="light"] .category-card,
-[data-theme="light"] .todo-card {
-  background: rgba(255, 255, 255, 0.80);
-  border-color: rgba(27, 32, 48, 0.10);
-  box-shadow: var(--shadow-sm);
-}
-
-[data-theme="light"] .category-card:hover,
-[data-theme="light"] .todo-card:hover {
-  background: rgba(255, 255, 255, 0.92);
-  border-color: var(--accent-border);
-  box-shadow: var(--shadow-md);
-}
-
-[data-theme="light"] .category-link:hover {
-  background: var(--surface-solid);
-  border-color: var(--accent-border);
-}
-
-[data-theme="light"] .category-title {
-  color: rgba(25, 28, 45, 0.85);
-}
-
-[data-theme="light"] .category-title::before {
-  background: rgba(25, 28, 45, 0.20);
-}
-
-[data-theme="light"] .todo-title,
-[data-theme="light"] .todo-add-btn {
-  color: var(--text-secondary);
-}
-
-[data-theme="light"] .todo-empty {
-  color: var(--text-tertiary);
-}
-
-[data-theme="light"] .tool-btn {
-  background: rgba(255, 255, 255, 0.78);
-  border-color: rgba(27, 32, 48, 0.10);
-}
-
-[data-theme="light"] .tool-btn:hover {
-  background: rgba(255, 255, 255, 0.96);
-  border-color: rgba(27, 32, 48, 0.16);
-}
-
 /* V3 组件可见性：隐藏的组件区块 */
 .component-hidden {
   display: none !important;
-}
-
-/* V3 浅色主题：悬浮卡片（天气 24h / 农历日历）与待办输入区 */
-[data-theme="light"] .weather-hover-card,
-[data-theme="light"] .datetime-hover-card {
-  background: rgba(255, 255, 255, 0.98);
-  border-color: rgba(27, 32, 48, 0.12);
-  box-shadow: 0 24px 60px rgba(24, 28, 45, 0.16), 0 2px 8px rgba(24, 28, 45, 0.08);
-}
-
-/* V3 浅色主题：农历浮层内部文字（默认硬编码白色系，需按浅色覆盖） */
-[data-theme="light"] .dhc-nav {
-  color: rgba(25, 28, 45, 0.55);
-}
-
-[data-theme="light"] .dhc-nav:hover {
-  color: rgba(25, 28, 45, 0.90);
-  background: rgba(25, 28, 45, 0.06);
-}
-
-[data-theme="light"] .dhc-week {
-  color: rgba(25, 28, 45, 0.45);
-}
-
-[data-theme="light"] .dhc-week.dhc-weekend {
-  color: rgba(25, 28, 45, 0.28);
-}
-
-[data-theme="light"] .dhc-sub {
-  color: rgba(25, 28, 45, 0.45);
-}
-
-[data-theme="light"] .dhc-cell.dhc-outside .dhc-day,
-[data-theme="light"] .dhc-cell.dhc-outside .dhc-sub {
-  color: rgba(25, 28, 45, 0.20);
-}
-
-[data-theme="light"] .todo-input-wrapper {
-  background: rgba(255, 255, 255, 0.86);
-  border-color: rgba(27, 32, 48, 0.10);
-}
-
-[data-theme="light"] .todo-input-wrapper:focus-within {
-  background: rgba(255, 255, 255, 0.98);
-  border-color: var(--accent-border);
-}
-
-[data-theme="light"] .todo-input::placeholder {
-  color: rgba(25, 28, 45, 0.30);
-}
-
-[data-theme="light"] .todo-text {
-  color: rgba(25, 28, 45, 0.62);
-}
-
-/* UI 审查：浅色主题的常态色在文件末尾 R5 区统一维护（后置规则会覆盖此处）；
-   这里只补 R5 未覆盖的悬停底色与键盘焦点态。悬停行时不再改按钮颜色，
-   否则会盖掉按钮自身的红色悬停反馈（行选择器特异性更高）。 */
-[data-theme="light"] .todo-item:hover .todo-delete-btn {
-  background: rgba(25, 28, 45, 0.06);
-}
-
-[data-theme="light"] .todo-item:hover .todo-delete-btn:hover {
-  color: rgba(170, 35, 25, 0.95);
-  background: rgba(200, 50, 40, 0.10);
-}
-
-[data-theme="light"] .todo-delete-btn:focus-visible {
-  color: rgba(170, 35, 25, 0.95);
-  background: rgba(200, 50, 40, 0.10);
-}
-
-[data-theme="light"] .todo-item:hover {
-  background: rgba(25, 28, 45, 0.04);
-}
-
-[data-theme="light"] .feedback-error {
-  color: rgba(205, 55, 45, 0.85);
-}
-
-[data-theme="light"] .feedback-success {
-  color: rgba(35, 160, 100, 0.85);
 }
 
 * {
@@ -367,7 +128,9 @@ body {
   z-index: 1;
   pointer-events: none;
   background: linear-gradient(160deg, #111318 0%, #171a20 55%, #0d0f13 100%);
-  transition: background 1s var(--ease-out);
+  /* filter 也进过渡：浅色主题的白化是作用在本层上的（不是叠一层纱），
+     切主题时若滤镜瞬间挂上/摘下，画面会"跳"一下，和 1s 的背景过渡对不上。 */
+  transition: background 1s var(--ease-out), filter 0.5s var(--ease-out);
 }
 
 /* 方向 C：深色预设壁纸已由 wallpaper.js 改为石墨 + 钴蓝冷光，
@@ -392,8 +155,6 @@ body {
   height: 100vh;
   padding: 20px 48px;
 }
-
-
 
 /* ===== 顶部状态栏 ===== */
 .top-bar {
@@ -431,11 +192,6 @@ body {
   border-radius: 4px;
 }
 
-[data-theme="light"] .datetime-text:focus-visible,
-[data-theme="light"] .weather-temp:focus-visible {
-  outline-color: var(--focus-ring-light, #6d4bd8);
-}
-
 /* 方向 A｜统一键盘焦点环（2026-11-07）
    此前只有搜索框（:focus-within）与分类头（:focus-visible）用项目自有的 2px 紫色环，
    其余按钮与链接走浏览器默认的系统蓝 1px 环，两套视觉并存。
@@ -446,12 +202,6 @@ a:focus-visible,
 input[type="checkbox"]:focus-visible {
   outline: 2px solid var(--focus-ring, rgba(175, 155, 255, 0.95));
   outline-offset: 2px;
-}
-
-[data-theme="light"] button:focus-visible,
-[data-theme="light"] a:focus-visible,
-[data-theme="light"] input[type="checkbox"]:focus-visible {
-  outline-color: var(--focus-ring-light, #6d4bd8);
 }
 
 .weather-widget {
@@ -777,12 +527,6 @@ input[type="checkbox"]:focus-visible {
   pointer-events: auto;
 }
 
-[data-theme="light"] .bookmark-remove {
-  background: rgba(252, 252, 255, 0.96);
-  border-color: rgba(25, 28, 45, 0.16);
-  color: rgba(25, 28, 45, 0.70);
-}
-
 /* UI 审查 P2：触屏没有 hover，删除按钮原本永不显形（pointer-events:none 也点不到）。
    (hover:none) 与 coarse 指针都会命中，按钮常驻显示。 */
 @media (hover: none), (pointer: coarse) {
@@ -800,13 +544,6 @@ input[type="checkbox"]:focus-visible {
   position: absolute;
   inset: -10px;
   border-radius: 50%;
-}
-
-[data-theme="light"] .bookmark-remove:hover,
-[data-theme="light"] .bookmark-remove:focus-visible {
-  background: #c0392b;
-  border-color: #c0392b;
-  color: var(--text-on-accent);
 }
 
 .bookmark-icon {
@@ -932,11 +669,6 @@ input[type="checkbox"]:focus-visible {
   background: rgba(255, 255, 255, 0.10);
   outline: 2px solid var(--focus-ring, rgba(175, 155, 255, 0.95));
   outline-offset: -2px;
-}
-
-[data-theme="light"] .category-header:focus-visible {
-  background: rgba(25, 28, 45, 0.06);
-  outline-color: var(--focus-ring-light, #6d4bd8);
 }
 
 .category-title {
@@ -1513,19 +1245,6 @@ input[type="checkbox"]:focus-visible {
   background: rgba(255, 255, 255, 0.32);
 }
 
-/* UX-01：浅色主题此前完全没有滚动条覆盖规则，深浅两套主题都要能看到 */
-[data-theme="light"] .main-content::-webkit-scrollbar-thumb,
-[data-theme="light"] .settings-body::-webkit-scrollbar-thumb,
-[data-theme="light"] .todo-list::-webkit-scrollbar-thumb {
-  background: rgba(25, 28, 45, 0.24);
-}
-
-[data-theme="light"] .main-content::-webkit-scrollbar-thumb:hover,
-[data-theme="light"] .settings-body::-webkit-scrollbar-thumb:hover,
-[data-theme="light"] .todo-list::-webkit-scrollbar-thumb:hover {
-  background: rgba(25, 28, 45, 0.38);
-}
-
 /* UX-12：主页书签区末尾的快捷添加磁贴。
    保持低视觉权重（不抢已收藏站点的注意力），hover/聚焦时才提亮。
    刻意不给 draggable 属性——拖拽逻辑按 [draggable="true"] 收集元素，磁贴自然不会参与排序。 */
@@ -1559,17 +1278,6 @@ input[type="checkbox"]:focus-visible {
 .bookmark-tile-add:hover .bookmark-add-icon {
   border-color: var(--accent-color);
   color: var(--text-primary);
-}
-
-[data-theme="light"] .bookmark-add-icon {
-  border-color: rgba(25, 28, 45, 0.52);
-  background: rgba(255, 255, 255, 0.42);
-  color: rgba(25, 28, 45, 0.72);
-}
-
-[data-theme="light"] .bookmark-tile-add:hover .bookmark-add-icon {
-  border-color: #6d4bd8;
-  color: rgba(25, 28, 45, 0.92);
 }
 
 /* ===== 操作反馈 toast（UX-08 撤销删除 / UX-11 壁纸切换提示） ===== */
@@ -1617,19 +1325,6 @@ input[type="checkbox"]:focus-visible {
 }
 
 .toast-action:hover { background: rgba(255, 255, 255, 0.20); }
-
-[data-theme="light"] .toast {
-  background: rgba(252, 252, 255, 0.97);
-  border-color: rgba(25, 28, 45, 0.10);
-  color: rgba(25, 28, 45, 0.92);
-}
-
-[data-theme="light"] .toast-action {
-  background: rgba(25, 28, 45, 0.08);
-  color: rgba(25, 28, 45, 0.92);
-}
-
-[data-theme="light"] .toast-action:hover { background: rgba(25, 28, 45, 0.14); }
 
 /* ===== 空状态行动引导（UX-09） ===== */
 .empty-state-block {
@@ -1680,17 +1375,6 @@ input[type="checkbox"]:focus-visible {
 .btn-ghost:hover {
   background: rgba(255, 255, 255, 0.12);
   color: var(--text-primary);
-}
-
-[data-theme="light"] .btn-ghost {
-  background: rgba(255, 255, 255, 0.62);
-  border-color: rgba(25, 28, 45, 0.12);
-  color: rgba(25, 28, 45, 0.78);
-}
-
-[data-theme="light"] .btn-ghost:hover {
-  background: rgba(255, 255, 255, 0.88);
-  color: rgba(25, 28, 45, 0.95);
 }
 
 /* ===== 天气预报（24h）悬浮卡片 ===== */
@@ -2039,11 +1723,6 @@ input[type="checkbox"]:focus-visible {
 .weather-retry:hover {
   background: rgba(255, 255, 255, 0.18);
 }
-[data-theme="light"] .weather-retry {
-  color: rgba(25, 28, 45, 0.92);
-  background: rgba(25, 28, 45, 0.06);
-  border-color: rgba(25, 28, 45, 0.16);
-}
 
 /* PBI-11/PBI-12 日历浮层：倒计时行与数据源标注 */
 .dhc-countdown {
@@ -2057,140 +1736,6 @@ input[type="checkbox"]:focus-visible {
   font-size: 11px;
   color: var(--text-tertiary);
 }
-[data-theme="light"] .dhc-countdown {
-  color: #b45309;
-}
-
-/* ==========================================================================
-   UX-02 浅色主题补齐区
-   集中放在文件末尾：浅色主题的缺口分散在 1000+ 行的各组件里，逐处插入会让
-   "到底漏了哪个组件"变得无法审计（静态完整性审查一次就找出 30+ 处）。
-   每条对应 10-使用体验优化方案.md 附录 C 的缺口清单，分三组：
-   R4 = 此前完全没有浅色覆盖的硬编码颜色
-   R5 = 已有覆盖但 alpha 仍偏弱（在纯白底上也不足 4.5:1）
-   R6 = --accent-* 由 wallpaper.js 内联写入、CSS 覆盖无效，需给兜底实色
-   ========================================================================== */
-
-/* --- R4：完全缺失的浅色覆盖 --- */
-
-/* 主标题此前是硬编码白字（原 L375），浅色背景下实测仅 1.37:1。
-   浅色主题背景是不透明纸面，不再需要任何光晕或文字阴影——深色 text-shadow
-   在浅底上只会让字形边缘发糊，这里一并清掉。 */
-[data-theme="light"] .site-title {
-  color: rgba(25, 28, 45, 0.95);
-  text-shadow: none;
-}
-
-/* 副标题颜色走变量，但阴影仍是深色，浅底上会糊成灰边 */
-[data-theme="light"] .site-subtitle {
-  color: rgba(25, 28, 45, 0.88);
-  text-shadow: none;
-}
-
-/* 天气分隔符硬编码 15% 白，浅底下等于不可见 */
-[data-theme="light"] .weather-sep {
-  color: rgba(25, 28, 45, 0.28);
-}
-
-/* 待办"添加"与底部工具按钮的 hover 态是硬编码深色高光，浅底上越 hover 越糊 */
-[data-theme="light"] .todo-add-btn:hover {
-  color: var(--text-primary);
-  background: rgba(109, 75, 216, 0.08);
-}
-
-[data-theme="light"] .tool-btn:hover {
-  background: rgba(255, 255, 255, 0.96);
-  border-color: rgba(27, 32, 48, 0.16);
-}
-
-/* 分类链接的基础态：白 0.58 与卡片 0.80 明度太近，改 0.66 并保留细边，hover 转实白 */
-[data-theme="light"] .category-link {
-  background: rgba(255, 255, 255, 0.66);
-  border-color: rgba(27, 32, 48, 0.08);
-}
-
-[data-theme="light"] .category-header:hover {
-  background: rgba(109, 75, 216, 0.06);
-}
-
-/* 搜索框图标靠 opacity 压暗：深色图标 × 0.35 在浅底上只有 1.78:1 */
-[data-theme="light"] .search-icon { opacity: 0.55; }
-[data-theme="light"] .search-clear.visible { opacity: 0.62; }
-[data-theme="light"] .tool-btn svg { opacity: 0.78; }
-
-/* --- R5：已有覆盖但 alpha 偏弱 --- */
-[data-theme="light"] .category-title { color: rgba(25, 28, 45, 0.92); }
-[data-theme="light"] .todo-text { color: rgba(25, 28, 45, 0.78); }
-/* UI 审查：已完成条目 0.48 → 0.68（实测 5.4:1）；删除 × 0.40 → 0.68（实测 5.4:1）。
-   0.62/0.55 的首轮修改实测只有 4.48/3.64，仍低于 4.5，故按实测回调到这里。 */
-[data-theme="light"] .todo-text.done { color: rgba(25, 28, 45, 0.68); }
-[data-theme="light"] .todo-checkbox { border-color: rgba(25, 28, 45, 0.55); }
-[data-theme="light"] .todo-delete-btn { color: rgba(25, 28, 45, 0.68); }
-[data-theme="light"] .todo-delete-btn:hover { color: rgba(170, 35, 25, 0.95); }
-[data-theme="light"] .todo-input::placeholder { color: rgba(25, 28, 45, 0.42); }
-[data-theme="light"] .feedback-error { color: rgba(170, 35, 25, 0.95); }
-[data-theme="light"] .feedback-success { color: rgba(20, 120, 75, 0.95); }
-/* 空状态提示原本还叠了 opacity:.6，两层淡化后实测 1.07:1，这里一并去掉 */
-/* UI 审查 P2：浅色空态提示 0.62 实测 4.23:1，提到 0.70（约 5:1） */
-[data-theme="light"] .empty-hint { color: rgba(25, 28, 45, 0.70); opacity: 1; }
-[data-theme="light"] .dhc-nav { color: rgba(25, 28, 45, 0.68); }
-[data-theme="light"] .dhc-week,
-[data-theme="light"] .dhc-sub { color: rgba(25, 28, 45, 0.62); }
-/* 周末靠日期数字的颜色区分即可；表头若继续压到 0.45，11px 文字实测只有 2.84:1 */
-[data-theme="light"] .dhc-week.dhc-weekend { color: rgba(25, 28, 45, 0.62); }
-/* 非本月日期：0.36 在纯白卡上实测 2.23:1。弱化交给字号与日期数字的 alpha，
-   副文本不能再低于正文阈值（0.60 实测约 4.4，取 0.62 与普通副文本对齐） */
-[data-theme="light"] .dhc-cell.dhc-outside .dhc-day,
-[data-theme="light"] .dhc-cell.dhc-outside .dhc-sub { color: rgba(25, 28, 45, 0.62); }
-
-/* 逐时时刻走 --accent-color，而该变量由 wallpaper.js 内联写入（CSS 覆盖无效），
-   浅色下实测 rgba(108,92,200,0.75) 只有 3.23:1。这里给兜底实色。 */
-[data-theme="light"] .whc-hour { color: rgba(25, 28, 45, 0.78); }
-[data-theme="light"] .whc-col.whc-now .whc-hour { color: #5b46b8; }
-
-/* --- R6：accent 相关组件的浅色兜底实色 --- */
-[data-theme="light"] .todo-submit-btn {
-  background: #6d4bd8;
-  color: var(--text-on-accent);
-}
-
-[data-theme="light"] .todo-checkbox:checked {
-  background: #6d4bd8;
-  border-color: #6d4bd8;
-}
-
-[data-theme="light"] .dhc-cell.dhc-off .dhc-day,
-[data-theme="light"] .dhc-cell.dhc-off .dhc-sub { color: rgba(95, 60, 190, 0.95); }
-
-[data-theme="light"] .dhc-cell.dhc-today {
-  background: linear-gradient(180deg, #5b3fc4, #7a5cf0);
-}
-
-[data-theme="light"] .dhc-cell.dhc-today .dhc-day,
-[data-theme="light"] .dhc-cell.dhc-today .dhc-sub { color: var(--text-on-accent); }
-
-[data-theme="light"] .dhc-cell.dhc-work .dhc-day,
-[data-theme="light"] .dhc-cell.dhc-work .dhc-sub { color: rgba(30, 90, 200, 0.95); }
-
-[data-theme="light"] .dhc-badge-off { background: #b45309; }
-[data-theme="light"] .dhc-badge-work { background: #2f6fb0; }
-
-/* 危险按钮深色主题用 #e74c3c，在浅色面板上实测 3.05:1；浅色改用深砖红 */
-[data-theme="light"] .btn-danger {
-  color: rgba(170, 35, 25, 0.95);
-  background: rgba(200, 50, 40, 0.08);
-  border-color: rgba(200, 50, 40, 0.18);
-}
-
-[data-theme="light"] .btn-danger:hover {
-  color: rgba(140, 25, 18, 0.98);
-  background: rgba(200, 50, 40, 0.14);
-  border-color: rgba(200, 50, 40, 0.26);
-}
-
-/* 根背景被 .bg-layer 完全遮盖，但浅色主题留深色底会在壁纸解码完成前闪一下黑 */
-[data-theme="light"],
-[data-theme="light"] body { background: var(--canvas); }
 
 /* ===== 第二批命中区｜触屏（2026-11-07） =====
    细指针下这五个元素都已是 24×24 以上，触屏统一补到 40×40 一档。间距充足的用透明
@@ -2311,25 +1856,6 @@ input[type="checkbox"]:focus-visible {
   color: var(--hairline-strong);
 }
 
-[data-theme="light"] .site-title {
-  color: var(--text-primary);
-}
-
-[data-theme="light"] .datetime,
-[data-theme="light"] .weather-widget {
-  background: var(--surface-1);
-  border-color: var(--hairline);
-}
-
-[data-theme="light"] .weather-widget:hover {
-  background: var(--surface-hover);
-  border-color: var(--hairline-strong);
-}
-
-[data-theme="light"] .weather-sep {
-  color: var(--hairline-strong);
-}
-
 /* --- 搜索框 --- */
 .search-inner {
   background: var(--surface-1);
@@ -2386,45 +1912,6 @@ input[type="checkbox"]:focus-visible {
 .search-clear:hover {
   background: var(--hover-tint);
   opacity: 0.85;
-}
-
-[data-theme="light"] .search-inner {
-  background: var(--surface-1);
-  border-color: var(--hairline);
-  box-shadow: var(--shadow-sm);
-}
-
-[data-theme="light"] .search-inner:focus-within {
-  background: var(--surface-2);
-  border-color: var(--brand-line);
-  box-shadow:
-    var(--shadow-sm),
-    0 0 0 2px var(--brand);
-}
-
-[data-theme="light"] .engine-btn {
-  color: var(--text-tertiary);
-}
-
-[data-theme="light"] .engine-btn:hover {
-  color: var(--text-primary);
-  background: var(--hover-tint);
-}
-
-[data-theme="light"] .search-divider {
-  background: var(--hairline);
-}
-
-[data-theme="light"] .search-icon {
-  opacity: 0.62;
-}
-
-[data-theme="light"] .search-clear.visible {
-  opacity: 0.62;
-}
-
-[data-theme="light"] .search-clear:hover {
-  background: var(--hover-tint);
 }
 
 /* --- 书签：统一表面 + 内圈，不再做玻璃片 --- */
@@ -2496,55 +1983,6 @@ input[type="checkbox"]:focus-visible {
   opacity: 1;
 }
 
-[data-theme="light"] .bookmark-icon {
-  background: var(--surface-1);
-  border-color: var(--hairline);
-  box-shadow: none;
-}
-
-[data-theme="light"] .bookmark-icon.fallback {
-  background: hsl(var(--bm-hue, 220) 52% 94%);
-  border-color: hsl(var(--bm-hue, 220) 40% 82%);
-}
-
-[data-theme="light"] .bookmark-icon.fallback::after {
-  color: hsl(var(--bm-hue, 220) 55% 32%);
-}
-
-[data-theme="light"] .bookmark-item:hover .bookmark-icon {
-  background: var(--surface-hover);
-  border-color: var(--brand-line);
-}
-
-[data-theme="light"] .bookmark-remove {
-  background: var(--surface-2);
-  border-color: var(--hairline-strong);
-  color: var(--text-secondary);
-}
-
-[data-theme="light"] .bookmark-remove:hover,
-[data-theme="light"] .bookmark-remove:focus-visible {
-  background: var(--danger-fill);
-  border-color: var(--danger-fill);
-  color: var(--text-on-accent);
-}
-
-[data-theme="light"] .bookmark-add-icon {
-  border-color: var(--hairline-strong);
-  background: transparent;
-  color: var(--text-secondary);
-}
-
-[data-theme="light"] .bookmark-tile-add:hover .bookmark-add-icon {
-  border-color: var(--brand);
-  color: var(--text-primary);
-}
-
-[data-theme="light"] .empty-hint {
-  color: var(--text-secondary);
-  opacity: 1;
-}
-
 /* --- 分类 --- */
 .category-card {
   background: var(--surface-1);
@@ -2598,43 +2036,6 @@ input[type="checkbox"]:focus-visible {
   color: var(--text-primary);
   background: var(--brand-weak);
   border-color: var(--brand-line);
-}
-
-[data-theme="light"] .category-card,
-[data-theme="light"] .todo-card {
-  background: var(--surface-1);
-  border-color: var(--hairline);
-  box-shadow: var(--shadow-sm);
-}
-
-[data-theme="light"] .category-card:hover,
-[data-theme="light"] .todo-card:hover {
-  background: var(--surface-1);
-  border-color: var(--hairline-strong);
-}
-
-[data-theme="light"] .category-title {
-  color: var(--text-primary);
-}
-
-[data-theme="light"] .category-title::before {
-  background: var(--brand);
-}
-
-[data-theme="light"] .category-link {
-  background: transparent;
-  border-color: var(--hairline);
-  color: var(--text-secondary);
-}
-
-[data-theme="light"] .category-link:hover {
-  background: var(--brand-weak);
-  border-color: var(--brand-line);
-  color: var(--text-primary);
-}
-
-[data-theme="light"] .category-header:hover {
-  background: var(--hover-tint);
 }
 
 /* --- 待办 --- */
@@ -2738,63 +2139,6 @@ input[type="checkbox"]:focus-visible {
   color: var(--success);
 }
 
-[data-theme="light"] .todo-title,
-[data-theme="light"] .todo-add-btn {
-  color: var(--text-secondary);
-}
-
-[data-theme="light"] .todo-add-btn:hover {
-  color: var(--text-primary);
-  background: var(--hover-tint);
-}
-
-[data-theme="light"] .todo-text {
-  color: var(--text-secondary);
-}
-
-[data-theme="light"] .todo-text.done {
-  color: var(--text-tertiary);
-}
-
-[data-theme="light"] .todo-checkbox {
-  border-color: var(--hairline-strong);
-}
-
-[data-theme="light"] .todo-checkbox:checked {
-  background: var(--brand-fill);
-  border-color: var(--brand-fill);
-}
-
-[data-theme="light"] .todo-delete-btn {
-  color: var(--text-tertiary);
-}
-
-[data-theme="light"] .todo-delete-btn:hover {
-  color: var(--danger);
-}
-
-[data-theme="light"] .todo-input::placeholder {
-  color: var(--text-tertiary);
-}
-
-[data-theme="light"] .todo-input-wrapper:focus-within {
-  background: var(--surface-2);
-  border-color: var(--brand-line);
-}
-
-[data-theme="light"] .todo-submit-btn {
-  background: var(--brand-fill);
-  color: var(--text-on-accent);
-}
-
-[data-theme="light"] .feedback-error {
-  color: var(--danger);
-}
-
-[data-theme="light"] .feedback-success {
-  color: var(--success);
-}
-
 /* --- 底栏 / toast / 空状态按钮 --- */
 .tool-btn {
   background: var(--surface-1);
@@ -2846,43 +2190,6 @@ input[type="checkbox"]:focus-visible {
 }
 
 .btn-ghost:hover {
-  background: var(--surface-hover);
-  border-color: var(--hairline-strong);
-  color: var(--text-primary);
-}
-
-[data-theme="light"] .tool-btn {
-  background: var(--surface-1);
-  border-color: var(--hairline);
-}
-
-[data-theme="light"] .tool-btn:hover {
-  background: var(--surface-hover);
-  border-color: var(--hairline-strong);
-}
-
-[data-theme="light"] .toast {
-  background: var(--surface-2);
-  border-color: var(--hairline);
-  color: var(--text-primary);
-}
-
-[data-theme="light"] .toast-action {
-  background: var(--brand-weak);
-  color: var(--brand);
-}
-
-[data-theme="light"] .toast-action:hover {
-  background: var(--brand-weak);
-}
-
-[data-theme="light"] .btn-ghost {
-  background: var(--surface-1);
-  border-color: var(--hairline);
-  color: var(--text-secondary);
-}
-
-[data-theme="light"] .btn-ghost:hover {
   background: var(--surface-hover);
   border-color: var(--hairline-strong);
   color: var(--text-primary);
@@ -3028,75 +2335,6 @@ input[type="checkbox"]:focus-visible {
   border-color: var(--hairline);
   color: var(--text-secondary);
   border-radius: var(--radius-sm);
-}
-
-[data-theme="light"] .whc-hour {
-  color: var(--text-secondary);
-}
-
-[data-theme="light"] .whc-col.whc-now .whc-hour {
-  color: var(--text-primary);
-}
-
-[data-theme="light"] .dhc-nav {
-  color: var(--text-tertiary);
-}
-
-[data-theme="light"] .dhc-nav:hover {
-  color: var(--text-primary);
-  background: var(--hover-tint);
-}
-
-[data-theme="light"] .dhc-week {
-  color: var(--text-secondary);
-}
-
-[data-theme="light"] .dhc-week.dhc-weekend {
-  color: var(--text-tertiary);
-}
-
-[data-theme="light"] .dhc-sub {
-  color: var(--text-tertiary);
-}
-
-[data-theme="light"] .dhc-cell.dhc-outside .dhc-day,
-[data-theme="light"] .dhc-cell.dhc-outside .dhc-sub {
-  color: var(--text-tertiary);
-}
-
-[data-theme="light"] .dhc-cell.dhc-off .dhc-day,
-[data-theme="light"] .dhc-cell.dhc-off .dhc-sub {
-  color: var(--warn);
-}
-
-[data-theme="light"] .dhc-cell.dhc-work .dhc-day,
-[data-theme="light"] .dhc-cell.dhc-work .dhc-sub {
-  color: var(--brand);
-}
-
-[data-theme="light"] .dhc-cell.dhc-today {
-  background: var(--brand-fill);
-}
-
-[data-theme="light"] .dhc-cell.dhc-today .dhc-day,
-[data-theme="light"] .dhc-cell.dhc-today .dhc-sub {
-  color: var(--text-on-accent);
-}
-
-[data-theme="light"] .dhc-badge-off {
-  background: var(--warn);
-}
-
-[data-theme="light"] .dhc-badge-work {
-  background: var(--brand-fill);
-}
-
-[data-theme="light"] .dhc-countdown {
-  color: var(--warn);
-}
-
-[data-theme="light"] .dhc-source-note {
-  color: var(--text-tertiary);
 }
 
 /* ===== 无障碍：减少动态效果 =====

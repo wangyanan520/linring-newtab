@@ -892,9 +892,6 @@ const Settings = {
     Todos.render();
     const s = await Storage.getSettings();
     App.applySettings(s);
-    // 导入恢复的主题需同步到主题下拉，避免 UI 与实际主题不一致
-    const themeSelect = document.getElementById('themeSelect');
-    if (themeSelect) themeSelect.value = s.theme || 'dark';
     // 同步底部工具栏开关（导入的备份可能改变 showBottomBar；undefined 视为默认 true）
     const bottomBarToggle = document.getElementById('showBottomBarToggle');
     if (bottomBarToggle) bottomBarToggle.checked = s.showBottomBar !== false;
@@ -930,31 +927,6 @@ const Settings = {
     const settings = await Storage.getSettings();
     const wallpapers = Wallpaper.getWallpapers();
     const currentName = settings.wallpaperName || wallpapers[0].name;
-
-    // 外观：主题选择
-    const themeSection = document.createElement('div');
-    themeSection.className = 'setting-section';
-    themeSection.innerHTML = `
-      <div class="setting-section-title">主题外观</div>
-      <p class="setting-section-desc">选择界面主题。深色适合夜间，浅色适合明亮环境。</p>
-      <select class="city-select" id="themeSelect">
-        <option value="dark" ${settings.theme === 'light' || settings.theme === 'auto' ? '' : 'selected'}>深色</option>
-        <option value="light" ${settings.theme === 'light' ? 'selected' : ''}>浅色</option>
-        <option value="auto" ${settings.theme === 'auto' ? 'selected' : ''}>跟随壁纸</option>
-      </select>
-    `;
-    tab.appendChild(this.wrapSectionAsGroup(themeSection, true, 'theme'));
-    themeSection.querySelector('#themeSelect').addEventListener('change', async (e) => {
-      const val = e.target.value;
-      await Storage.updateSettings({ theme: val });
-      // PBI-10：auto 模式立即按当前壁纸明度解析
-      if (val === 'auto') {
-        const wp = Wallpaper.getWallpapers()[Wallpaper.currentIndex];
-        document.documentElement.dataset.theme = wp && wp.themeHint === 'light' ? 'light' : 'dark';
-      } else {
-        document.documentElement.dataset.theme = val;
-      }
-    });
 
     // 底部工具栏开关
     const bottomBarSection = document.createElement('div');

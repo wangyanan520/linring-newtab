@@ -55,6 +55,9 @@ const PRESET_CATEGORIES = [
 const DEFAULT_SETTINGS = {
   wallpaperName: '深邃星空',
   wallpaperApiCache: null,
+  // 每日一图缓存：{ v, date, url }，语义是「最后一张成功获取的每日图」。
+  // 旧字段 wallpaperApiCache 仅用于升级迁移，迁移后由 wallpaper.js 置空。
+  wallpaperDaily: null,
   searchEngine: '百度',
   theme: 'dark',
   weatherCity: '',
@@ -239,12 +242,29 @@ function normalizeCategories(categories) {
 }
 
 /* 导入设置白名单（ADV-13）：只接受 DEFAULT_SETTINGS 里声明过的键，丢弃备份中的未知字段；
-   weatherCache / wallpaperApiCache 是运行时缓存，不随备份跨设备迁移（也是缓存注入的入口）。 */
+   weatherCache / wallpaperApiCache / wallpaperDaily 是运行时缓存，不随备份跨设备迁移
+   （也是缓存注入的入口）。 */
+/* 2.0.0：主题只剩深色。
+   历史上 theme 支持过 'light' 与 'auto'（跟随壁纸），两者都会把界面切到浅色。
+   读取与写入都过一遍这里，保证残留字段不会让界面回到已删除的浅色主题。
+   另外「晨雾白」预设（浅色底）已随浅色主题一起移除，存量设置里的名字要回退，
+   否则设置面板的下拉会指向一个不存在的选项。 */
+const RETIRED_WALLPAPERS = ['晨雾白'];
+
+function normalizeAppearance(settings) {
+  const out = { ...settings };
+  out.theme = 'dark';
+  if (RETIRED_WALLPAPERS.includes(out.wallpaperName)) {
+    out.wallpaperName = DEFAULT_SETTINGS.wallpaperName;
+  }
+  return out;
+}
+
 function pickSettings(raw) {
   const out = { ...DEFAULT_SETTINGS };
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
   for (const key of Object.keys(DEFAULT_SETTINGS)) {
-    if (key === 'weatherCache' || key === 'wallpaperApiCache') continue;
+    if (key === 'weatherCache' || key === 'wallpaperApiCache' || key === 'wallpaperDaily') continue;
     if (!Object.prototype.hasOwnProperty.call(raw, key)) continue;
     if (key === 'componentVisibility') {
       out[key] = (raw[key] && typeof raw[key] === 'object' && !Array.isArray(raw[key])) ? raw[key] : {};
@@ -639,7 +659,7 @@ const Storage = {
     try {
       const result = await storageGet(['settings']);
       const saved = result.settings || {};
-      return { ...DEFAULT_SETTINGS, ...saved };
+      return normalizeAppearance({ ...DEFAULT_SETTINGS, ...saved });
     } catch (e) {
       console.error('读取设置失败:', e);
       return { ...DEFAULT_SETTINGS };
@@ -651,7 +671,7 @@ const Storage = {
     // 支持函数式更新：需要「读当前值 → 合并」的操作必须整体在同一队列执行体内完成，
     // 否则并发的读-改-写会基于同一旧快照互相覆盖（P2-15）
     const patch = typeof settings === 'function' ? settings(current) : settings;
-    const merged = { ...current, ...patch };
+    const merged = normalizeAppearance({ ...current, ...patch });
     await storageSet({ settings: merged });
     return merged;
   },

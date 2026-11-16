@@ -51,28 +51,6 @@ const WALLPAPERS = [
       accentBorder: 'rgba(220, 130, 50, 0.12)'
     }
   },
-  /* UX-02 路线 C：浅色预设壁纸。
-     此前三张预设底色全是深色，切到浅色主题时只能靠 .bg-layer::after 的白纱把背景"洗亮"
-     （路线 A）——可读性达标了，但壁纸本身的层次也一并被洗掉。
-     这张浅色预设让 light 主题有一条不必依赖白纱的路径：底色本身就亮，
-     白纱叠加后仍是浅色，内容区的对比度和壁纸观感可以同时保住。 */
-  {
-    name: '晨雾白',
-    type: 'preset',
-    themeHint: 'light',
-    css: `
-      radial-gradient(ellipse 70% 55% at 15% 20%, rgba(168, 190, 235, 0.55) 0%, transparent 62%),
-      radial-gradient(ellipse 60% 50% at 85% 18%, rgba(235, 214, 226, 0.50) 0%, transparent 58%),
-      radial-gradient(ellipse 80% 60% at 50% 85%, rgba(206, 224, 240, 0.45) 0%, transparent 55%),
-      linear-gradient(135deg, #eef2f9 0%, #e6ecf6 35%, #f2eef5 65%, #e9eef6 100%)
-    `,
-    colors: {
-      accent: 'rgba(108, 92, 200, 0.75)',
-      accentLight: 'rgba(140, 124, 220, 0.35)',
-      accentGlow: 'rgba(108, 92, 200, 0.12)',
-      accentBorder: 'rgba(108, 92, 200, 0.14)'
-    }
-  },
   /* ---- API 在线壁纸 ---- */
   {
     name: 'Bing 每日壁纸',
@@ -142,6 +120,105 @@ async function fetchApiWallpaperUrl(apiType) {
 function todayStr() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/* ==========================================================================
+   每日一图：内置默认图 + 本地缓存
+   --------------------------------------------------------------------------
+   要解决的问题：Bing 每日图是「一天一张，且随时可能取不到」的远程资源。
+   取不到时该显示什么，取决于历史上有没有成功过，而不是取决于这一次的返回。
+
+   缓存只存一条记录（date + url），语义是「最后一张成功获取的每日图」：
+
+     cache.date === 今天  → 当天新图（today）：联网取到之后优先显示这张
+     cache.date <  今天  → 最后成功的图（last）：断网 / 当天获取失败时继续显示它
+     没有合法记录          → 内置默认图（default）：只有「从未成功获取过」才走到这里
+
+   三个必须守住的不变量（对应单元测试里的同名断言）：
+     1. 任何失败都不得清空 last —— 否则断网白屏或退回默认图，等于丢掉用户已有的图。
+     2. 成功一次之后，物理上只剩「默认图（内置资源）+ 当天图（URL）」，不累积历史。
+     3. 记录来自 storage，可能被旧版本/导入/手工改坏，读入必须过白名单校验。
+   ========================================================================== */
+
+/* 内置默认图：打包在扩展里，离线可用，不含第三方版权素材 */
+const DEFAULT_DAILY_IMAGE = 'images/wallpaper-default.svg';
+const DAILY_CACHE_VERSION = 1;
+/* 远程图地址上限：正常 Bing 地址 < 300 字符，这里只用于挡住异常超长串 */
+const DAILY_URL_MAX_LENGTH = 2048;
+
+function isValidDateStr(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [y, m, d] = value.split('-').map(Number);
+  if (m < 1 || m > 12 || d < 1 || d > 31) return false;
+  // 用 UTC 归一化反查，挡掉 2026-02-31 这类「格式对但不存在」的日期
+  const probe = new Date(Date.UTC(y, m - 1, d));
+  return probe.getUTCFullYear() === y && probe.getUTCMonth() === m - 1 && probe.getUTCDate() === d;
+}
+
+/* 图片地址白名单。值最终会拼进 CSS 的 url()，只做长度和协议检查不够：
+   带引号/右括号的串能截断这条声明并注入后续 CSS，所以一并禁掉。
+   只放行 http(s)，data:/javascript:/blob: 一律拒绝（内置默认图走常量，不经此处）。 */
+function isSafeImageUrl(url) {
+  if (typeof url !== 'string') return false;
+  if (url.length === 0 || url.length > DAILY_URL_MAX_LENGTH) return false;
+  if (/[\s"'()\\<>`]/.test(url)) return false;
+  return /^https?:\/\/[^\s]+$/i.test(url);
+}
+
+/* 读入即校验：返回 null 表示这份缓存不可用（调用方按「没有缓存」处理） */
+function normalizeDailyCache(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  if (raw.v !== DAILY_CACHE_VERSION) return null;
+  if (!isValidDateStr(raw.date)) return null;
+  if (!isSafeImageUrl(raw.url)) return null;
+  // 只保留已知字段，丢掉历史遗留/被塞进来的额外键
+  return { v: DAILY_CACHE_VERSION, date: raw.date, url: raw.url };
+}
+
+/* 三态解析：纯函数，不读 storage、不碰网络 —— 单测直接覆盖这张决策表 */
+function resolveDailyWallpaper(cache, today) {
+  const record = normalizeDailyCache(cache);
+  if (!record) {
+    return { url: DEFAULT_DAILY_IMAGE, source: 'default', date: null };
+  }
+  const isToday = record.date === today;
+  return { url: record.url, source: isToday ? 'today' : 'last', date: record.date };
+}
+
+/* 获取成功后的新缓存：整体替换，旧记录不保留（不变量 2）。
+   若传入的 url/date 不合法，返回原记录而不是 null —— 宁可留着上一张，
+   也不要把「这次数据奇怪」变成「把用户的图删了」。 */
+function buildDailyCache(url, today, previous = null) {
+  const prev = normalizeDailyCache(previous);
+  if (!isSafeImageUrl(url) || !isValidDateStr(today)) return prev;
+  return { v: DAILY_CACHE_VERSION, date: today, url };
+}
+
+/* 联网时的清理：把用不了的东西剔掉，但绝不因为「不是今天」就删 last。
+   返回 removed 便于测试与日志；online=false 时不做任何删除（断网时那张图是唯一资产）。 */
+function pruneDailyCache(cache, today, { online = true } = {}) {
+  const removed = [];
+  if (!cache) return { cache: null, removed };
+  const record = normalizeDailyCache(cache);
+  if (!record) {
+    removed.push('invalid');
+    return { cache: null, removed };
+  }
+  // 记录比「今天」还新：时钟回拨或数据写坏，在线时丢弃并允许重新获取；
+  // 离线时保留 —— 它仍是张能显示的图，好过默认图。
+  if (online && isValidDateStr(today) && record.date > today) {
+    removed.push('future-date');
+    return { cache: null, removed };
+  }
+  return { cache: record, removed };
+}
+
+/* 旧版本把结果写进 settings.wallpaperApiCache（{type,date,url}）。
+   升级后首次启动把它迁过来，用户不会因为换了个字段就丢一次当天的图。 */
+function migrateLegacyDailyCache(legacy) {
+  if (!legacy || typeof legacy !== 'object' || Array.isArray(legacy)) return null;
+  if (legacy.type !== 'bing') return null;
+  return normalizeDailyCache({ v: DAILY_CACHE_VERSION, date: legacy.date, url: legacy.url });
 }
 
 /* UX-13：把采样到的相对亮度折算成主题提示。
@@ -237,6 +314,10 @@ const Wallpaper = {
       const idx = WALLPAPERS.findIndex(w => w.name === settings.wallpaperName);
       if (idx !== -1) this.currentIndex = idx;
     }
+    // 网络状态监听只装一次；断网/恢复由 onNetworkChange 决定要不要补取
+    this.bindNetworkEvents();
+    // 联网时先清一次过期数据（不 await：启动路径上不该被存储读写拖住）
+    if (this.isOnline()) this.cleanupDailyCache({ online: true }).catch(() => {});
     await this.apply(this.currentIndex);
   },
 
@@ -251,6 +332,19 @@ const Wallpaper = {
      在 JS 里同时维护两边会引出一堆时序问题；声明式交给 CSS 更稳。 */
   setWallpaperTone(tone) {
     document.documentElement.dataset.wallpaperTone = tone === 'light' ? 'light' : 'dark';
+  },
+
+  /* 壁纸种类写到 <html> 上，供样式表按来源区分处理
+     （如内置默认图与照片在降级路径上不同）。 */
+  setWallpaperType(type) {
+    // preset：预设渐变 · api：远程照片 · default：内置默认图（石墨材质，属于深色主题）
+    const known = type === 'api' || type === 'default' ? type : 'preset';
+    document.documentElement.dataset.wallpaperType = known;
+  },
+
+  /* 预设壁纸只有一套深色渐变（2.0.0 起不再区分主题）。 */
+  presetCss(wallpaper) {
+    return wallpaper && wallpaper.css ? wallpaper.css : null;
   },
 
   applyColors(colors) {
@@ -287,14 +381,15 @@ const Wallpaper = {
     this.applyColors(wallpaper.colors);
     // UX-02：先把壁纸明暗告诉 CSS（预设直接读 themeHint，在线壁纸等采样结果再修正）
     this.setWallpaperTone(wallpaper.themeHint);
+    this.setWallpaperType(wallpaper.type);
     // PBI-10：主题处于"跟随壁纸"模式时按当前壁纸明度同步（异步读取设置，不阻塞渲染）
-    this.syncThemeFromWallpaper();
+    this.syncToneFromImage();
 
     /* 预设渐变用 15% 淡覆盖，API 壁纸用 35% 深覆盖保证内容可读 */
     if (wallpaper.type === 'preset') {
       document.documentElement.style.setProperty('--bg-overlay-opacity', '0.15');
       this.clearBgImage(bgLayer);
-      bgLayer.style.background = wallpaper.css;
+      bgLayer.style.background = this.presetCss(wallpaper);
       return;
     }
 
@@ -308,67 +403,160 @@ const Wallpaper = {
       // 现在与 Bing 一样，拿到图片地址后做一次明度采样
       const randomUrl = getRandomWallpaperUrl();
       this.setBgImage(bgLayer, randomUrl);
-      this.syncThemeFromWallpaper(randomUrl);
+      this.syncToneFromImage(randomUrl);
       return;
     }
 
-    // Bing 每日壁纸：同一天内用缓存
-    const settings = await Storage.getSettings();
+    /* Bing 每日壁纸：先把本地已有那张画出来，再在联网时后台换成当天的。
+       顺序不能反——先取后画的话，接口慢或断网时首屏就是空的。 */
+    const today = todayStr();
+    const cached = await this.loadDailyCache();
     if (gen !== this._applyGen) return; // 读取设置期间已被取代
-    const cache = settings.wallpaperApiCache || {};
-    let url = null;
-    if (cache.type === 'bing' && cache.date === todayStr()) {
-      url = cache.url;
+
+    const resolved = resolveDailyWallpaper(cached, today);
+    // 内置默认图是石墨材质：浅色主题下要让纱罩更厚，否则会透成一片中灰
+    this.setWallpaperType(resolved.source === 'default' ? 'default' : 'api');
+    this.setBgImage(bgLayer, resolved.url);
+    // UX-13：图先上屏，明度采样随后（不 await，采样只做附加修正）
+    this.syncToneFromImage(resolved.url);
+
+    // 当天图已经在本地：不打扰接口，顺手清一次过期数据就收工
+    if (resolved.source === 'today') {
+      if (this.isOnline()) this.cleanupDailyCache({ online: true }).catch(() => {});
+      return;
     }
 
-    if (!url) {
-      try {
-        const fetched = await fetchApiWallpaperUrl(wallpaper.apiType);
-        if (gen !== this._applyGen) return; // 用户已切到别的壁纸，丢弃迟到结果（也不写缓存）
-        url = fetched;
-        if (wallpaper.apiType === 'bing') {
-          await Storage.updateSettings({
-            wallpaperApiCache: { url, type: 'bing', date: todayStr() }
-          });
-        }
-      } catch (e) {
-        if (gen !== this._applyGen) return;
-        console.error('壁纸 API 请求失败:', e);
-        // fallback: 用第一个预设渐变
-        this.clearBgImage(bgLayer);
-        bgLayer.style.background = WALLPAPERS[0].css;
-        this.applyColors(WALLPAPERS[0].colors);
-        return;
-      }
-    }
+    // 离线：停在 last / default。不发请求、不改缓存 —— 屏幕上这张仍是有效图
+    if (!this.isOnline()) return;
 
-    if (gen !== this._applyGen) return; // 写缓存期间又被取代
-    this.setBgImage(bgLayer, url);
-    // UX-13：图片地址确定后再联动一次主题（预设壁纸在进入 API 分支前已联动过）。
-    // 不 await：采样是附加修正，不应拖慢壁纸显示。
-    this.syncThemeFromWallpaper(url);
+    try {
+      const url = await this.fetchDailyOnce();
+      if (gen !== this._applyGen) return; // 用户已切到别的壁纸，丢弃迟到结果（也不写缓存）
+      const next = buildDailyCache(url, today, cached);
+      // 接口给了非法地址：不动缓存也不动画面，继续显示本地那张
+      if (!next) return;
+      await this.persistDailyCache(next);
+      if (gen !== this._applyGen) return; // 写缓存期间又被取代
+      this.setBgImage(bgLayer, next.url);
+      this.syncToneFromImage(next.url);
+    } catch (e) {
+      if (gen !== this._applyGen) return;
+      /* 关键行为变更：这里不清空背景、也不回退到预设渐变。
+         屏幕上仍是 resolved（当天图 / 最后成功的图 / 默认图），
+         只有在「从未成功获取过」时它才是默认图。 */
+      console.warn('每日图获取失败，继续显示本地已有图片:', e && e.message ? e.message : e);
+    }
   },
 
-  /* PBI-10：主题与壁纸联动——仅当设置 theme='auto'（跟随壁纸）时生效；
-     手动选择深/浅后不随壁纸变化（PBI-10 AC2）。
-     UX-13：在线壁纸（Bing 每日 / 随机）的 themeHint 是 null，此前一律落回 dark；
-     若当日壁纸偏亮，白字会看不清。这里在拿到图片地址后补一次明度采样，
-     采样失败（网络/跨域）仍回退到静态 hint，不改变原有行为。 */
-  async syncThemeFromWallpaper(imageUrl) {
+  /* ---- 每日图缓存读写 ---- */
+
+  /* 读缓存，必要时从旧字段 wallpaperApiCache 迁移一次。
+     读失败不抛：返回 null 即「按没有缓存处理」，走默认图，不阻塞壁纸渲染。 */
+  async loadDailyCache() {
     try {
       const settings = await Storage.getSettings();
-      let hint = WALLPAPERS[this.currentIndex].themeHint;
-      // UX-13：在线壁纸 themeHint 为 null，采样一次图片明度补上。
-      // 不论主题是不是 auto 都要采——保底层强度也要用到这个结果。
-      if (!hint && imageUrl) {
-        hint = brightnessToThemeHint(await sampleImageBrightness(imageUrl));
-        if (hint) this.setWallpaperTone(hint);
+      const existing = normalizeDailyCache(settings.wallpaperDaily);
+      if (existing) return existing;
+      const migrated = migrateLegacyDailyCache(settings.wallpaperApiCache);
+      if (migrated) {
+        await this.persistDailyCache(migrated);
+        return migrated;
       }
-      // PBI-10：只有 auto 模式才让主题跟着壁纸走；手动选定深/浅后不随壁纸变化（AC2）
-      if (settings.theme !== 'auto') return;
-      document.documentElement.dataset.theme = hint === 'light' ? 'light' : 'dark';
+      return null;
     } catch (e) {
-      console.error('主题联动失败:', e);
+      console.error('读取每日图缓存失败:', e);
+      return null;
+    }
+  },
+
+  /* 写入 = 整体替换。顺带把旧字段置空，升级后不会残留两份「最后一张图」。
+     写失败只记日志：配额满/后端异常不该连带把画面弄坏。 */
+  async persistDailyCache(record) {
+    try {
+      await Storage.updateSettings({ wallpaperDaily: record, wallpaperApiCache: null });
+      this._dailyCache = record;
+      return true;
+    } catch (e) {
+      console.error('写入每日图缓存失败:', e);
+      return false;
+    }
+  },
+
+  /* 联网清理：剔掉不可用/未来日期的记录与旧字段，但保留「最后成功的图」。
+     online=false 时 prune 不删任何东西（断网时那张图是唯一资产）。 */
+  async cleanupDailyCache({ online = true } = {}) {
+    let settings;
+    try {
+      settings = await Storage.getSettings();
+    } catch (e) {
+      console.error('清理每日图缓存失败:', e);
+      return { cache: null, removed: [] };
+    }
+    const { cache, removed } = pruneDailyCache(settings.wallpaperDaily, todayStr(), { online });
+    const patch = {};
+    if (!cache && settings.wallpaperDaily) patch.wallpaperDaily = null;
+    if (settings.wallpaperApiCache) patch.wallpaperApiCache = null;
+    if (Object.keys(patch).length) {
+      try {
+        await Storage.updateSettings(patch);
+      } catch (e) {
+        console.error('写入清理结果失败:', e);
+      }
+    }
+    if (removed.length) console.info('已清理每日图缓存:', removed.join(','));
+    return { cache, removed };
+  },
+
+  isOnline() {
+    // 无 navigator 的环境（Node 单测）按在线处理，逻辑分支由纯函数覆盖
+    return typeof navigator === 'undefined' || navigator.onLine !== false;
+  },
+
+  /* 单飞：apply 与 online 事件可能同时触发，重复请求会让接口被打两次、
+     两次响应还会互相覆盖缓存。同一个 in-flight 请求直接复用。 */
+  fetchDailyOnce() {
+    if (this._dailyFetch) return this._dailyFetch;
+    const p = fetchApiWallpaperUrl('bing').finally(() => {
+      if (this._dailyFetch === p) this._dailyFetch = null;
+    });
+    this._dailyFetch = p;
+    return p;
+  },
+
+  /* 网络切换：断网什么都不做（保留当前图）；恢复在线时才补取当天图。 */
+  bindNetworkEvents() {
+    if (this._netBound || typeof window === 'undefined' || !window.addEventListener) return;
+    this._netBound = true;
+    window.addEventListener('online', () => { this.onNetworkChange(true); });
+    window.addEventListener('offline', () => { this.onNetworkChange(false); });
+  },
+
+  onNetworkChange(online) {
+    if (!online) return; // 断网：不动画面、不清缓存
+    const wp = WALLPAPERS[this.currentIndex];
+    if (!wp || wp.type !== 'api' || wp.apiType !== 'bing') return;
+    // 当天图已在本地就只清理，不必再打接口
+    const cached = normalizeDailyCache(this._dailyCache);
+    if (cached && cached.date === todayStr()) {
+      this.cleanupDailyCache({ online: true }).catch(() => {});
+      return;
+    }
+    this.apply(this.currentIndex).catch(() => {});
+  },
+
+  /* 在线壁纸（Bing 每日 / 随机）的 themeHint 是 null，无法静态判断明暗。
+     拿到图片地址后补一次明度采样，把结果写回 data-wallpaper-tone——
+     深色主题的压暗层强度按"壁纸明暗"分档（见 main.css 的 .bg-layer::after），
+     采样失败（网络/跨域）就保持静态 hint，不改原有行为。
+     2.0.0 起不再改 data-theme：主题只有深色一种。 */
+  async syncToneFromImage(imageUrl) {
+    try {
+      const hint = WALLPAPERS[this.currentIndex].themeHint;
+      if (hint || !imageUrl) return;
+      const sampled = brightnessToThemeHint(await sampleImageBrightness(imageUrl));
+      if (sampled) this.setWallpaperTone(sampled);
+    } catch (e) {
+      console.error('壁纸明度采样失败:', e);
     }
   },
 
@@ -393,27 +581,36 @@ const Wallpaper = {
       if (bgLayer) {
         const url = getRandomWallpaperUrl();
         this.setBgImage(bgLayer, url);
-        this.syncThemeFromWallpaper(url);
+        this.syncToneFromImage(url);
       }
       return;
     }
 
     try {
+      // 手动刷新走同一套缓存写入：成功后替换为当天图，失败保留当前图（不清空）
       const url = await fetchApiWallpaperUrl(wallpaper.apiType);
-      if (wallpaper.apiType === 'bing') {
-        await Storage.updateSettings({
-          wallpaperApiCache: { url, type: 'bing', date: todayStr() }
-        });
-      }
+      const next = buildDailyCache(url, todayStr(), null);
+      if (!next) throw new Error('接口返回的图片地址不可用');
+      await this.persistDailyCache(next);
       const bgLayer = document.getElementById('bgLayer');
-      if (bgLayer) this.setBgImage(bgLayer, url);
+      if (bgLayer) {
+        this.setBgImage(bgLayer, next.url);
+        this.syncToneFromImage(next.url);
+      }
     } catch (e) {
-      console.error('刷新壁纸失败:', e);
+      // 刷新失败时屏幕上那张图仍然有效，不清空也不回退（调用方无 catch，这里不外抛）
+      console.warn('刷新壁纸失败，保留当前图片:', e && e.message ? e.message : e);
     }
   }
 };
 
 /* ---- Node 测试环境导出（UX-13）：浏览器以 <script> 全局加载，module 未定义时不执行 ---- */
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { brightnessToThemeHint, averageLuminance, WALLPAPERS };
+  module.exports = {
+    brightnessToThemeHint, averageLuminance, WALLPAPERS,
+    // 每日图缓存策略（纯函数，便于单测覆盖三态与清理规则）
+    DEFAULT_DAILY_IMAGE, DAILY_CACHE_VERSION,
+    isValidDateStr, isSafeImageUrl, normalizeDailyCache, resolveDailyWallpaper,
+    buildDailyCache, pruneDailyCache, migrateLegacyDailyCache
+  };
 }

@@ -113,6 +113,21 @@ test('Storage.init：全新环境写入预设（chrome 分支）', async () => {
   } finally { cleanupGlobals(); }
 });
 
+test('Storage：2.0.0 主题迁移——light/auto 归一为 dark，已下线的壁纸名回退', async () => {
+  try {
+    const { Storage } = withChrome({
+      settings: { version: '1.0.0', theme: 'auto', wallpaperName: '晨雾白' }
+    });
+    await Storage.init();
+    const s = await Storage.getSettings();
+    assert.equal(s.theme, 'dark', 'auto（跟随壁纸）也会落到浅色，必须归一');
+    assert.equal(s.wallpaperName, '深邃星空', '晨雾白已下线，回退到默认壁纸');
+    // 即便调用方显式写 light，也不能把界面切回已删除的主题
+    await Storage.updateSettings({ theme: 'light' });
+    assert.equal((await Storage.getSettings()).theme, 'dark', '写入时同样强制深色');
+  } finally { cleanupGlobals(); }
+});
+
 test('Storage.init：已有 settings 时保留数据并合并默认值', async () => {
   try {
     const { Storage, chromeMock } = withChrome({
@@ -121,7 +136,8 @@ test('Storage.init：已有 settings 时保留数据并合并默认值', async (
     });
     await Storage.init();
     const s = await Storage.getSettings();
-    assert.equal(s.theme, 'light', '保留已有主题');
+    // 2.0.0：主题只剩深色，存量 'light' 读取时归一为 'dark'
+    assert.equal(s.theme, 'dark', '旧版浅色主题升级后为深色');
     assert.equal(s.weatherCity, 'shenzhen', '保留已有城市');
     assert.equal(s.showBottomBar, true, '缺失字段补默认值');
     const bms = await Storage.getBookmarks();
@@ -210,9 +226,9 @@ test('Storage 组件可见性与设置合并（chrome 分支）', async () => {
     await Storage.setComponentVisible('weather', true);
     assert.equal((await Storage.getComponentVisibility()).weather, true);
     // updateSettings 合并而非覆盖
-    await Storage.updateSettings({ theme: 'light' });
+    await Storage.updateSettings({ weatherCity: 'beijing' });
     const s = await Storage.getSettings();
-    assert.equal(s.theme, 'light');
+    assert.equal(s.weatherCity, 'beijing');
     assert.equal(s.showBottomBar, true, '其他字段保留');
   } finally { cleanupGlobals(); }
 });
@@ -240,12 +256,12 @@ test('P2-15 并发写不丢失：并发 updateSettings 修改不同字段应互�
     const { Storage } = withChrome();
     await Storage.init();
     await Promise.all([
-      Storage.updateSettings({ theme: 'light' }),
+      Storage.updateSettings({ weatherCity: 'beijing' }),
       Storage.updateSettings({ searchEngine: '百度' }),
       Storage.updateSettings({ showBottomBar: false })
     ]);
     const s = await Storage.getSettings();
-    assert.equal(s.theme, 'light', 'theme 应保留');
+    assert.equal(s.weatherCity, 'beijing', 'weatherCity 应保留');
     assert.equal(s.searchEngine, '百度', 'searchEngine 应保留');
     assert.equal(s.showBottomBar, false, 'showBottomBar 应保留');
   } finally { cleanupGlobals(); }
@@ -278,7 +294,7 @@ test('Storage importData：字段级合并 + 备份轮转（chrome 分支）', a
     const next = await Storage.importData(backup);
     assert.equal(next.bookmarks.length, 1, '备份书签替换');
     assert.equal((await Storage.getCategories()).length, 4, '缺失字段保留现有');
-    assert.equal((await Storage.getSettings()).theme, 'light', '设置字段级合并');
+    assert.equal((await Storage.getSettings()).theme, 'dark', '导入的浅色主题被归一为深色');
     const b1 = chromeMock._store['lastImportBackup-1'];
     assert.equal(b1.bookmarks.length, 8, '导入前备份已轮转写入');
   } finally { cleanupGlobals(); }
@@ -330,7 +346,7 @@ test('PBI-08 旧备份兼容：无 schemaVersion + 无 sortOrder 导入成功且
     assert.equal(next.categories.length, 1, '旧备份分类导入');
     assert.equal(next.categories[0].items.length, 0, '缺 items 补空数组');
     assert.equal(next.todos.length, 1, '旧备份待办导入');
-    assert.equal((await Storage.getSettings()).theme, 'light', '旧 settings 生效');
+    assert.equal((await Storage.getSettings()).theme, 'dark', '旧备份里的浅色主题归一为深色');
     // 幂等：重复导入同一文件结果一致
     const next2 = await Storage.importData(legacy);
     assert.deepEqual(next2.bookmarks, next.bookmarks, '重复导入结果一致（幂等）');

@@ -283,6 +283,7 @@ let openMeteoMode = 'ok'; // 天气备用源（主源失败时的回退目标）
 let ipLocateMode = 'ok'; // IP 定位兜底
 let holidayMode = 'ok';
 let bingDelayMs = 0; // >0 时模拟 Bing 接口慢响应，用于验证壁纸代次（P3-6）
+let bingApiMode = 'ok'; // 'fail' 时让每日图接口返回 500，验证「取不到时保留上一张」
 
 /* ---- 内嵌静态文件服务（预览模式用，避免外部依赖） ---- */
 /* Content-Type 必须按扩展名给对：此前一律回 text/html，Chrome 在标准模式下会拒绝
@@ -355,7 +356,11 @@ async function contrastRatios(page, targets) {
       const d = cx.getImageData(x, y, Math.min(cv.width - x, Math.ceil(r.width)), Math.min(cv.height - y, Math.ceil(r.height))).data;
       const hist = new Map();
       for (let i = 0; i < d.length; i += 4) {
-        const k = `${d[i] >> 2},${d[i + 1] >> 2},${d[i + 2] >> 2}`;
+        // 分桶粒度 8 级（原为 4 级）：浅色主题的底色是平滑渐变，相邻像素只差 2 会落进
+        // 不同桶，一个大底色被拆成几个小桶之后，"文字笔画"那个桶反而成了众数——
+        // 实测标题因此被判成 1.13:1（底色 219,238,229 被拆成 218/220 两桶）。
+        // 8 级分桶让视觉上同色的像素合并，众数重新代表底色。
+        const k = `${d[i] >> 3},${d[i + 1] >> 3},${d[i + 2] >> 3}`;
         const e = hist.get(k) || { n: 0, r: 0, g: 0, b: 0 };
         e.n++; e.r += d[i]; e.g += d[i + 1]; e.b += d[i + 2]; hist.set(k, e);
       }
@@ -367,7 +372,10 @@ async function contrastRatios(page, targets) {
       const shown = +ratio(fg, bg).toFixed(2);
       const size = parseFloat(cs.fontSize);
       const large = size >= 24 || (size >= 18.66 && parseInt(cs.fontWeight, 10) >= 700);
-      out.push({ name, status: 'ok', ratio: shown, need: large ? 3 : 4.5, pass: shown >= (large ? 3 : 4.5) });
+      out.push({ name, status: 'ok', ratio: shown, need: large ? 3 : 4.5, pass: shown >= (large ? 3 : 4.5),
+        bg: [bg.r, bg.g, bg.b].map(Math.round), fg: [fg.r, fg.g, fg.b].map(Math.round),
+        rect: [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)],
+        img: [cv.width, cv.height], top2: [...hist.values()].sort((a, b) => b.n - a.n)[1] && Math.round([...hist.values()].sort((a, b) => b.n - a.n)[1].n) });
     }
     return out;
   }, [shot.toString('base64'), targets]);
@@ -420,6 +428,7 @@ async function runCore(page, label) {
       });
     }
     if (bingDelayMs) await new Promise(res => setTimeout(res, bingDelayMs));
+    if (bingApiMode === 'fail') return r.fulfill({ status: 500, body: 'err', contentType: 'text/plain' });
     return r.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -462,53 +471,29 @@ async function runCore(page, label) {
   check('[2] settings 初始化', !!(st && st.version === '1.0.0' && st.theme === 'dark'));
   check('[2] 预设书签写入', await storageGet(page, 'bookmarks').then(b => (b || []).length) === 8);
 
-  // [3] 主题
+  /* ---- [3] 主题：只剩深色（2.0.0）----
+     浅色主题几版都做不到"背景清晰 + 元素清晰"同时成立，产品决定下线。
+     锁三件事：① 外观页不再有主题下拉（不给已删除的功能留入口）；
+     ② data-theme 恒为 dark；③ 存量设置里的 light/auto 不会让界面变浅。 */
   await page.click('#settingsBtn');
   await sleep(600);
   await page.click('[data-tab="appearance"]');
   await sleep(600);
-  await page.locator('#themeSelect').selectOption('light');
-  await sleep(400);
-  check('[3] 浅色即时生效', await page.evaluate(() => document.documentElement.dataset.theme) === 'light');
-  await page.reload();
-  await sleep(2500);
-  check('[3] 主题刷新持久化', await page.evaluate(() => document.documentElement.dataset.theme) === 'light');
-  await page.click('#settingsBtn');
-  await sleep(500);
-  await page.click('[data-tab="appearance"]');
-  await sleep(500);
-  await page.locator('#themeSelect').selectOption('dark');
-  await sleep(300);
+  const appearanceText = await page.locator('#wallpaperSection').innerText();
+  check('[3] 外观页不再提供主题切换（浅色已下线）',
+    await page.locator('#themeSelect').count() === 0 && !appearanceText.includes('主题外观'),
+    `themeSelect=${await page.locator('#themeSelect').count()}，含"主题外观"=${appearanceText.includes('主题外观')}`);
+  check('[3] data-theme 恒为 dark',
+    await page.evaluate(() => document.documentElement.dataset.theme) === 'dark');
 
-  // [3.5] PBI-10 主题与壁纸联动
-  const themeOpts = await page.evaluate(() =>
-    Array.from(document.querySelectorAll('#themeSelect option')).map(o => o.value));
-  check('[3.5] 主题下拉含跟随壁纸档', themeOpts.includes('auto'), themeOpts.join(','));
-  // auto 模式：当前壁纸深邃星空（dark）→ data-theme dark
-  await page.locator('#themeSelect').selectOption('auto');
-  await sleep(400);
-  check('[3.5] auto 按当前壁纸解析为 dark', await page.evaluate(() => document.documentElement.dataset.theme) === 'dark');
-  // 手动 light 后换壁纸（极光绿 dark）→ 主题不随壁纸变化（AC2 手动优先）
-  await page.locator('#themeSelect').selectOption('light');
-  await sleep(300);
-  await page.evaluate(() => Wallpaper.next());
-  await sleep(800);
-  check('[3.5] 手动主题不随壁纸变化', await page.evaluate(() => document.documentElement.dataset.theme) === 'light');
-  // 切回 auto → 重新按当前壁纸（极光绿 dark）解析
-  await page.locator('#themeSelect').selectOption('auto');
-  await sleep(400);
-  check('[3.5] 切回 auto 跟随壁纸', await page.evaluate(() => document.documentElement.dataset.theme) === 'dark');
-  // 持久化：刷新后 auto 保持
+  // 模拟旧版本残留：直接往存储写浅色，刷新后界面仍必须是深色
+  await page.evaluate(() => Storage.updateSettings({ theme: 'light' }));
   await page.reload();
   await sleep(2500);
-  check('[3.5] auto 持久化', await page.evaluate(() => document.documentElement.dataset.theme) === 'dark');
-  // 恢复 dark 状态供后续测试
+  check('[3] 存量浅色设置在刷新后仍为深色',
+    await page.evaluate(() => document.documentElement.dataset.theme) === 'dark');
   await page.click('#settingsBtn');
   await sleep(500);
-  await page.click('[data-tab="appearance"]');
-  await sleep(500);
-  await page.locator('#themeSelect').selectOption('dark');
-  await sleep(300);
 
   // [4] 组件开关
   await page.click('[data-tab="appearance"]');
@@ -624,8 +609,9 @@ async function runCore(page, label) {
   const fb1 = await page.locator('#dataFeedback').innerText().catch(() => '');
   check('[7] 导入成功含统计/清空警告', /导入成功/.test(fb1) && /已被清空/.test(fb1));
   check('[7] 导入前备份轮转写入', await storageGet(page, 'lastImportBackup-1').then(b => !!(b && b.bookmarks && b.bookmarks.length === 8)));
-  // A10 验证（恢复前）：themeSelect 同步，其余控件不同步
-  check('[8] A10 主题下拉同步', await page.locator('#themeSelect').inputValue() === 'light');
+  // A10 验证（恢复前）：主题已无下拉，导入的浅色不能生效
+  check('[8] A10 导入的浅色主题不生效（仍为深色）',
+    await page.evaluate(() => document.documentElement.dataset.theme) === 'dark');
   check('[8] A10 底部栏开关同步（导入 showBottomBar:false）', await page.locator('#showBottomBarToggle').isChecked() === false);
   check('[8] A10 壁纸源下拉同步（导入 极光绿）', await page.locator('#wallpaperSourceSelect').inputValue() === '极光绿');
   check('[8] A10 刷新按钮随壁纸类型隐藏（预设无刷新）', await page.evaluate(() => {
@@ -1325,72 +1311,33 @@ async function runCore(page, label) {
     ['.category-title', '分类标题'], ['.category-link', '分类链接'], ['.todo-title', '待办标题'],
     ['.datetime-text', '日期时间'], ['.tool-btn', '底部按钮'], ['.engine-btn', '引擎按钮']
   ];
-  for (const theme of ['dark', 'light']) {
-    await page.evaluate(t => Storage.updateSettings({ theme: t }), theme);
-    await page.reload({ waitUntil: 'domcontentloaded' });
-    await sleep(2500);
-    const measured = await contrastRatios(page, CONTRAST_TARGETS);
-    const sampled = measured.filter(x => x.status === 'ok');
-    const bad = sampled.filter(x => !x.pass);
-    check(`[29] ${theme} 主题关键文字对比度达标（UX-02/UX-14）`, bad.length === 0,
-      bad.length ? bad.map(x => `${x.name} ${x.ratio}:1`).join('、') : `${sampled.length} 项全部 ≥ 阈值`);
-    // 防"采样不到任何元素所以永远通过"的假绿
-    check(`[29] ${theme} 主题采样覆盖到全部目标元素`, sampled.length === CONTRAST_TARGETS.length,
-      `采样 ${sampled.length}/${CONTRAST_TARGETS.length} 项`);
-  }
+  // 2.0.0 起只有深色主题，这套采样只跑一遍（此前是 dark/light 各一遍）
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await sleep(2500);
+  const measured = await contrastRatios(page, CONTRAST_TARGETS);
+  const sampled = measured.filter(x => x.status === 'ok');
+  const bad = sampled.filter(x => !x.pass);
+  check('[29] 深色主题关键文字对比度达标（UX-02/UX-14）', bad.length === 0,
+    bad.length ? bad.map(x => `${x.name} ${x.ratio}:1 bg=${x.bg} fg=${x.fg} rect=${x.rect} img=${x.img} n2=${x.top2}`).join('、') : `${sampled.length} 项全部 ≥ 阈值`);
+  // 防"采样不到任何元素所以永远通过"的假绿
+  check('[29] 深色主题采样覆盖到全部目标元素', sampled.length === CONTRAST_TARGETS.length,
+    `采样 ${sampled.length}/${CONTRAST_TARGETS.length} 项`);
 
 
-  /* ---- [43] 浅色预设壁纸（UX-02 路线 C）----
-     新增一张浅色预设后，"深色主题 + 浅色壁纸"这个此前不存在的组合必须一并兜住，
-     否则就是修好一个组合又引入另一个。保底层强度由 data-theme × data-wallpaper-tone 决定。 */
-  const lightWpInfo = await page.evaluate(async () => {
-    const list = Wallpaper.getWallpapers();
-    const idx = list.findIndex(w => w.name === '晨雾白');
-    if (idx === -1) return { exists: false };
-    await Storage.updateSettings({ theme: 'auto', wallpaperName: '晨雾白' });
-    await Wallpaper.apply(idx);
-    await new Promise(r => setTimeout(r, 1200));
-    return {
-      exists: true, index: idx, themeHint: list[idx].themeHint,
-      theme: document.documentElement.dataset.theme,
-      tone: document.documentElement.dataset.wallpaperTone
-    };
+  /* ---- [43] 浅色预设「晨雾白」已下线（2.0.0）----
+     它是浅色底渐变，配深色界面会整片过曝，随浅色主题一起移除。
+     锁两件事：① 壁纸列表里没有它；② 存量设置还指向它时回落到默认壁纸
+     （否则设置面板的下拉会选不中任何一项，显示与存储不一致）。 */
+  const wpList = await page.evaluate(() => Wallpaper.getWallpapers().map(w => w.name));
+  check('[43] 壁纸列表不再包含浅色预设「晨雾白」',
+    !wpList.some(n => n === '晨雾白'), wpList.join('、'));
+
+  const fogFallback = await page.evaluate(async () => {
+    const merged = await Storage.updateSettings({ wallpaperName: '晨雾白' });
+    return merged.wallpaperName;
   });
-  check('[43] 壁纸列表含浅色预设（UX-02 路线 C）', lightWpInfo.exists,
-    lightWpInfo.exists ? `索引 ${lightWpInfo.index}，themeHint=${lightWpInfo.themeHint}` : '未找到「晨雾白」');
-  check('[43] auto 模式选到浅色壁纸时主题跟随变浅（UX-02 路线 C）',
-    lightWpInfo.exists && lightWpInfo.theme === 'light' && lightWpInfo.tone === 'light',
-    `data-theme=${lightWpInfo.theme} data-wallpaper-tone=${lightWpInfo.tone}`);
-
-  // 最不利组合：手动锁深色主题 + 浅色壁纸。此时保底层必须自动加重。
-  if (lightWpInfo.exists) {
-    const worstSetup = await page.evaluate(async () => {
-      await Storage.updateSettings({ theme: 'dark', wallpaperName: '晨雾白' });
-      // 必须显式 applySettings：updateSettings 只写存储，data-theme 不会自己变。
-      // 少了这一步，页面会停留在上一条用例遗留的 light 主题上，
-      // 于是这条"深色主题 + 浅色壁纸"的断言实际上测的是浅色组合 —— 永远绿灯。
-      App.applySettings(await Storage.getSettings());
-      const idx = Wallpaper.getWallpapers().findIndex(w => w.name === '晨雾白');
-      await Wallpaper.apply(idx);
-      await new Promise(r => setTimeout(r, 1500));
-      return {
-        theme: document.documentElement.dataset.theme,
-        tone: document.documentElement.dataset.wallpaperTone
-      };
-    });
-    const worstCase = await contrastRatios(page, CONTRAST_TARGETS);
-    const worstSampled = worstCase.filter(x => x.status === 'ok');
-    const worstBad = worstSampled.filter(x => !x.pass);
-    check('[43] 浅色壁纸 + 深色主题下关键文字仍达标（UX-02 路线 C）',
-      // 前置条件写进断言：主题没切成 dark、或壁纸明度没标记成 light 时直接判失败，
-      // 否则"条件没建立"会伪装成"通过了"
-      worstSetup.theme === 'dark' && worstSetup.tone === 'light'
-        && worstSampled.length === CONTRAST_TARGETS.length && worstBad.length === 0,
-      `前置 theme=${worstSetup.theme} tone=${worstSetup.tone}，采样 ${worstSampled.length}/${CONTRAST_TARGETS.length} 项`
-        + (worstBad.length ? `，不达标：${worstBad.map(x => `${x.name} ${x.ratio}:1`).join('、')}` : '，全部 ≥ 阈值'));
-  } else {
-    check('[43] 浅色壁纸 + 深色主题下关键文字仍达标（UX-02 路线 C）', false, '浅色壁纸不存在，无法验证该组合');
-  }
+  check('[43] 存量设置指向晨雾白时回落到默认壁纸',
+    fogFallback === '深邃星空', `wallpaperName=${fogFallback}`);
 
   /* ---- [35] 待办删除可撤销（UX-08）---- */
   const undoFlow = await page.evaluate(async () => {
@@ -1607,9 +1554,10 @@ async function runCore(page, label) {
   }
 
 
-  /* ---- [39] auto 主题按在线壁纸明度自适应（UX-13）----
-     Bing/随机壁纸的 themeHint 是 null，此前 auto 模式一律落回 dark，
-     浅色壁纸下白字看不清。这里用可控亮度的图片验证采样链路。 */
+  /* ---- [39] 在线壁纸明度采样（UX-13）----
+     2.0.0 起主题不再跟随壁纸（auto 已移除），但采样结果仍要写进
+     data-wallpaper-tone：深色主题的压暗层强度按壁纸明暗分档——亮壁纸必须压得更重，
+     否则白色标题会糊在照片里。这里验的是采样链路本身，不再断言主题切换。 */
   const makePng = (color) => page.evaluate(c => {
     const cv = document.createElement('canvas');
     cv.width = 4; cv.height = 4;
@@ -1619,60 +1567,53 @@ async function runCore(page, label) {
     return cv.toDataURL('image/png').split(',')[1];
   }, color);
 
-  const runAutoWithWallpaper = async (color) => {
-    bingImageBase64 = await makePng(color);
-    return page.evaluate(async () => {
-      await Storage.updateSettings({ theme: 'auto', wallpaperName: 'Bing 每日壁纸', wallpaperApiCache: null });
-      await Wallpaper.apply(Wallpaper.getWallpapers().findIndex(w => w.name === 'Bing 每日壁纸'));
+  const readThemeAndTone = () => page.evaluate(() => ({
+    theme: document.documentElement.dataset.theme,
+    tone: document.documentElement.dataset.wallpaperTone
+  }));
+
+  const runWithWallpaper = async (name, color, base64Setter) => {
+    base64Setter(await makePng(color));
+    return page.evaluate(async (n) => {
+      await Storage.updateSettings({ wallpaperName: n, wallpaperApiCache: null, wallpaperDaily: null });
+      await Wallpaper.apply(Wallpaper.getWallpapers().findIndex(w => w.name === n));
       await new Promise(r => setTimeout(r, 1200));
-      return document.documentElement.dataset.theme;
-    });
+      return {
+        theme: document.documentElement.dataset.theme,
+        tone: document.documentElement.dataset.wallpaperTone
+      };
+    }, name);
   };
 
-  const lightFromBright = await runAutoWithWallpaper('#f2f4f8');
-  check('[39] 亮色在线壁纸下 auto 解析为浅色主题（UX-13）', lightFromBright === 'light',
-    `data-theme=${lightFromBright}`);
+  const brightBing = await runWithWallpaper('Bing 每日壁纸', '#f2f4f8', v => { bingImageBase64 = v; });
+  check('[39] 亮色在线壁纸被采样为 light（压暗层据此加重）',
+    brightBing.tone === 'light' && brightBing.theme === 'dark',
+    `tone=${brightBing.tone} theme=${brightBing.theme}`);
 
-  const darkFromDark = await runAutoWithWallpaper('#0b0b1c');
-  check('[39] 深色在线壁纸下 auto 仍解析为深色主题（UX-13）', darkFromDark === 'dark',
-    `data-theme=${darkFromDark}`);
+  const darkBing = await runWithWallpaper('Bing 每日壁纸', '#0b0b1c', v => { bingImageBase64 = v; });
+  check('[39] 深色在线壁纸标记为 dark',
+    darkBing.tone === 'dark' && darkBing.theme === 'dark',
+    `tone=${darkBing.tone} theme=${darkBing.theme}`);
 
-  // 采样失败时必须回退到静态 hint，不能把主题留在不确定状态
+  // 采样失败时必须回退到静态 hint，不能把 tone 留在不确定状态
   bingImageBase64 = '';
-  const afterBrokenImage = await page.evaluate(async () => {
-    await Storage.updateSettings({ theme: 'auto', wallpaperApiCache: null });
+  const brokenTone = await page.evaluate(async () => {
+    await Storage.updateSettings({ wallpaperName: 'Bing 每日壁纸', wallpaperApiCache: null, wallpaperDaily: null });
     await Wallpaper.apply(Wallpaper.getWallpapers().findIndex(w => w.name === 'Bing 每日壁纸'));
     await new Promise(r => setTimeout(r, 1200));
-    return document.documentElement.dataset.theme;
+    return {
+      theme: document.documentElement.dataset.theme,
+      tone: document.documentElement.dataset.wallpaperTone
+    };
   });
-  check('[39] 图片不可采样时回退为深色而非报错（UX-13）', afterBrokenImage === 'dark',
-    `data-theme=${afterBrokenImage}`);
+  check('[39] 图片不可采样时回退到静态 hint 而不报错',
+    brokenTone.tone === 'dark' && brokenTone.theme === 'dark',
+    `tone=${brokenTone.tone} theme=${brokenTone.theme}`);
 
-  // 手动选定的主题不受在线壁纸影响（PBI-10 AC2 不被 UX-13 破坏）
-  bingImageBase64 = await makePng('#f2f4f8');
-  const manualKept = await page.evaluate(async () => {
-    await Storage.updateSettings({ theme: 'dark', wallpaperApiCache: null });
-    await Wallpaper.apply(Wallpaper.getWallpapers().findIndex(w => w.name === 'Bing 每日壁纸'));
-    await new Promise(r => setTimeout(r, 1200));
-    return document.documentElement.dataset.theme;
-  });
-  check('[39] 手动主题不被壁纸明度覆盖（UX-13 不破坏 PBI-10 AC2）', manualKept === 'dark',
-    `data-theme=${manualKept}`);
-
-  // ADV-05：随机壁纸源此前直接 return，auto 主题永远落 dark。
-  // 修复后与 Bing 一样采样；回退 wallpaper.js 的随机分支时本条会红灯。
-  const runAutoWithRandom = async (color) => {
-    randomImageBase64 = await makePng(color);
-    return page.evaluate(async () => {
-      await Storage.updateSettings({ theme: 'auto', wallpaperName: '随机壁纸', wallpaperApiCache: null });
-      await Wallpaper.apply(Wallpaper.getWallpapers().findIndex(w => w.name === '随机壁纸'));
-      await new Promise(r => setTimeout(r, 1200));
-      return document.documentElement.dataset.theme;
-    });
-  };
-  const lightFromRandom = await runAutoWithRandom('#f2f4f8');
-  check('[39] 随机壁纸亮图下 auto 解析为浅色（ADV-05）', lightFromRandom === 'light',
-    `data-theme=${lightFromRandom}`);
+  // ADV-05：随机壁纸源与 Bing 走同一条采样链路
+  const brightRandom = await runWithWallpaper('随机壁纸', '#f2f4f8', v => { randomImageBase64 = v; });
+  check('[39] 随机壁纸亮图同样被采样为 light（ADV-05）',
+    brightRandom.tone === 'light', `tone=${brightRandom.tone}`);
 
   /* ---- [40] 主页快捷添加书签（UX-12）---- */
   await page.evaluate(async () => {
@@ -1922,6 +1863,183 @@ async function runCore(page, label) {
   });
   check('[41] ? 弹出快捷键速查（UX-15）', /快捷键/.test(helpText) && /1-9/.test(helpText),
     `提示="${helpText}"`);
+
+  /* ---- [46] 每日一图缓存策略 ----
+     要证明的不是"能取到图"，而是"取不到时显示什么"只取决于历史上有没有成功过：
+       ① 从未成功 + 离线            → 内置默认图，且不写缓存
+       ② 有上次成功的图 + 离线      → 继续显示那张，不回退默认图
+       ③ 有上次成功的图 + 接口失败  → 仍然显示那张，缓存不被清空
+       ④ 联网成功                  → 换成当天图，缓存只留当天那一条（旧字段被清）
+       ⑤ 旧版本字段                → 迁移成新结构，不丢当天的图
+     把 resolveDailyWallpaper 改成恒返回默认图、或把 catch 分支改回"清空背景 + 预设渐变"，
+     ②③ 会立刻红灯。 */
+  const dailyIndex = await page.evaluate(() =>
+    Wallpaper.getWallpapers().findIndex(w => w.name === 'Bing 每日壁纸'));
+  const todayInPage = await page.evaluate(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
+  const ydayInPage = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })();
+  const setOnline = (v) => page.evaluate((v) => {
+    // navigator.onLine 是原型上的 accessor，实例上覆盖即可（configurable 保证可还原）
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => v });
+  }, v);
+  const applyDailyBing = (cache) => page.evaluate(async ({ cache, idx }) => {
+    await Storage.updateSettings(Object.assign({ wallpaperName: 'Bing 每日壁纸' }, cache));
+    await Wallpaper.apply(idx);
+    await new Promise(r => setTimeout(r, 400));
+    const s = await Storage.getSettings();
+    return {
+      bg: document.getElementById('bgLayer').style.backgroundImage || '',
+      // 浅色主题按这个类型决定纱罩强度：默认图（石墨）要退成纸面
+      type: document.documentElement.dataset.wallpaperType,
+      daily: s.wallpaperDaily,
+      legacy: s.wallpaperApiCache
+    };
+  }, { cache, idx: dailyIndex });
+
+  // ① 首次安装 + 断网：只能给内置默认图，并且不许凭空写一条缓存
+  await setOnline(false);
+  const firstOffline = await applyDailyBing({ wallpaperDaily: null, wallpaperApiCache: null });
+  check('[46] 从未成功获取 + 断网 → 显示内置默认图',
+    /wallpaper-default\.svg/.test(firstOffline.bg), firstOffline.bg.slice(0, 90) || '(空背景)');
+  check('[46] 断网时不发起请求也不写缓存',
+    firstOffline.daily === null, JSON.stringify(firstOffline.daily));
+  check('[46] 内置默认图标记为 default（浅色主题据此加重纱罩，避免透成中灰）',
+    firstOffline.type === 'default', `type=${firstOffline.type}`);
+
+  // ② 有昨天成功取到的图 + 断网：继续显示那张，绝不回退默认图
+  const cachedYesterday = { v: 1, date: ydayInPage, url: 'https://cn.bing.com/th?id=OHR.CachedYesterday' };
+  await page.evaluate(async (c) => { await Storage.updateSettings({ wallpaperDaily: c }); }, cachedYesterday);
+  const offlineWithLast = await applyDailyBing({});
+  check('[46] 断网但历史上成功过 → 继续显示最后一张每日图',
+    /OHR\.CachedYesterday/.test(offlineWithLast.bg), offlineWithLast.bg.slice(0, 90));
+  check('[46] 断网期间缓存保持不变',
+    offlineWithLast.daily && offlineWithLast.daily.date === ydayInPage,
+    JSON.stringify(offlineWithLast.daily));
+
+  // ③ 联网但接口失败：同样保留上一张，而不是清空背景或退回默认图
+  await setOnline(true);
+  bingApiMode = 'fail';
+  const fetchFailed = await applyDailyBing({});
+  check('[46] 当天获取失败 → 保留最后一张每日图（不回退默认图）',
+    /OHR\.CachedYesterday/.test(fetchFailed.bg), fetchFailed.bg.slice(0, 90));
+  check('[46] 获取失败不破坏已有缓存',
+    fetchFailed.daily && fetchFailed.daily.date === ydayInPage,
+    JSON.stringify(fetchFailed.daily));
+
+  // ④ 联网且成功：换成当天图，并整体替换成只含当天的记录
+  bingApiMode = 'ok';
+  const fetchedToday = await applyDailyBing({ wallpaperDaily: null, wallpaperApiCache: null });
+  check('[46] 联网成功 → 显示当天新图',
+    /OHR\.MockWallpaper/.test(fetchedToday.bg), fetchedToday.bg.slice(0, 90));
+  check('[46] 成功后写入当天记录',
+    fetchedToday.daily && fetchedToday.daily.date === todayInPage
+      && /OHR\.MockWallpaper/.test(fetchedToday.daily.url),
+    JSON.stringify(fetchedToday.daily));
+  check('[46] 缓存只保留当天一张（不累积历史）',
+    fetchedToday.daily && Object.keys(fetchedToday.daily).sort().join(',') === 'date,url,v',
+    `字段=${fetchedToday.daily ? Object.keys(fetchedToday.daily).join(',') : '(空)'}`);
+
+  // ⑤ 升级迁移：旧字段里的当天图要接过来，并清掉旧键
+  const legacyMigrated = await applyDailyBing({
+    wallpaperDaily: null,
+    wallpaperApiCache: { type: 'bing', date: todayInPage, url: 'https://cn.bing.com/th?id=OHR.LegacyMigrated' }
+  });
+  check('[46] 旧版本 wallpaperApiCache 迁移后继续生效',
+    /OHR\.LegacyMigrated/.test(legacyMigrated.bg), legacyMigrated.bg.slice(0, 90));
+  check('[46] 迁移后旧字段被清空（不残留两份「最后一张图」）',
+    legacyMigrated.legacy === null && legacyMigrated.daily && legacyMigrated.daily.date === todayInPage,
+    `legacy=${JSON.stringify(legacyMigrated.legacy)}`);
+
+  // 还原环境，避免影响后续用例（在线状态与壁纸源都不该被这条用例改掉）
+  await setOnline(true);
+  bingApiMode = 'ok';
+  await page.evaluate(async () => {
+    await Storage.updateSettings({ wallpaperName: '深邃星空', theme: 'dark' });
+    await Wallpaper.apply(0);
+  });
+
+  /* ---- [47] 只有深色：背景与材质都不再分主题（2.0.0）----
+     浅色主题下线后，样式表里不应该再有任何 [data-theme="light"] 规则
+     （残留规则不会生效，但会误导后续维护者以为还有第二条渲染路径）。
+     同时锁住背景侧的结论：照片档不套滤镜、预设档只有深色渐变、
+     往存储里写浅色也改不动 data-theme。 */
+  const darkOnly = await page.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+
+    // ① 样式表里是否还有浅色规则（递归扫 @media）
+    let sheets = 0, lightRules = [];
+    for (const sheet of document.styleSheets) {
+      let rules;
+      try { rules = [...sheet.cssRules]; } catch { continue; } // 跨域表跳过
+      sheets++;
+      const scan = list => list.forEach(r => {
+        if (r.cssText && r.cssText.includes('data-theme="light"')) lightRules.push(r.cssText.slice(0, 80));
+        if (r.cssRules) scan([...r.cssRules]);
+      });
+      scan(rules);
+    }
+
+    const layer = document.getElementById('bgLayer');
+    // ② 预设档：只有深色渐变，且不套滤镜
+    await Storage.updateSettings({ wallpaperName: '深邃星空' });
+    await Wallpaper.apply(Wallpaper.getWallpapers().findIndex(w => w.name === '深邃星空'));
+    await wait(400);
+    const preset = {
+      bg: getComputedStyle(layer).backgroundImage,
+      filter: getComputedStyle(layer).filter
+    };
+
+    // ③ 照片档：原样（无滤镜）；同时写入 theme:'light' 验证会被归一
+    const d = new Date();
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    await Storage.updateSettings({
+      wallpaperName: 'Bing 每日壁纸', theme: 'light',
+      wallpaperApiCache: null,
+      wallpaperDaily: { v: 1, date: today, url: 'https://cn.bing.com/th?id=OHR.DarkOnlyTest' }
+    });
+    await Wallpaper.apply(Wallpaper.getWallpapers().findIndex(w => w.name === 'Bing 每日壁纸'));
+    await wait(400);
+    const photo = {
+      filter: getComputedStyle(layer).filter,
+      url: layer.style.backgroundImage,
+      theme: document.documentElement.dataset.theme,
+      veil: getComputedStyle(layer, '::after').backgroundColor
+    };
+
+    // ④ 材质：深色表面仍是石墨近实心、无模糊
+    const card = getComputedStyle(document.querySelector('.todo-card') || document.querySelector('.category-card'));
+    return { sheets, lightRules, preset, photo, card: { bg: card.backgroundColor, blur: card.backdropFilter } };
+  });
+
+  check('[47] 样式表里已无浅色规则残留（浅色主题彻底下线）',
+    darkOnly.sheets > 0 && darkOnly.lightRules.length === 0,
+    darkOnly.lightRules.length ? darkOnly.lightRules.slice(0, 3).join(' | ') : `已扫描 ${darkOnly.sheets} 张样式表`);
+  check('[47] 预设壁纸只有深色渐变（无浅色版）',
+    /rgb\(11, 13, 18\)/.test(darkOnly.preset.bg), darkOnly.preset.bg.slice(0, 90));
+  check('[47] 预设档不套滤镜（渐变原样）',
+    !darkOnly.preset.filter || darkOnly.preset.filter === 'none', darkOnly.preset.filter);
+  check('[47] 照片档不套滤镜（照片原样清晰）',
+    !darkOnly.photo.filter || darkOnly.photo.filter === 'none', darkOnly.photo.filter);
+  check('[47] 照片壁纸正常挂到背景层',
+    /^url\(/.test(darkOnly.photo.url) && /OHR\.DarkOnlyTest/.test(darkOnly.photo.url),
+    darkOnly.photo.url.slice(-60));
+  check('[47] 往存储写浅色也改不动 data-theme（归一为 dark）',
+    darkOnly.photo.theme === 'dark', `data-theme=${darkOnly.photo.theme}`);
+  check('[47] 深色材质未被带偏（石墨近实心、无模糊）',
+    /rgba\(24, 27, 33, 0\.94\)/.test(darkOnly.card.bg) && (!darkOnly.card.blur || darkOnly.card.blur === 'none'),
+    JSON.stringify(darkOnly.card));
+
+  // 还原：后面的用例与退出都按深色 + 默认预设断言
+  await page.evaluate(async () => {
+    await Storage.updateSettings({ wallpaperName: '深邃星空', theme: 'dark', wallpaperDaily: null, wallpaperApiCache: null });
+    await Wallpaper.apply(0);
+  });
 
   return { consoleErrors, pageErrors, requests };
 }

@@ -146,13 +146,10 @@ const App = {
       // 与 settings.js 的判定口径保持一致：undefined 视为默认显示（P3-8）
       wallpaperBtn.classList.toggle('hidden', settings.showBottomBar === false);
     }
-    // V3 主题：默认深色，浅色时切换；PBI-10「跟随壁纸」按当前壁纸明度解析
-    let theme = settings.theme === 'light' ? 'light' : 'dark';
-    if (settings.theme === 'auto') {
-      const wp = typeof Wallpaper !== 'undefined' ? Wallpaper.getWallpapers()[Wallpaper.currentIndex] : null;
-      theme = wp && wp.themeHint === 'light' ? 'light' : 'dark';
-    }
-    document.documentElement.dataset.theme = theme;
+    /* 2.0.0：界面只剩深色一套，浅色主题与「跟随壁纸」都已移除。
+       属性照旧写死为 dark —— 样式表里不少规则按 [data-theme="dark"] 分组，
+       保留这个写入点可以让它们继续生效，也方便以后真要加主题时有落点。 */
+    document.documentElement.dataset.theme = 'dark';
     // V3 组件可见性：按注册表隐藏/显示主页区块
     this.applyComponentVisibility(settings);
   },
