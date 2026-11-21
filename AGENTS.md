@@ -85,6 +85,11 @@ lunar 1.7.7 的 `HolidayUtil` 生成；年度数据由运行时 `holiday-cn` + �
 | `npm run pack:zip` | 只打包、不跑单测（排查打包链路时用） |
 | `node tools/gen-city-coords.js --dry-run\|--write` | 重建城市经纬度（天气备用源用），构建期工具 |
 
+> **Node 版本基线是 22**：`.nvmrc` 是唯一版本源，CI 用 `node-version-file: .nvmrc` 读取；
+> `package.json` 的 `engines.node` 为 `>=22`，配合 `.npmrc` 的 `engine-strict=true`，
+> 版本不匹配时 `npm ci` 直接报 EBADENGINE，不会拖到测试阶段才报"找不到测试文件"。
+> 调整版本时只改 `.nvmrc` 与 `engines`，不要在两个 CI job 里分别硬编码 node 版本。
+
 > 扩展模式 E2E 需要 Chrome For Testing 与 GUI 会话；CI 只跑 preview 与 shim 两个脚本。
 > **注意 `--preview` 内部还会再跑一遍 file:// 模式**（`runFileMode()`），所以"四模式"指
 > 四种执行环境，不是四个独立命令。

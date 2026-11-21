@@ -2,6 +2,9 @@
   "name": "lingrui-nav",
   "version": "2.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "description": "凌睿科技导航页 — Chrome MV3 新标签页扩展（原生 JS，无运行时构建；含单测 / E2E / 可复现打包）",
   "scripts": {
     "test": "node --test tests/unit/*.test.js",
