@@ -195,3 +195,17 @@ lunar 1.7.7 的 `HolidayUtil` 生成；年度数据由运行时 `holiday-cn` + �
 - 任务来源：V3 MVP 的 PKG-01~05 已全部完成，`docs/process/task-allocation.md` 作为
   历史记录保留（其验收标准仍可作为回归清单使用）；新任务按实际需求，依
   `.agents/workflow.md` 的流程分派。
+
+## Agent skills
+
+### Issue tracker
+
+Issues 与规格以 GitHub Issues 管理（`gh` CLI），仓库 `wangyanan520/linring-newtab`，外部 PR 不进入 triage 队列。见 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+
+五角色标签沿用默认名：`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`；wayfinder 用 `wayfinder:map` / `wayfinder:research` / `wayfinder:prototype` / `wayfinder:grilling` / `wayfinder:task`。见 `docs/agents/triage-labels.md`。
+
+### Domain docs
+
+single-context：根目录一份 `GLOSSARY.md`，架构决定放 `docs/adr/`。见 `docs/agents/domain.md`。
